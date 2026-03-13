@@ -1,0 +1,946 @@
+# ZenScript — Compiler Architecture Blueprint v2
+
+## Vision
+
+A Gleam-inspired language that compiles to vanilla TypeScript + React. Familiar syntax for TS/React developers, but with pipes, exhaustive matching, no escape hatches, and compile-time safety that eliminates entire categories of bugs. Zero runtime dependencies — the compiler does all the work, the output is boring `.tsx`.
+
+---
+
+## Pipeline
+
+```
+.zs source → Lexer → Parser → AST → Type Checker → Codegen → .tsx output → tsc/swc → JS
+```
+
+The compiler is a single Rust binary (`zsc`) that takes `.zs` files and emits `.tsx`. From there, the user's existing build toolchain (Vite, Next.js, etc.) picks it up like any other TypeScript file.
+
+---
+
+## Syntax Design
+
+### Principle: "TypeScript, but stricter and with pipes"
+
+A React developer should read ZenScript and understand it in 30 minutes. We keep familiar syntax and add targeted upgrades.
+
+### Three Operators, One Character Each
+
+```
+=>  arrow functions          (a) => a + 1
+->  match arms               Ok(x) -> x
+|>  pipe data through        data |> transform
+?   unwrap Result/Option     fetchUser(id)?
+```
+
+All four of TypeScript's `?` uses (`?.`, `??`, `?:`, `? :`) are removed. `?` now means exactly one thing: unwrap or short-circuit.
+
+### What Stays from TypeScript
+
+- `const`, `export`, `import`, type annotations
+- `function` for named/exported functions
+- Arrow functions `=>` for inline/anonymous
+- JSX / TSX (full support)
+- Generics, template literals
+- `async`/`await`
+- Destructuring, spread, rest params
+- `||`, `&&`, `!` (boolean operators)
+- `==` (but only between same types)
+
+### What's Added
+
+| Feature | Syntax | Compiles To |
+|---------|--------|-------------|
+| Pipe operator | `a \|> b \|> c` | `c(b(a))` |
+| Pipe w/ placeholder | `a \|> f(x, _, y)` | `f(x, a, y)` |
+| Partial application | `add(10, _)` | `(x) => add(10, x)` |
+| Match expression | `match x { ... }` | exhaustive if/else chain |
+| Match with ranges | `match n { 1..10 -> ... }` | range check |
+| Match with destructuring | `Click(el, { x, y }) -> ...` | nested destructuring |
+| Result type | built-in `Ok(v)` / `Err(e)` | `{ ok: true, value } / { ok: false, error }` |
+| Option type | built-in `Some(v)` / `None` | `v / undefined` |
+| `?` operator | `fetchUser(id)?` | early return on Err/None |
+| Branded types | `type UserId = Brand<string, "UserId">` | `string` at runtime |
+| Opaque types | `opaque type HashedPw = string` | `string`, but only the defining module can create/read |
+| Tagged unions | `type Route = Home \| Profile(id: string)` | discriminated union |
+| Nested unions | `type ApiError = Network(NetworkError) \| NotFound` | nested discriminated union (compiler generates tags) |
+| Multi-depth match | `Network(Timeout(ms)) -> ...` | nested if/else with tag checks |
+| Type constructors | `User(name: "Ryan", email: e)` | `{ name: "Ryan", email: e }` (compiler adds tags for unions) |
+| Record spread | `User(..user, name: "New")` | `{ ...user, name: "New" }` |
+| Named arguments | `fetchUsers(page: 3, limit: 50)` | `fetchUsers(3, 50)` (labels erased) |
+| Default values | `function f(x: number = 10)` | caller can omit, compiler fills in |
+
+### What's Removed (compile errors)
+
+| Banned | Why | Alternative |
+|--------|-----|-------------|
+| `enum` | Broken TS feature, emits runtime code | Use `type` with `\|` variants |
+| `any` | Type safety escape hatch | Use `unknown` + narrowing |
+| `as` (type assertion) | Lies to the compiler | Use type guards or `match` |
+| `let` | Mutable bindings | `const` only |
+| `null` | Billion dollar mistake | `Option<T>` with `Some`/`None` |
+| `undefined` | Two nothings is one too many | `Option<T>` with `Some`/`None` |
+| `throw` | Untyped, invisible errors | Return `Result<T, E>` |
+| `class` | OOP escape hatch | Use functions + types |
+| `?.` | Optional chaining | `match`, `Option.map`, or `?` |
+| `??` | Nullish coalescing | `Option.unwrapOr` |
+| `? :` | Ternary | `match` |
+| `x?: T` | Optional fields | `x: Option<T>` |
+| `+` on strings | Silent coercion bugs | Template literals only (warning) |
+
+---
+
+## Syntax Examples
+
+### Pipe Operator
+
+```zenscript
+// Default: piped value goes to first argument
+users
+  |> filter(u => u.active)       // filter(users, fn)
+  |> sortBy(u => u.name)         // sortBy(result, fn)
+  |> take(10)                    // take(result, 10)
+
+// Need a different position? Use _ placeholder
+"hello" |> String.padStart(_, 10)      // padStart("hello", 10)
+42 |> wrap("[", _, "]")                // wrap("[", 42, "]")
+
+// _ also works outside pipes — partial application
+const addTen = add(10, _)              // (x) => add(10, x)
+[1, 2, 3] |> map(multiply(_, 2))      // [2, 4, 6]
+
+// Pipes in JSX
+<ul>
+  {users
+    |> filter(u => u.active)
+    |> sortBy(u => u.name)
+    |> map(u => <li key={u.id}>{u.name}</li>)
+  }
+</ul>
+```
+
+Pipe rules:
+
+1. No `_` in the call → insert piped value as first arg: `a |> f(b, c)` → `f(a, b, c)`
+2. Has `_` → replace `_` with piped value: `a |> f(b, _, c)` → `f(b, a, c)`
+3. `_` outside a pipe → create partial function: `f(b, _, c)` → `(x) => f(b, x, c)`
+4. Only ONE `_` allowed per call — compile error on `f(_, _)`
+
+### Match Expressions
+
+```zenscript
+// Match on union types — exhaustive
+match route {
+  Home          -> <HomePage />
+  Profile(id)   -> <ProfilePage id={id} />
+  Settings(tab) -> <SettingsPage tab={tab} />
+}
+// Add a new Route variant? Compiler flags every match that doesn't handle it.
+
+// Match on Result
+match fetchUser(id) {
+  Ok(user)          -> <Profile user={user} />
+  Err(NotFound)     -> <NotFoundPage />
+  Err(Network(msg)) -> <ErrorBanner msg={msg} />
+}
+
+// Match with ranges
+match response.status {
+  200..299 -> Ok(response)
+  401      -> Err(Unauthorized)
+  404      -> Err(NotFound)
+  s        -> Err(ServerError(s))
+}
+
+// Match with nested destructuring
+match action {
+  Click(el, { x, y })          -> handleClick(el, x, y)
+  KeyPress("s", { ctrl: true }) -> save()
+  KeyPress(key, _)              -> insertChar(key)
+}
+
+// Inline match in JSX props
+<Button
+  disabled={match state { Submitting -> true, _ -> false }}
+>
+  {match state { Submitting -> "Sending...", _ -> "Send" }}
+</Button>
+
+```
+
+Match uses `->` for arms (not `=>`), so it's visually distinct from arrow functions.
+
+### The `?` Operator (Result/Option Unwrap)
+
+```zenscript
+// On Result<T, E> — gives you T, or returns Err(E) from function
+function loadProfile(id: UserId): Result<Profile, AppError> {
+  const user  = fetchUser(id)?
+  const posts = fetchPosts(user.id)?
+  const stats = fetchStats(user.id)?
+  Ok({ user, posts, stats })
+}
+
+// On Option<T> — gives you T, or returns None from function
+function getDisplayName(userId: UserId): Option<string> {
+  const user     = findUser(userId)?
+  const nickname = user.nickname?
+  Some(toUpper(nickname))
+}
+
+// In a pipe
+const name = fetchUser(id)? |> getName |> toUpper
+
+// Compiler enforces: function must return Result or Option to use ?
+function greet(): string {
+  const user = fetchUser(id)?  // COMPILE ERROR: can't use ? in non-Result function
+}
+```
+
+Compiles to simple early returns:
+
+```typescript
+// fetchUser(id)?  becomes:
+const _r0 = fetchUser(id)
+if (!_r0.ok) return _r0
+const user = _r0.value
+```
+
+### Option<T> — No Null, No Undefined
+
+```zenscript
+type User = {
+  name: string                  // always present
+  nickname: Option<string>      // might not exist
+  avatar: Option<Url>           // might not exist
+}
+
+// Must handle the None case
+const display = match user.nickname {
+  Some(nick) -> nick
+  None       -> user.name
+}
+
+// Or use Option helpers in pipes
+const display = user.nickname |> Option.unwrapOr(user.name)
+
+// Transform inside without unwrapping
+const upper: Option<string> = user.nickname |> Option.map(n => toUpper(n))
+
+// Chain
+const avatar = user.nickname |> Option.flatMap(n => findAvatar(n))
+
+```
+
+### Type System — Just `type`, No `enum`
+
+`type` does everything. No `|` = record. Has `|` = union. Unions nest infinitely.
+
+```zenscript
+// Record type (no |)
+type User = {
+  id: UserId
+  name: string
+  email: Email
+}
+
+// Simple union type (has |)
+type Route =
+  | Home
+  | Profile(id: string)
+  | Settings(tab: string)
+  | NotFound
+
+// Union types can contain other union types — nest as deep as you want
+type NetworkError =
+  | Timeout(ms: number)
+  | DnsFailure(host: string)
+  | ConnectionRefused(port: number)
+
+type ValidationError =
+  | Required(field: string)
+  | InvalidFormat(field: string, expected: string)
+  | TooLong(field: string, max: number)
+
+type AuthError =
+  | InvalidCredentials
+  | TokenExpired(expiredAt: Date)
+  | InsufficientRole(required: Role, actual: Role)
+
+// Parent union containing sub-unions
+type ApiError =
+  | Network(NetworkError)
+  | Validation(ValidationError)
+  | Auth(AuthError)
+  | NotFound
+  | ServerError(status: number, body: string)
+
+// Go deeper — a full app error hierarchy
+type HttpError =
+  | Network(NetworkError)
+  | Status(code: number, body: string)
+  | Decode(JsonError)
+
+type UserError =
+  | Http(HttpError)
+  | NotFound(id: UserId)
+  | Banned(reason: string)
+
+type PaymentError =
+  | Http(HttpError)
+  | InsufficientFunds(needed: number, available: number)
+  | CardDeclined(reason: string)
+
+type AppError =
+  | User(UserError)
+  | Payment(PaymentError)
+  | Auth(AuthError)
+```
+
+### Multi-Depth Matching
+
+Match at any depth in one expression. Mix shallow and deep arms freely.
+
+```zenscript
+// Level 1 — broad categories
+match error {
+  Network(_)        -> "Connection problem"
+  Validation(_)     -> "Invalid input"
+  Auth(_)           -> "Access denied"
+  NotFound          -> "Not found"
+  ServerError(_, _) -> "Server broke"
+}
+
+// Level 2 — drill into sub-variants
+match error {
+  Network(Timeout(ms))         -> `Timed out after ${ms}ms`
+  Network(DnsFailure(host))    -> `Can't resolve ${host}`
+  Network(ConnectionRefused(_)) -> "Server not running"
+  Auth(TokenExpired(_))        -> "Session expired, please log in again"
+  Auth(_)                      -> "Access denied"
+  Validation(e)                -> describeValidation(e)
+  NotFound                     -> "Not found"
+  ServerError(s, _)            -> `Server error ${s}`
+}
+
+// Level 3+ — deep nested matching
+match appError {
+  User(Http(Network(Timeout(ms)))) ->
+    `User fetch timed out after ${ms}ms`
+
+  User(Http(Decode(MissingField(f)))) ->
+    `API response missing field: ${f}`
+
+  Payment(InsufficientFunds(needed, have)) ->
+    `Need $${needed} but only have $${have}`
+
+  Payment(CardDeclined(reason)) ->
+    `Card declined: ${reason}`
+
+  Auth(TokenExpired(_)) ->
+    refreshToken()
+
+  _ -> showGenericError(appError)
+}
+
+// Pass sub-types to specialist functions
+function handleError(err: ApiError) {
+  match err {
+    Network(netErr) -> retryNetwork(netErr)   // pass NetworkError to specialist
+    Auth(authErr)   -> handleAuth(authErr)     // pass AuthError to specialist
+    _               -> showGenericError(err)
+  }
+}
+
+// Sub-type IS the parent type
+const err: ApiError = Network(Timeout(3000))
+// Network(Timeout(3000)) is both a NetworkError and an ApiError
+
+```
+
+The compiler generates discrimination tags in the emitted TypeScript — you never write `type: "blahblah"` manually. Exhaustiveness checking works at every nesting level.
+
+### Branded Types
+
+```zenscript
+type UserId = Brand<string, "UserId">
+type Email  = Brand<string, "Email">
+
+const id: UserId = UserId("abc123")
+sendEmail(id, "hello")  // COMPILE ERROR: UserId is not Email
+```
+
+### Opaque Types
+
+```zenscript
+// auth/password.zs
+opaque type HashedPassword = string
+
+export function hash(raw: string): HashedPassword {
+  bcrypt(raw)  // only this module can create one
+}
+
+export function verify(raw: string, hashed: HashedPassword): bool {
+  bcryptCompare(raw, hashed)  // only this module can read it
+}
+
+// other_file.zs
+const pw: HashedPassword = hash("secret")
+// pw + "abc"   COMPILE ERROR — it's not a string to you
+
+```
+
+### Constructors, Named Arguments, and Defaults
+
+Records and functions use the same call syntax: `Name(args)` with optional labels. No `new`, no `{ }` for construction.
+
+```zenscript
+// --- Record Construction ---
+
+type User = {
+  id: UserId
+  name: string
+  email: Email
+  nickname: Option<string>
+}
+
+// Positional — args in field order
+const user = User(UserId("1"), "Ryan", Email("r@test.com"), None)
+
+// Named — any order, self-documenting
+const user = User(
+  name: "Ryan",
+  id: UserId("1"),
+  email: Email("r@test.com"),
+  nickname: None,
+)
+
+// Update with spread — ..existing then override
+const updated = User(..user, nickname: Some("Ry"))
+const updated = User(..user,
+  name: "Ryan Updated",
+  nickname: Some("Ry"),
+)
+// Compiles to: { ...user, name: "Ryan Updated", nickname: "Ry" }
+
+// --- Named Arguments on Functions ---
+
+function createUser(name: string, email: Email, role: Role): Result<User, ApiError> {
+  // ...
+}
+
+// Call positionally
+createUser("Ryan", Email("r@test.com"), Admin)
+
+// Or with labels — great when args are same type
+createUser(name: "Ryan", email: Email("r@test.com"), role: Admin)
+
+// Mix: positional first, then named
+createUser("Ryan", role: Admin, email: Email("r@test.com"))
+
+// --- Default Values ---
+
+// On record types
+type Config = {
+  baseUrl: string                    // required — no default
+  timeout: number = 5000             // default value
+  retries: number = 3                // default value
+  headers: Option<Headers> = None    // default value
+}
+
+// Only specify what you need
+const config = Config(baseUrl: "https://api.example.com")
+// timeout=5000, retries=3, headers=None — all defaulted
+
+const config = Config(baseUrl: "https://api.example.com", timeout: 10000)
+// timeout overridden, rest defaulted
+
+// On functions
+function fetchUsers(
+  page: number = 1,
+  limit: number = 20,
+  sort: SortOrder = Ascending,
+): Result<Array<User>, ApiError> {
+  // page, limit, sort are always concrete values — never Option, never undefined
+}
+
+fetchUsers()                                     // all defaults
+fetchUsers(page: 3)                              // override one
+fetchUsers(limit: 50, sort: Descending)          // override two
+
+// On React component props
+type ButtonProps = {
+  label: string                      // required
+  onClick: () => void                // required
+  variant: Variant = Primary         // default
+  size: Size = Medium                // default
+  disabled: bool = false             // default
+  loading: bool = false              // default
+  icon: Option<Icon> = None          // default
+}
+
+export function Button(props: ButtonProps) {
+  return <button>{props.label}</button>
+}
+
+// .zs — only specify what matters
+<Button label="Save" onClick={handleSave} />
+<Button label="Delete" onClick={handleDelete} variant={Danger} icon={Some(TrashIcon)} />
+```
+
+Default value rules:
+
+1. Defaults must be compile-time constants or constructors (no function calls)
+2. Defaulted fields must use named args when called (not positional) — prevents ambiguity
+3. Required fields come first in the type definition — compiler error otherwise
+4. The type is always concrete — `variant` is `Variant`, not `Option<Variant>`. It's `Primary` if you don't specify it.
+
+### Function Conventions
+
+```zenscript
+// Named/exported functions use `function`
+export function TodoApp() { ... }
+export function fetchUser(id: UserId): Result<User, ApiError> { ... }
+
+// Inline/anonymous uses arrow functions
+const toggle = (id: string) => ...
+const double = (n: number) => n * 2
+todos |> map(t => t.name)
+
+// Both support named args and defaults
+function greet(name: string, greeting: string = "Hello"): string {
+  `${greeting}, ${name}!`
+}
+greet("Ryan")                    // "Hello, Ryan!"
+greet("Ryan", greeting: "Hey")  // "Hey, Ryan!"
+
+```
+
+### Full Component Example
+
+```zenscript
+import { useState } from "react"
+
+type Todo = {
+  id: string
+  text: string
+  done: bool
+}
+
+type Tab = Overview | Team | Analytics
+
+export function Dashboard(userId: UserId) {
+  const [tab, setTab] = useState<Tab>(Overview)
+  const user = useAsync(() => fetchUser(userId))
+
+  return <Layout>
+    <Sidebar>
+      <NavItem
+        active={match tab { Overview -> true, _ -> false }}
+        onClick={() => setTab(Overview)}>
+        Overview
+      </NavItem>
+    </Sidebar>
+
+    <Main>
+      {match tab {
+        Overview  -> <OverviewPanel user={user.state} />
+        Team      -> <TeamPanel />
+        Analytics -> <AnalyticsPanel userId={userId} />
+      }}
+    </Main>
+  </Layout>
+}
+
+function OverviewPanel(user: AsyncState<User, ApiError>) {
+  return match user {
+    Idle         -> <EmptyState>Click to load</EmptyState>
+    Loading      -> <Skeleton lines={6} />
+    Failure(err) -> <ErrorCard>{describeError(err)}</ErrorCard>
+    Success(u)   ->
+      <div>
+        <WelcomeBanner name={u.name} />
+        <StatGrid>
+          <Stat label="Role" value={roleLabel(u.role)} />
+          <Stat label="Email" value={u.email} />
+        </StatGrid>
+      </div>
+  }
+}
+
+function describeError(err: ApiError): string {
+  match err {
+    Network(msg)    -> `Connection failed: ${msg}`
+    NotFound        -> "User not found"
+    Unauthorized    -> "Please log in"
+    BadRequest(e)   -> e |> join(", ")
+    ServerError(s)  -> `Server error (${s})`
+  }
+}
+```
+
+---
+
+## Compiler Strictness Rules
+
+These are enforced at compile time with clear error messages.
+
+| Rule | Error | Fix |
+|------|-------|-----|
+| Exported functions must declare return types | `ERROR: missing return type` | Add `: ReturnType` |
+| No unused variables | `ERROR: x is never used` | Remove or prefix with `_` |
+| No unused imports | `ERROR: useRef is never used` | Remove the import |
+| No implicit type widening | `ERROR: mixed array needs explicit type` | Add type annotation |
+| No floating promises/results | `ERROR: unhandled Result` | Use `?`, `match`, or assign to `_` |
+| No property access on unnarrowed unions | `ERROR: result is Result, not Ok` | `match` first |
+| No mutation of function parameters | `ERROR: cannot mutate parameter` | Return new value with spread |
+| Array index returns `Option<T>` | — | Must handle `None` case |
+| No `==` between different types | `ERROR: cannot compare number with string` | Convert first |
+| IO functions must return `Result` | `ERROR: fetch can fail — return Result` | Declare error type |
+| Dead code after exhaustive return | `ERROR: unreachable code` | Remove dead code |
+| String concat with `+` | `WARNING: use template literal` | Use `` `${x}` `` |
+
+---
+
+## Compiler Architecture (Rust)
+
+### Crate Structure
+
+```
+zenscript/
+├── crates/
+│   ├── zs_lexer/          # Tokenizer
+│   ├── zs_parser/         # Recursive descent parser → AST
+│   ├── zs_checker/        # Type checker, exhaustiveness, brands, opaques
+│   ├── zs_codegen/        # AST → .tsx emitter
+│   ├── zs_lsp/            # Language server (tower-lsp)
+│   └── zs_cli/            # CLI binary (zsc)
+├── runtime/                 # ZERO runtime — intentionally empty
+├── tests/
+│   ├── fixtures/            # .zs input files
+│   └── snapshots/           # expected .tsx outputs
+└── Cargo.toml
+```
+
+### Lexer (`zs_lexer`)
+
+Key tokens beyond standard TypeScript:
+
+| Token | Lexeme |
+|-------|--------|
+| `Pipe` | `\|>` |
+| `Arrow` | `->` (match arms) |
+| `Question` | `?` (postfix, Result/Option unwrap) |
+| `Underscore` | `_` (placeholder/partial application) |
+| `Match` | `match` keyword |
+| `Some` | `Some` keyword |
+| `None` | `None` keyword |
+| `Ok` | `Ok` keyword |
+| `Err` | `Err` keyword |
+| `Opaque` | `opaque` keyword |
+
+Banned tokens (immediate compile errors with helpful messages):
+
+- `any` → "Use a concrete type or generic"
+- `as` → "Use a type guard or match expression"
+- `let` → "Use const — all bindings are immutable"
+- `class` → "Use functions and types"
+- `throw` → "Return a Result<T, E> instead"
+- `null` → "Use Option<T> with Some/None"
+- `undefined` → "Use Option<T> with Some/None"
+- `enum` → "Use type with | variants"
+
+### Parser (`zs_parser`)
+
+Handwritten recursive descent. Key AST nodes:
+
+```rust
+enum Expr {
+    // Standard
+    Literal(Literal),
+    Identifier(String),
+    BinaryOp { left: Box<Expr>, op: BinOp, right: Box<Expr> },
+    Call { callee: Box<Expr>, args: Vec<Arg> },
+    Arrow { params: Vec<Param>, body: Box<Expr> },
+    Jsx(JsxElement),
+
+    // ZenScript additions
+    Pipe { left: Box<Expr>, right: Box<Expr> },
+    Match { subject: Box<Expr>, arms: Vec<MatchArm> },
+    Unwrap(Box<Expr>),         // the ? operator
+    Construct {                 // Type(field: value, ..spread)
+        type_name: String,
+        spread: Option<Box<Expr>>,
+        args: Vec<Arg>,
+    },
+    Ok(Box<Expr>),
+    Err(Box<Expr>),
+    Some(Box<Expr>),
+    None,
+    Placeholder,               // _ in partial application
+}
+
+// Args can be positional, named, or placeholder
+enum Arg {
+    Positional(Expr),
+    Named { label: String, value: Expr },
+    Placeholder,
+}
+
+// Params support defaults
+struct Param {
+    name: String,
+    type_ann: Type,
+    default: Option<Expr>,     // = defaultValue
+}
+
+struct MatchArm {
+    pattern: Pattern,
+    body: Expr,
+}
+
+enum Pattern {
+    Literal(Literal),
+    Range { start: Literal, end: Literal },
+    Variant { name: String, bindings: Vec<Pattern> },  // recursive — enables multi-depth matching
+    Record { fields: Vec<(String, Pattern)> },
+    Wildcard,
+}
+```
+
+### Type Checker (`zs_checker`)
+
+The heart of the compiler:
+
+1. **Type inference** — Hindley-Milner with TypeScript-flavored annotations
+2. **Brand enforcement** — `UserId` and `Email` are distinct at compile time, erased at runtime
+3. **Opaque enforcement** — only the defining module can construct/destructure opaque types
+4. **Exhaustiveness checking** — every `match` must cover all variants (including ranges)
+5. **Result/Option tracking** — `?` only allowed in functions returning `Result`/`Option`
+6. **IO detection** — functions calling `fetch`, file IO, JSON parse etc must return `Result`
+7. **Mutation detection** — parameters cannot be mutated
+8. **Equality checking** — `==` only between same types
+9. **Unused detection** — variables, imports must be used
+10. **Dead code detection** — unreachable code after exhaustive returns
+
+### npm / .d.ts Interop
+
+Strategy: shell out to `tsc` for module resolution, parse `.d.ts` files, and wrap at the boundary.
+
+Automatic conversions at import boundary:
+
+- `T | null` → `Option<T>`
+- `T | undefined` → `Option<T>`
+- `T | null | undefined` → `Option<T>`
+- External `any` → `unknown` (forces narrowing)
+- Functions that throw → compiler warns; can wrap with `boundary` block to get `Result`
+
+```zenscript
+import { findElement } from "some-dom-lib"
+// .d.ts says: findElement(id: string): Element | null
+// ZenScript sees: findElement(id: string): Option<Element>
+
+match findElement("app") {
+  Some(el) -> render(el)
+  None     -> panic("no #app element")
+}
+
+```
+
+### Code Generator (`zs_codegen`)
+
+Emits clean, readable `.tsx`. Zero runtime imports.
+
+| ZenScript | Emitted TypeScript |
+|------------|-------------------|
+| `a \|> f(b, c)` | `f(a, b, c)` |
+| `a \|> f(b, _, c)` | `f(b, a, c)` |
+| `add(10, _)` | `(x) => add(10, x)` |
+| `match x { A -> ..., B -> ... }` | `x.tag === "A" ? ... : x.tag === "B" ? ... : absurd(x)` |
+| `fetchUser(id)?` | `const _r = fetchUser(id); if (!_r.ok) return _r; const val = _r.value;` |
+| `Ok(value)` | `{ ok: true, value }` |
+| `Err(error)` | `{ ok: false, error }` |
+| `Some(value)` | `value` |
+| `None` | `undefined` |
+| `User(name: "Ry", email: e)` | `{ name: "Ry", email: e }` (+ tag for unions) |
+| `User(..user, name: "New")` | `{ ...user, name: "New" }` |
+| `f(name: "x", limit: 10)` | `f("x", 10)` (labels erased, reordered to match definition) |
+| `f(x: number = 10)` | caller omits → compiler inserts `10` at call site |
+| `Brand<string, "UserId">` | `string` (erased) |
+| `opaque type X = T` | `T` (erased, access controlled at compile time) |
+
+---
+
+## Language Server (`zs_lsp`)
+
+Built on `tower-lsp` (Rust LSP framework).
+
+### Killer Feature: Pipe-Aware Autocomplete
+
+When the user types `|>` after an expression, the LSP:
+1. Resolves the type of the left-hand expression (e.g. `Option<string>`)
+2. Searches all functions in scope (imported + local) where that type is a valid first argument
+3. Ranks by relevance — functions from the matching module first (e.g. `Option.map`, `Option.unwrapOr`) then general functions that accept the type
+4. Presents completions with type signatures
+
+This gives `.method()` discoverability to a pipe-first language — the main DX complaint about Gleam, Elixir, and F# is that you have to KNOW which module has the function. ZenScript shows you.
+
+Example: user types `Option<string>` value then `|>`
+```
+
+Suggestions:
+  Option.map(fn)           Option<string> -> Option<U>
+  Option.unwrapOr(default) Option<string> -> string
+  Option.flatMap(fn)       Option<string> -> Option<U>
+  Option.isSome            Option<string> -> bool
+  Option.isNone            Option<string> -> bool
+  toUpper                  string -> string  (if unwrapped)
+  ...
+
+```
+
+### Phase 1 — Diagnostics (weeks)
+- Red squiggles for banned keywords
+- Exhaustiveness warnings on incomplete match
+- Type errors from the checker
+- `?` .zs in non-Result/Option functions
+
+### Phase 2 — Navigation (weeks)
+- Go-to-definition (within .zs files)
+- Hover for type info
+- Find references
+
+### Phase 3 — Intelligence (months)
+- **Pipe-aware autocomplete** (the killer feature above)
+- General autocompletion
+- Auto-import suggestions
+- npm type completions (via .d.ts)
+
+### Phase 4 — Refactoring (ongoing)
+- Extract to pipe
+- Convert ternary to match (for migrating TS code)
+- Add missing match arms
+
+---
+
+## Build Integration
+
+### Vite Plugin (primary target)
+
+```typescript
+export default function zenscript(): Plugin {
+  return {
+    name: "zenscript",
+    transform(code, id) {
+      if (!id.endsWith(".zs")) return
+      const tsx = compileZen(code)  // shell to zsc or WASM
+      return { code: tsx, map: null }
+    }
+  }
+}
+```
+
+### CLI
+
+```bash
+zsc build src/           # compile all .zs → .tsx
+zsc check src/           # type-check only, no output
+zsc watch src/           # watch mode
+zsc init                 # scaffold new project
+zsc migrate file.tsx     # attempt to convert .tsx to .zs
+```
+
+---
+
+## Implementation Roadmap
+
+### Phase 1: Proof of concept (2-4 weeks)
+
+- [ ] Lexer with pipe, match, `?` tokens and banned keyword errors
+- [ ] Parser for: const, function, arrows, pipes, basic expressions
+- [ ] Parser: `Type(field: value)` constructor syntax and `..spread`
+- [ ] Parser: named arguments at call sites
+- [ ] Parser: default values on function params and record fields
+- [ ] Codegen: pipe lowering (`a |> f(b)` → `f(a, b)`)
+- [ ] Codegen: `_` placeholder lowering
+- [ ] Codegen: constructor → object literal, spread → `{ ...x }`
+- [ ] CLI: `zsc build` on a single file
+- [ ] One working example: `.zs` file → valid `.tsx`
+
+### Phase 2: Match + Result + Option (2-3 weeks)
+
+- [ ] Match expression parsing with `->` arms
+- [ ] Pattern matching: literals, variants, ranges, wildcards, nested variants
+- [ ] Multi-depth matching: `Network(Timeout(ms)) -> ...`
+- [ ] Result type (Ok/Err) built-in
+- [ ] Option type (Some/None) built-in
+- [ ] `?` operator parsing and codegen
+- [ ] Exhaustiveness checking (including nested union depth)
+- [ ] Codegen: match → if/else chains with auto-generated tags, `?` → early returns
+
+### Phase 3: JSX + React (2-3 weeks)
+
+- [ ] JSX parsing
+- [ ] Pipes inside JSX expressions
+- [ ] Match expressions inside JSX (inline and block)
+- [ ] Component function detection
+
+### Phase 4: Type System (4-8 weeks)
+
+- [ ] Basic type inference
+- [ ] Brand types (compile-time only, erased in output)
+- [ ] Opaque types (module-scoped construction)
+- [ ] Union type exhaustiveness in match
+- [ ] `?` only in Result/Option-returning functions
+- [ ] IO detection (fetch etc. must return Result)
+- [ ] Parameter mutation detection
+- [ ] Same-type equality enforcement
+- [ ] Array index returns Option
+- [ ] .d.ts ingestion for npm interop (via tsc)
+- [ ] Boundary auto-wrapping (null → Option, any → unknown)
+
+### Phase 5: LSP + DX (2-4 weeks)
+
+- [ ] LSP with diagnostics
+- [ ] Pipe-aware autocomplete (the killer feature)
+- [ ] VSCode extension (syntax highlighting + LSP client)
+- [ ] Vite plugin
+- [ ] Source maps (.zs → .tsx)
+
+### Phase 6: Polish (ongoing)
+
+- [ ] Elm/Gleam quality error messages
+- [ ] LSP go-to-definition, hover, find references
+- [ ] Playground (WASM compiler in browser)
+- [ ] Documentation site
+- [ ] `zsc migrate` for converting .tsx → .zs
+
+---
+
+## Resolved Design Decisions
+
+| Question | Decision | Rationale |
+|----------|----------|-----------|
+| Syntax style | TS keywords + Gleam match/pipe | Familiar to React devs, 30min learning curve |
+| Function style | `function` for named, `=>` for inline | Matches React convention |
+| Match arrow | `->` (not `=>`) | Visually distinct from arrow functions |
+| Pipe semantics | First-arg default, `_` placeholder | Gleam approach — clean 90% of the time |
+| Partial application | `f(a, _)` creates `(x) => f(a, x)` | Free bonus from `_` placeholder |
+| Result unwrap | `?` operator (Rust-style) | Cleaner than `use x <- f()`, less new syntax |
+| Null handling | No null/undefined, `Option<T>` only | Gleam approach — one concept for "might not exist" |
+| npm null interop | Auto-wrap to `Option` at boundary | Transparent — devs never see null |
+| Boolean operators | Keep `||`, `&&`, `!` | Everyone knows them, no coercion issues |
+| Compiler target | Pure vanilla .tsx, zero dependencies | Eject-friendly, no runtime cost |
+| Type keyword | `type` for everything, no `enum` | `enum` is broken in TS; `type` with `\|` covers unions, records, brands, opaques |
+| Nested unions | Unions can contain other union types, match at any depth | More powerful than Gleam and TS; compiler generates discrimination tags |
+| Constructors | `Type(field: value)` — parens, not braces | Same syntax for records, unions, and function calls. Consistent. |
+| Record updates | `Type(..existing, field: newValue)` | Gleam-style spread with `..` — compiles to `{ ...existing, field: newValue }` |
+| Named arguments | Optional labels at call site: `f(name: "x")` | Self-documenting, order-independent when labelled |
+| Default values | `field: Type = default` on types and functions | Required for React DX (component props). Constants only, named-arg-only, required fields first. |
+| Compiler language | Rust | Fast, WASM-ready for browser playground, good LSP story |
+
+---
+
+## Key Insight
+
+The entire value proposition is: **all the checking happens at compile time, and the output is the simplest possible TypeScript.** There is no runtime. There is no framework. There is no dependency. Just a compiler that turns nice syntax into boring, correct code.
+
+If you eject from ZenScript, you have normal TypeScript. That's the escape hatch, and it's the most reassuring one possible.
