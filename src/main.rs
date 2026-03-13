@@ -1,3 +1,5 @@
+pub mod lexer;
+
 fn main() {
-    println!("Hello, world!");
+    println!("ZenScript compiler");
 }
