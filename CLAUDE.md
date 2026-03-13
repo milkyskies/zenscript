@@ -1,5 +1,25 @@
 # CLAUDE.md
 
+## Before Starting Any Issue - MANDATORY
+
+**Always read the relevant section of `docs/design.md` before writing code.** This is the language specification and architecture blueprint. It defines syntax, semantics, codegen output, and compiler structure. Do not guess - read the spec.
+
+## Recommended Crates
+
+| Purpose | Crate |
+|---|---|
+| Error reporting | `ariadne` |
+| CLI | `clap` |
+| LSP | `tower-lsp` |
+| File watching | `notify` |
+| WASM | `wasm-bindgen` + `wasm-pack` |
+| Typed errors | `thiserror` |
+| CLI edge errors | `anyhow` |
+| Snapshot testing | `insta` |
+| Serialization | `serde` + `serde_json` |
+
+Do **not** use parser generators (pest, nom, lalrpop). The parser is handwritten recursive descent for better error recovery and LSP integration.
+
 <!-- glb-agent-instructions -->
 ## Task Tracking with glb
 
