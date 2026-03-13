@@ -1,4 +1,5 @@
 pub mod codegen;
+pub mod diagnostic;
 pub mod lexer;
 pub mod parser;
 
@@ -94,9 +95,11 @@ fn compile_file(file: &Path, out_dir: Option<&Path>) -> Result<PathBuf> {
     let source = std::fs::read_to_string(file)
         .with_context(|| format!("failed to read {}", file.display()))?;
 
+    let filename = file.to_string_lossy();
     let program = ZsParser::new(&source).parse_program().map_err(|errs| {
-        let msgs: Vec<String> = errs.iter().map(|e| e.to_string()).collect();
-        anyhow::anyhow!("{}", msgs.join("\n"))
+        let diags = diagnostic::from_parse_errors(&errs);
+        let rendered = diagnostic::render_diagnostics(&filename, &source, &diags);
+        anyhow::anyhow!("{rendered}")
     })?;
 
     let output = Codegen::new().generate(&program);
@@ -131,14 +134,15 @@ fn cmd_check(path: &Path) -> Result<()> {
         let source = std::fs::read_to_string(file)
             .with_context(|| format!("failed to read {}", file.display()))?;
 
+        let filename = file.to_string_lossy();
         match ZsParser::new(&source).parse_program() {
             Ok(_) => {
                 checked += 1;
             }
             Err(errs) => {
-                for e in &errs {
-                    eprintln!("  {}:{}", file.display(), e);
-                }
+                let diags = diagnostic::from_parse_errors(&errs);
+                let rendered = diagnostic::render_diagnostics(&filename, &source, &diags);
+                eprint!("{rendered}");
                 errors += 1;
             }
         }
