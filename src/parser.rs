@@ -39,7 +39,15 @@ impl Parser {
         }
     }
 
-    pub fn from_tokens(tokens: Vec<Token>) -> Self {
+    pub fn from_tokens(mut tokens: Vec<Token>) -> Self {
+        // Ensure there's always an Eof token at the end
+        if tokens.is_empty() || !matches!(tokens.last().map(|t| &t.kind), Some(TokenKind::Eof)) {
+            let span = tokens
+                .last()
+                .map(|t| Span::new(t.span.end, t.span.end, t.span.line, t.span.column))
+                .unwrap_or(Span::new(0, 0, 1, 1));
+            tokens.push(Token::new(TokenKind::Eof, span));
+        }
         Self {
             tokens,
             pos: 0,
