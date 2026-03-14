@@ -311,19 +311,27 @@ impl<'src> Lowerer<'src> {
         let mut type_name = None;
         let mut functions = Vec::new();
 
-        for child in node.children() {
-            match child.kind() {
-                SyntaxKind::TYPE_EXPR if type_name.is_none() => {
-                    type_name = self.lower_type_expr(&child);
-                }
-                SyntaxKind::FUNCTION_DECL => {
-                    // For block functions don't have an item_node wrapper,
-                    // so we pass the function node itself for export check
-                    if let Some(decl) = self.lower_for_block_function(&child) {
-                        functions.push(decl);
+        let mut next_exported = false;
+        for child_or_token in node.children_with_tokens() {
+            match child_or_token {
+                rowan::NodeOrToken::Token(token) => {
+                    if token.kind() == SyntaxKind::KW_EXPORT {
+                        next_exported = true;
                     }
                 }
-                _ => {}
+                rowan::NodeOrToken::Node(child) => match child.kind() {
+                    SyntaxKind::TYPE_EXPR if type_name.is_none() => {
+                        type_name = self.lower_type_expr(&child);
+                    }
+                    SyntaxKind::FUNCTION_DECL => {
+                        if let Some(mut decl) = self.lower_for_block_function(&child) {
+                            decl.exported = next_exported;
+                            functions.push(decl);
+                        }
+                        next_exported = false;
+                    }
+                    _ => {}
+                },
             }
         }
 

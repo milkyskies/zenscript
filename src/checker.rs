@@ -688,6 +688,9 @@ impl Checker {
                 return_type: Box::new(return_type.clone()),
             };
             self.env.define(&func.name, fn_type);
+            if func.exported {
+                self.used_names.insert(func.name.clone());
+            }
             self.defined_names.push((func.name.clone(), block.span));
 
             // Check the function body

@@ -110,8 +110,12 @@ fn resolve_single_import(
                 imports.function_decls.push(decl.clone());
             }
             ItemKind::ForBlock(block) => {
-                // For-blocks are always available (they extend types, not gated by export)
-                imports.for_blocks.push(block.clone());
+                // Only include exported for-block functions
+                let mut exported_block = block.clone();
+                exported_block.functions.retain(|f| f.exported);
+                if !exported_block.functions.is_empty() {
+                    imports.for_blocks.push(exported_block);
+                }
             }
             ItemKind::Const(decl) if decl.exported => {
                 if let ConstBinding::Name(name) = &decl.binding {

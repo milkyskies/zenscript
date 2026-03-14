@@ -491,8 +491,15 @@ impl Parser {
 
         let mut functions = Vec::new();
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+            // Allow `export` prefix on for-block functions
+            let exported = self.check(&TokenKind::Export);
+            if exported {
+                self.advance();
+            }
+
             if self.check(&TokenKind::Fn) || self.check(&TokenKind::Async) {
-                let decl = self.parse_for_block_function()?;
+                let mut decl = self.parse_for_block_function()?;
+                decl.exported = exported;
                 functions.push(decl);
             } else {
                 return Err(self.error("expected `fn` inside for block"));

@@ -1,7 +1,7 @@
 import { Todo, Filter, Validation } from "./types"
 
 for string {
-    fn validate(self) -> Validation {
+    export fn validate(self) -> Validation {
         const trimmed = self |> trim
         const len = trimmed |> String.length
         match len {
@@ -16,7 +16,7 @@ for string {
 }
 
 for Array<Todo> {
-    fn filterBy(self, f: Filter) -> Array<Todo> {
+    export fn filterBy(self, f: Filter) -> Array<Todo> {
         match f {
             All -> self,
             Active -> self |> filter(.done == false),
@@ -24,7 +24,7 @@ for Array<Todo> {
         }
     }
 
-    fn remaining(self) -> number {
+    export fn remaining(self) -> number {
         self
             |> filter(.done == false)
             |> length

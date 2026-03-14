@@ -391,8 +391,12 @@ impl<'src> CstParser<'src> {
         self.expect(TokenKind::LeftBrace);
         self.eat_trivia();
 
-        // Parse function declarations inside the block
+        // Parse function declarations inside the block (with optional export)
         while !self.at(TokenKind::RightBrace) && !self.at_end() {
+            if self.at(TokenKind::Export) {
+                self.bump();
+                self.eat_trivia();
+            }
             if self.at(TokenKind::Fn) || self.at(TokenKind::Async) {
                 self.parse_for_block_function();
                 self.eat_trivia();
