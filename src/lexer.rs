@@ -212,8 +212,8 @@ impl<'src> Lexer<'src> {
                     self.advance();
                     TokenKind::PipePipe
                 } else {
-                    // Bare `|` — used in type union declarations, passed through
-                    TokenKind::Identifier("|".to_string())
+                    // Bare `|` — used in type union declarations and lambda delimiters
+                    TokenKind::VerticalBar
                 }
             }
 
@@ -635,10 +635,10 @@ mod tests {
     #[test]
     fn keywords() {
         assert_eq!(
-            lex("const function export import match type opaque return"),
+            lex("const fn export import match type opaque return"),
             vec![
                 TokenKind::Const,
-                TokenKind::Function,
+                TokenKind::Fn,
                 TokenKind::Export,
                 TokenKind::Import,
                 TokenKind::Match,
@@ -668,7 +668,7 @@ mod tests {
 
     #[test]
     fn banned_keywords() {
-        let tokens = lex("let class throw null undefined any as enum");
+        let tokens = lex("let class throw null undefined any as enum function");
         assert_eq!(
             tokens,
             vec![
@@ -680,6 +680,20 @@ mod tests {
                 TokenKind::Banned(BannedKeyword::Any),
                 TokenKind::Banned(BannedKeyword::As),
                 TokenKind::Banned(BannedKeyword::Enum),
+                TokenKind::Banned(BannedKeyword::Function),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn vertical_bar() {
+        assert_eq!(
+            lex("| || |>"),
+            vec![
+                TokenKind::VerticalBar,
+                TokenKind::PipePipe,
+                TokenKind::Pipe,
                 TokenKind::Eof,
             ]
         );

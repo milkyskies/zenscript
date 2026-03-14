@@ -7,7 +7,7 @@ Floe replaces exceptions with `Result<T, E>` and replaces null checks with `Opti
 ## Result
 
 ```floe
-function divide(a: number, b: number): Result<number, string> {
+fn divide(a: number, b: number) -> Result<number, string> {
   match b {
     0 -> Err("division by zero"),
     _ -> Ok(a / b),
@@ -36,7 +36,7 @@ divide(10, 3)
 Propagate errors early instead of nesting matches:
 
 ```floe
-function processOrder(id: string): Result<Receipt, Error> {
+fn processOrder(id: string) -> Result<Receipt, Error> {
   const order = fetchOrder(id)?       // returns Err early if it fails
   const payment = chargeCard(order)?  // same here
   return Ok(Receipt(order, payment))
@@ -52,8 +52,8 @@ Using `?` outside a function that returns `Result` is a compile error.
 ## Option
 
 ```floe
-function findUser(id: string): Option<User> {
-  match users |> find(u => u.id == id) {
+fn findUser(id: string) -> Option<User> {
+  match users |> find(.id == id) {
     Some(user) -> Some(user),
     None -> None,
   }

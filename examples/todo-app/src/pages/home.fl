@@ -18,7 +18,7 @@ type Validation =
     | TooLong
     | Empty
 
-function validate(text: string): Validation {
+fn validate(text: string) -> Validation {
     const trimmed = text |> String.trim
     const len = trimmed |> String.length
     match len {
@@ -31,21 +31,21 @@ function validate(text: string): Validation {
     }
 }
 
-function filterTodos(todos: Array<Todo>, filter: Filter): Array<Todo> {
+fn filterTodos(todos: Array<Todo>, filter: Filter) -> Array<Todo> {
     match filter {
         All -> todos,
-        Active -> todos |> Array.filter((t) => t.done == false),
-        Completed -> todos |> Array.filter((t) => t.done == true),
+        Active -> todos |> Array.filter(.done == false),
+        Completed -> todos |> Array.filter(.done == true),
     }
 }
 
-function countRemaining(todos: Array<Todo>): number {
+fn countRemaining(todos: Array<Todo>) -> number {
     todos
-        |> Array.filter((t) => t.done == false)
+        |> Array.filter(.done == false)
         |> Array.length
 }
 
-export function HomePage(): JSX.Element {
+export fn HomePage() -> JSX.Element {
     const [todos, setTodos] = useState([])
     const [input, setInput] = useState("")
     const [filter, setFilter] = useState(All)
@@ -54,7 +54,7 @@ export function HomePage(): JSX.Element {
     const visible = filterTodos(todos, filter)
     const remaining = countRemaining(todos)
 
-    const handleAdd = () => {
+    fn handleAdd() {
         match validate(input) {
             Empty -> setError("Please enter a todo"),
             TooShort -> setError("Todo must be at least 2 characters"),
@@ -67,17 +67,17 @@ export function HomePage(): JSX.Element {
         }
     }
 
-    const handleToggle = (id: string) => {
-        setTodos(todos |> Array.map((t) =>
+    fn handleToggle(id: string) {
+        setTodos(todos |> Array.map(|t|
             match t.id == id {
-                true -> Todo(id: t.id, text: t.text, done: !t.done),
+                true -> Todo(..t, done: !t.done),
                 false -> t,
             }
         ))
     }
 
-    const handleDelete = (id: string) => {
-        setTodos(todos |> Array.filter((t) => t.id != id))
+    fn handleDelete(id: string) {
+        setTodos(todos |> Array.filter(.id != id))
     }
 
     return <div>
@@ -87,8 +87,8 @@ export function HomePage(): JSX.Element {
             <input
                 type="text"
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => match e.key {
+                onChange={|e| setInput(e.target.value)}
+                onKeyDown={|e| match e.key {
                     "Enter" -> handleAdd(),
                     _ -> (),
                 }}
@@ -110,7 +110,7 @@ export function HomePage(): JSX.Element {
 
         <div className="flex gap-2 mb-6">
             <button
-                onClick={() => setFilter(All)}
+                onClick={|| setFilter(All)}
                 className={match filter {
                     All -> "rounded-full px-3 py-1 text-sm font-medium bg-indigo-600 text-white",
                     _ -> "rounded-full px-3 py-1 text-sm font-medium bg-zinc-800 text-zinc-400 hover:text-zinc-100",
@@ -119,7 +119,7 @@ export function HomePage(): JSX.Element {
                 All
             </button>
             <button
-                onClick={() => setFilter(Active)}
+                onClick={|| setFilter(Active)}
                 className={match filter {
                     Active -> "rounded-full px-3 py-1 text-sm font-medium bg-indigo-600 text-white",
                     _ -> "rounded-full px-3 py-1 text-sm font-medium bg-zinc-800 text-zinc-400 hover:text-zinc-100",
@@ -128,7 +128,7 @@ export function HomePage(): JSX.Element {
                 Active
             </button>
             <button
-                onClick={() => setFilter(Completed)}
+                onClick={|| setFilter(Completed)}
                 className={match filter {
                     Completed -> "rounded-full px-3 py-1 text-sm font-medium bg-indigo-600 text-white",
                     _ -> "rounded-full px-3 py-1 text-sm font-medium bg-zinc-800 text-zinc-400 hover:text-zinc-100",
@@ -139,10 +139,10 @@ export function HomePage(): JSX.Element {
         </div>
 
         <ul className="space-y-2">
-            {visible |> Array.map((todo) =>
+            {visible |> Array.map(|todo|
                 <li key={todo.id} className="flex items-center gap-3 rounded-lg bg-zinc-800/50 px-4 py-3">
                     <button
-                        onClick={() => handleToggle(todo.id)}
+                        onClick={|| handleToggle(todo.id)}
                         className={match todo.done {
                             true -> "h-5 w-5 rounded-full border-2 border-indigo-500 bg-indigo-500 flex items-center justify-center",
                             false -> "h-5 w-5 rounded-full border-2 border-zinc-600",
@@ -160,7 +160,7 @@ export function HomePage(): JSX.Element {
                         {todo.text}
                     </span>
                     <button
-                        onClick={() => handleDelete(todo.id)}
+                        onClick={|| handleDelete(todo.id)}
                         className="text-zinc-600 hover:text-red-400 transition-colors"
                     >
                         ✕

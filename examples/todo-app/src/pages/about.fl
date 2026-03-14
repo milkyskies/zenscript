@@ -1,4 +1,4 @@
-export function AboutPage(): JSX.Element {
+export fn AboutPage() -> JSX.Element {
     const features = [
         "Pipe operator (|>) for data transformation",
         "Exhaustive match expressions",
@@ -9,10 +9,10 @@ export function AboutPage(): JSX.Element {
     ]
 
     return <div>
-        <h1 className="text-3xl font-bold mb-6">About ZenScript</h1>
+        <h1 className="text-3xl font-bold mb-6">About Floe</h1>
 
         <p className="text-zinc-400 mb-6">
-            This todo app is written in ZenScript, a Gleam-inspired language
+            This todo app is written in Floe, a Gleam-inspired language
             that compiles to TypeScript. It demonstrates pipes, match expressions,
             tagged unions, and React integration.
         </p>
@@ -20,7 +20,7 @@ export function AboutPage(): JSX.Element {
         <h2 className="text-xl font-semibold mb-4">Features used in this app</h2>
 
         <ul className="space-y-2">
-            {features |> Array.map((feature) =>
+            {features |> Array.map(|feature|
                 <li key={feature} className="flex items-center gap-2 text-zinc-300">
                     <span className="text-indigo-400">{"→"}</span>
                     {feature}
@@ -31,7 +31,7 @@ export function AboutPage(): JSX.Element {
         <div className="mt-8 rounded-lg bg-zinc-800/50 p-6">
             <h3 className="text-lg font-semibold mb-3">Example: Pipe + Match</h3>
             <pre className="text-sm text-indigo-300 font-mono">
-                {"todos\n  |> Array.filter((t) => t.done == false)\n  |> Array.map((t) => t.text)\n\nmatch filter {\n  All -> todos,\n  Active -> todos |> Array.filter(..),\n  Completed -> todos |> Array.filter(..),\n}"}
+                {"todos\n  |> Array.filter(.done == false)\n  |> Array.map(.text)\n\nmatch filter {\n  All -> todos,\n  Active -> todos |> Array.filter(..),\n  Completed -> todos |> Array.filter(..),\n}"}
             </pre>
         </div>
     </div>

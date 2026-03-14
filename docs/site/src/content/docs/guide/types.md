@@ -75,7 +75,7 @@ const missing = None
 Propagate errors concisely:
 
 ```floe
-function getUsername(id: string): Result<string, Error> {
+fn getUsername(id: string) -> Result<string, Error> {
   const user = fetchUser(id)?   // returns Err early if it fails
   return Ok(user.name)
 }
@@ -107,7 +107,7 @@ opaque type Email = string
 
 ```floe
 type Name = string
-type Callback = (event: Event) => void
+type Callback = (Event) -> ()
 ```
 
 ## What's Banned

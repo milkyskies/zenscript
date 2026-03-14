@@ -29,7 +29,7 @@ const { name, age } = getUser()
 ## Functions
 
 ```floe
-function add(a: number, b: number): number {
+fn add(a: number, b: number) -> number {
   return a + b
 }
 ```
@@ -37,7 +37,7 @@ function add(a: number, b: number): number {
 Exported functions **must** have return type annotations:
 
 ```floe
-export function greet(name: string): string {
+export fn greet(name: string) -> string {
   return `Hello, ${name}!`
 }
 ```
@@ -45,28 +45,53 @@ export function greet(name: string): string {
 ### Default Parameters
 
 ```floe
-function greet(name: string = "world"): string {
+fn greet(name: string = "world") -> string {
   return `Hello, ${name}!`
 }
 ```
 
-### Arrow Functions
+### Anonymous Functions (Lambdas)
+
+Use `|x|` for inline anonymous functions:
 
 ```floe
-const double = (x: number) => x * 2
-const add = (a: number, b: number) => a + b
+todos |> Array.map(|t| t.text)
+items |> Array.reduce(|acc, x| acc + x.price, 0)
+onClick={|| setCount(count + 1)}
 ```
 
-Single-argument arrows don't need parentheses:
+For simple field access, use dot shorthand:
 
 ```floe
-const double = x => x * 2
+todos |> Array.filter(.done == false)
+todos |> Array.map(.text)
+users |> Array.sortBy(.name)
+```
+
+**`const name = |x| ...` is a compile error.** If it has a name, use `fn`:
+
+```floe
+// COMPILE ERROR
+const double = |x| x * 2
+
+// correct
+fn double(x: number) -> number { x * 2 }
+```
+
+### Function Types
+
+Use `->` to describe function types:
+
+```floe
+type Transform = (string) -> number
+type Predicate = (Todo) -> bool
+type Callback = () -> ()
 ```
 
 ### Async Functions
 
 ```floe
-async function fetchUser(id: string): Promise<User> {
+async fn fetchUser(id: string) -> Promise<User> {
   const response = await fetch(`/api/users/${id}`)
   return await response.json()
 }
@@ -78,5 +103,6 @@ async function fetchUser(id: string): Promise<User> {
 - **No `class`** — use functions and records
 - **No `this`** — functions are pure by default
 - **No `function*` generators** — use arrays and pipes
+- **No `=>`** — use `|x|` for lambdas, `->` for types and match arms
 
 These are removed intentionally. See the [comparison](/guide/comparison) for the reasoning.

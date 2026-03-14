@@ -300,21 +300,27 @@ impl<'src> Formatter<'src> {
         }
     }
 
-    pub(crate) fn fmt_token_expr_after_fat_arrow(&mut self, node: &SyntaxNode) {
-        let mut past = false;
+    pub(crate) fn fmt_token_expr_after_lambda_delim(&mut self, node: &SyntaxNode) {
+        // For `|params| body`, find token expr after the second `|`.
+        // For `|| body`, find token expr after `||`.
+        let mut pipe_count = 0;
         for t in node.children_with_tokens() {
             if let Some(tok) = t.as_token() {
-                if tok.kind() == SyntaxKind::FAT_ARROW {
-                    past = true;
+                if tok.kind() == SyntaxKind::VERT_BAR {
+                    pipe_count += 1;
                     continue;
                 }
-                if past && !tok.kind().is_trivia() {
+                if tok.kind() == SyntaxKind::PIPE_PIPE {
+                    pipe_count = 2;
+                    continue;
+                }
+                if pipe_count >= 2 && !tok.kind().is_trivia() {
                     self.write(tok.text());
                     return;
                 }
             }
             if let Some(child) = t.into_node()
-                && past
+                && pipe_count >= 2
                 && child.kind() != SyntaxKind::PARAM
             {
                 self.fmt_node(&child);
@@ -390,9 +396,5 @@ impl<'src> Formatter<'src> {
                 }
             }
         }
-    }
-
-    pub(crate) fn param_has_type(&self, node: &SyntaxNode) -> bool {
-        node.children().any(|c| c.kind() == SyntaxKind::TYPE_EXPR)
     }
 }

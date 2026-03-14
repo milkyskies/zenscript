@@ -42,7 +42,7 @@ type Shape =
   | Rectangle(width: number, height: number)
   | Triangle(base: number, height: number)
 
-function area(shape: Shape): number {
+fn area(shape: Shape) -> number {
   match shape {
     Circle(r) -> 3.14159 * r * r,
     Rectangle(w, h) -> w * h,

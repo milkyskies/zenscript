@@ -19,7 +19,7 @@ pub enum SyntaxKind {
     // Identifiers & keywords
     IDENT,
     KW_CONST,
-    KW_FUNCTION,
+    KW_FN,
     KW_EXPORT,
     KW_IMPORT,
     KW_FROM,
@@ -42,6 +42,7 @@ pub enum SyntaxKind {
     PIPE,          // |>
     THIN_ARROW,    // ->
     FAT_ARROW,     // =>
+    VERT_BAR,      // |
     QUESTION,      // ?
     UNDERSCORE,    // _
     DOT_DOT,       // ..
@@ -191,7 +192,7 @@ pub fn token_kind_to_syntax(kind: &TokenKind) -> SyntaxKind {
         TokenKind::Bool(_) => SyntaxKind::BOOL,
         TokenKind::Identifier(_) => SyntaxKind::IDENT,
         TokenKind::Const => SyntaxKind::KW_CONST,
-        TokenKind::Function => SyntaxKind::KW_FUNCTION,
+        TokenKind::Fn => SyntaxKind::KW_FN,
         TokenKind::Export => SyntaxKind::KW_EXPORT,
         TokenKind::Import => SyntaxKind::KW_IMPORT,
         TokenKind::From => SyntaxKind::KW_FROM,
@@ -210,6 +211,7 @@ pub fn token_kind_to_syntax(kind: &TokenKind) -> SyntaxKind {
         TokenKind::Pipe => SyntaxKind::PIPE,
         TokenKind::ThinArrow => SyntaxKind::THIN_ARROW,
         TokenKind::FatArrow => SyntaxKind::FAT_ARROW,
+        TokenKind::VerticalBar => SyntaxKind::VERT_BAR,
         TokenKind::Question => SyntaxKind::QUESTION,
         TokenKind::Underscore => SyntaxKind::UNDERSCORE,
         TokenKind::DotDot => SyntaxKind::DOT_DOT,

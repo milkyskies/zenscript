@@ -24,8 +24,8 @@ fn format_const_typed() {
 #[test]
 fn format_function() {
     assert_fmt(
-        "function  add( a:number,b:number ):number{a+b}",
-        "function add(a: number, b: number): number {\n    a + b\n}",
+        "fn  add( a:number,b:number ) -> number{a+b}",
+        "fn add(a: number, b: number) -> number {\n    a + b\n}",
     );
 }
 
@@ -40,8 +40,8 @@ fn format_import() {
 #[test]
 fn format_export() {
     assert_fmt(
-        "export function add(a:number,b:number):number{a+b}",
-        "export function add(a: number, b: number): number {\n    a + b\n}",
+        "export fn add(a:number,b:number) -> number{a+b}",
+        "export fn add(a: number, b: number) -> number {\n    a + b\n}",
     );
 }
 
@@ -91,7 +91,7 @@ fn format_pipe() {
 
 #[test]
 fn format_arrow() {
-    assert_fmt("const f = x=>x+1", "const f = x => x + 1");
+    assert_fmt("const f = |x| x + 1", "const f = |x| x + 1");
 }
 
 #[test]

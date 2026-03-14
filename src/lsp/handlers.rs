@@ -419,9 +419,9 @@ impl LanguageServer for FloeLsp {
 
             // Look up the inferred return type from the checker's type map
             let inferred = doc.type_map.get(fn_name).and_then(|ty| {
-                // Type map stores the function type like "(number, number) => number"
-                // Extract the return type after " => "
-                ty.rsplit_once(" => ").map(|(_, ret)| ret.to_string())
+                // Type map stores the function type like "(number, number) -> number"
+                // Extract the return type after " -> "
+                ty.rsplit_once(" -> ").map(|(_, ret)| ret.to_string())
             });
 
             let return_type = inferred.unwrap_or_else(|| "unknown".to_string());
@@ -441,7 +441,7 @@ impl LanguageServer for FloeLsp {
                         start: insert_pos,
                         end: insert_pos,
                     },
-                    new_text: format!(": {return_type} "),
+                    new_text: format!("-> {return_type} "),
                 };
 
                 let mut changes = HashMap::new();

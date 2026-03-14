@@ -128,7 +128,7 @@ impl Formatter<'_> {
         if has_async {
             self.write("async ");
         }
-        self.write("function ");
+        self.write("fn ");
 
         if let Some(name) = self.first_ident(node) {
             self.write(&name);
@@ -149,7 +149,7 @@ impl Formatter<'_> {
 
         let return_type = node.children().find(|c| c.kind() == SyntaxKind::TYPE_EXPR);
         if let Some(rt) = return_type {
-            self.write(": ");
+            self.write(" -> ");
             self.fmt_type_expr(&rt);
         }
 
@@ -323,7 +323,7 @@ impl Formatter<'_> {
 
     pub(crate) fn fmt_type_expr(&mut self, node: &SyntaxNode) {
         let idents = self.collect_idents(node);
-        let has_fat_arrow = self.has_token(node, SyntaxKind::FAT_ARROW);
+        let has_thin_arrow = self.has_token(node, SyntaxKind::THIN_ARROW);
         let has_lbracket = self.has_token(node, SyntaxKind::L_BRACKET);
         let has_lparen = self.has_token(node, SyntaxKind::L_PAREN);
         let has_record_fields = node
@@ -335,13 +335,13 @@ impl Formatter<'_> {
             .collect();
 
         // Unit type: ()
-        if has_lparen && idents.is_empty() && !has_fat_arrow && child_type_exprs.is_empty() {
+        if has_lparen && idents.is_empty() && !has_thin_arrow && child_type_exprs.is_empty() {
             self.write("()");
             return;
         }
 
-        // Function type: (params) => ReturnType
-        if has_fat_arrow {
+        // Function type: (params) -> ReturnType
+        if has_thin_arrow {
             self.write("(");
             let param_count = child_type_exprs.len().saturating_sub(1);
             for (i, te) in child_type_exprs.iter().enumerate() {
@@ -353,7 +353,7 @@ impl Formatter<'_> {
                 }
                 self.fmt_type_expr(te);
             }
-            self.write(") => ");
+            self.write(") -> ");
             if let Some(ret) = child_type_exprs.last() {
                 self.fmt_type_expr(ret);
             }

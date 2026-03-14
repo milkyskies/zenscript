@@ -32,7 +32,8 @@ pub enum TokenKind {
 
     // Floe keywords
     Const,
-    Function,
+    /// `fn` — function declaration keyword
+    Fn,
     Export,
     Import,
     From,
@@ -56,8 +57,10 @@ pub enum TokenKind {
     Pipe,
     /// `->` — match arm arrow
     ThinArrow,
-    /// `=>` — fat arrow (arrow functions)
+    /// `=>` — fat arrow (banned, kept for error reporting)
     FatArrow,
+    /// `|` — vertical bar (union types, lambda delimiters)
+    VerticalBar,
     /// `?` — Result/Option unwrap
     Question,
     /// `_` — placeholder / wildcard
@@ -169,6 +172,7 @@ pub enum BannedKeyword {
     As,
     Enum,
     Void,
+    Function,
 }
 
 impl BannedKeyword {
@@ -185,6 +189,7 @@ impl BannedKeyword {
             Self::As => "Use a type guard or `match` expression instead of type assertions",
             Self::Enum => "Use `type` with `|` variants instead of enum",
             Self::Void => "Use the unit type `()` instead of `void`",
+            Self::Function => "Use `fn` instead of `function`",
         }
     }
 
@@ -200,6 +205,7 @@ impl BannedKeyword {
             Self::As => "as",
             Self::Enum => "enum",
             Self::Void => "void",
+            Self::Function => "function",
         }
     }
 }
@@ -209,7 +215,7 @@ pub fn lookup_keyword(word: &str) -> Option<TokenKind> {
     match word {
         // Floe keywords
         "const" => Some(TokenKind::Const),
-        "function" => Some(TokenKind::Function),
+        "fn" => Some(TokenKind::Fn),
         "export" => Some(TokenKind::Export),
         "import" => Some(TokenKind::Import),
         "from" => Some(TokenKind::From),
@@ -240,6 +246,7 @@ pub fn lookup_keyword(word: &str) -> Option<TokenKind> {
         "as" => Some(TokenKind::Banned(BannedKeyword::As)),
         "enum" => Some(TokenKind::Banned(BannedKeyword::Enum)),
         "void" => Some(TokenKind::Banned(BannedKeyword::Void)),
+        "function" => Some(TokenKind::Banned(BannedKeyword::Function)),
 
         _ => Option::None,
     }
@@ -252,7 +259,7 @@ mod tests {
     #[test]
     fn lookup_floe_keywords() {
         assert_eq!(lookup_keyword("const"), Some(TokenKind::Const));
-        assert_eq!(lookup_keyword("function"), Some(TokenKind::Function));
+        assert_eq!(lookup_keyword("fn"), Some(TokenKind::Fn));
         assert_eq!(lookup_keyword("match"), Some(TokenKind::Match));
         assert_eq!(lookup_keyword("opaque"), Some(TokenKind::Opaque));
         assert_eq!(lookup_keyword("Ok"), Some(TokenKind::Ok));

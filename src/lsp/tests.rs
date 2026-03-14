@@ -79,13 +79,13 @@ fn banned_keyword_produces_parse_error() {
 
 #[test]
 fn symbol_index_function() {
-    let source = "function add(a: number, b: number): number { a + b }";
+    let source = "fn add(a: number, b: number) -> number { a + b }";
     let program = Parser::new(source).parse_program().unwrap();
     let index = SymbolIndex::build(&program);
     let syms = index.find_by_name("add");
     assert_eq!(syms.len(), 1);
     assert_eq!(syms[0].kind, SymbolKind::FUNCTION);
-    assert!(syms[0].detail.contains("function add"));
+    assert!(syms[0].detail.contains("fn add"));
 }
 
 #[test]
@@ -291,7 +291,7 @@ fn resolve_piped_type_with_unwrap() {
 
 #[test]
 fn function_symbol_stores_first_param_type() {
-    let source = "function filter(arr: Array<T>, pred: (T) => bool): Array<T> { arr }";
+    let source = "fn filter(arr: Array<T>, pred: (T) -> bool) -> Array<T> { arr }";
     let program = Parser::new(source).parse_program().unwrap();
     let index = SymbolIndex::build(&program);
     let syms = index.find_by_name("filter");
@@ -305,7 +305,7 @@ fn function_symbol_stores_first_param_type() {
 fn jsx_component_source() -> &'static str {
     r#"import { useState, JSX } from "react"
 
-export function Counter(): JSX.Element {
+export fn Counter() -> JSX.Element {
     const [_count, setCount] = useState(0)
 
     return <div>

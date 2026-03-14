@@ -9,7 +9,7 @@ Floe has first-class JSX support. Write React components with all the safety gua
 ```floe
 import { useState, JSX } from "react"
 
-export function Counter(): JSX.Element {
+export fn Counter() -> JSX.Element {
   const [count, setCount] = useState(0)
 
   return <div>
@@ -19,18 +19,18 @@ export function Counter(): JSX.Element {
 }
 ```
 
-Components are just exported functions that return `JSX.Element`.
+Components are just exported `fn` declarations that return `JSX.Element`.
 
 ## Props
 
 ```floe
 type ButtonProps = {
   label: string,
-  onClick: () => void,
+  onClick: () -> (),
   disabled: bool,
 }
 
-export function Button(props: ButtonProps): JSX.Element {
+export fn Button(props: ButtonProps) -> JSX.Element {
   return <button
     onClick={props.onClick}
     disabled={props.disabled}
@@ -60,7 +60,7 @@ Use pipes with `map`:
 
 ```floe
 return <ul>
-  {items |> map(item => <li key={item.id}>{item.name}</li>)}
+  {items |> map(|item| <li key={item.id}>{item.name}</li>)}
 </ul>
 ```
 

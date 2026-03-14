@@ -28,11 +28,11 @@ type Todo = {
   done: bool,
 }
 
-export function App(): JSX.Element {
+export fn App() -> JSX.Element {
   const [todos, setTodos] = useState([])
 
   const completed = todos
-    |> filter(t => t.done)
+    |> filter(.done)
     |> length
 
   return <div>

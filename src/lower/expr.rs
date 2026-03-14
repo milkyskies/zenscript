@@ -188,7 +188,7 @@ impl<'src> Lowerer<'src> {
 
                 // If no child expression nodes, try token expr
                 if body.is_none() {
-                    body = self.lower_token_expr_after_fat_arrow(node);
+                    body = self.lower_token_expr_after_lambda_delim(node);
                 }
 
                 Some(Expr {
@@ -447,15 +447,26 @@ impl<'src> Lowerer<'src> {
         self.lower_token_expr(node)
     }
 
-    pub(super) fn lower_token_expr_after_fat_arrow(&mut self, node: &SyntaxNode) -> Option<Expr> {
-        let mut past_arrow = false;
+    pub(super) fn lower_token_expr_after_lambda_delim(
+        &mut self,
+        node: &SyntaxNode,
+    ) -> Option<Expr> {
+        // For `|params| body` lambdas, find token expr after the second `|`.
+        // For `|| body` zero-arg lambdas, find token expr after `||`.
+        let mut pipe_count = 0;
         for token in node.children_with_tokens() {
             if let Some(token) = token.as_token() {
-                if token.kind() == SyntaxKind::FAT_ARROW {
-                    past_arrow = true;
+                if token.kind() == SyntaxKind::VERT_BAR {
+                    pipe_count += 1;
                     continue;
                 }
-                if past_arrow && let Some(expr) = self.token_to_expr(token) {
+                if token.kind() == SyntaxKind::PIPE_PIPE {
+                    pipe_count = 2;
+                    continue;
+                }
+                if pipe_count >= 2
+                    && let Some(expr) = self.token_to_expr(token)
+                {
                     return Some(expr);
                 }
             }

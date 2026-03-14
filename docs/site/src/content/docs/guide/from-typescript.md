@@ -7,7 +7,6 @@ Floe is designed to be familiar to TypeScript developers. This guide covers the 
 ## What Stays the Same
 
 - Import/export syntax
-- Arrow functions
 - Template literals
 - JSX
 - Async/await
@@ -15,6 +14,44 @@ Floe is designed to be familiar to TypeScript developers. This guide covers the 
 - Generics
 
 ## What Changes
+
+### `fn` instead of `function`
+
+```typescript
+// TypeScript
+function greet(name: string): string {
+  return `Hello, ${name}!`
+}
+
+// Floe
+fn greet(name: string) -> string {
+  return `Hello, ${name}!`
+}
+```
+
+### `|x|` instead of `=>`
+
+```typescript
+// TypeScript
+const result = items.filter(x => x.active)
+onClick={() => setCount(count + 1)}
+
+// Floe
+const result = items |> Array.filter(.active)
+onClick={|| setCount(count + 1)}
+```
+
+### `->` for return types and function types
+
+```typescript
+// TypeScript
+function add(a: number, b: number): number { ... }
+type Transform = (s: string) => number
+
+// Floe
+fn add(a: number, b: number) -> number { ... }
+type Transform = (string) -> number
+```
 
 ### `const` only
 
@@ -59,8 +96,8 @@ const result = users
 
 // Floe
 const result = users
-  |> filter(u => u.active)
-  |> map(u => u.name)
+  |> filter(.active)
+  |> map(.name)
   |> join(", ")
 ```
 
@@ -109,8 +146,8 @@ function find(id: string): User | null {
 }
 
 // Floe
-function find(id: string): Option<User> {
-  match users |> find(u => u.id == id) {
+fn find(id: string) -> Option<User> {
+  match users |> find(.id == id) {
     Some(user) -> Some(user),
     None -> None,
   }
@@ -131,6 +168,8 @@ function find(id: string): Option<User> {
 | `switch` | No exhaustiveness, fall-through | `match` |
 | `for` / `while` | Mutation-heavy | Pipes + map/filter/reduce |
 | `throw` | Invisible error paths | `Result<T, E>` |
+| `function` | Verbose | `fn` |
+| `=>` | Two function syntaxes | `\|x\|` for lambdas |
 
 ## Incremental Adoption
 

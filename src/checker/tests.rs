@@ -95,7 +95,7 @@ const y = match x {
 fn unwrap_in_result_function() {
     let diags = check(
         r#"
-function tryFetch(url: string): Result<string, string> {
+fn tryFetch(url: string) -> Result<string, string> {
     const result = Ok("data")
     const value = result?
     return Ok(value)
@@ -113,7 +113,7 @@ function tryFetch(url: string): Result<string, string> {
 fn unwrap_not_on_result_or_option() {
     let diags = check(
         r#"
-function process(): Result<number, string> {
+fn process() -> Result<number, string> {
     const x = 42
     const y = x?
     return Ok(y)
@@ -195,13 +195,13 @@ fn unused_import_error() {
 
 #[test]
 fn exported_function_needs_return_type() {
-    let diags = check("export function add(a: number, b: number) { return a }");
+    let diags = check("export fn add(a: number, b: number) { return a }");
     assert!(has_error_containing(&diags, "must declare a return type"));
 }
 
 #[test]
 fn exported_function_with_return_type_ok() {
-    let diags = check("export function add(a: number, b: number): number { return a }");
+    let diags = check("export fn add(a: number, b: number) -> number { return a }");
     assert!(!has_error(&diags, "E010"));
 }
 
@@ -247,7 +247,7 @@ fn mixed_array_error() {
 fn dead_code_after_return() {
     let diags = check(
         r#"
-function test(): number {
+fn test() -> number {
     return 1
     const x = 2
 }

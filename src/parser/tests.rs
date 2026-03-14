@@ -246,11 +246,11 @@ fn some_constructor() {
     assert!(matches!(expr, ExprKind::Some(_)));
 }
 
-// ── Arrow Functions ──────────────────────────────────────────
+// ── Pipe Lambdas ─────────────────────────────────────────────
 
 #[test]
-fn arrow_function_multi_arg() {
-    let expr = first_expr("(a, b) => a + b");
+fn pipe_lambda_multi_arg() {
+    let expr = first_expr("|a, b| a + b");
     match expr {
         ExprKind::Arrow { params, .. } => {
             assert_eq!(params.len(), 2);
@@ -262,8 +262,8 @@ fn arrow_function_multi_arg() {
 }
 
 #[test]
-fn arrow_function_single_arg() {
-    let expr = first_expr("x => x + 1");
+fn pipe_lambda_single_arg() {
+    let expr = first_expr("|x| x + 1");
     match expr {
         ExprKind::Arrow { params, .. } => {
             assert_eq!(params.len(), 1);
@@ -274,11 +274,22 @@ fn arrow_function_single_arg() {
 }
 
 #[test]
-fn arrow_function_typed() {
-    let expr = first_expr("(x: number) => x + 1");
+fn pipe_lambda_typed() {
+    let expr = first_expr("|x: number| x + 1");
     match expr {
         ExprKind::Arrow { params, .. } => {
             assert!(params[0].type_ann.is_some());
+        }
+        _ => panic!("expected arrow"),
+    }
+}
+
+#[test]
+fn zero_arg_lambda() {
+    let expr = first_expr("|| 42");
+    match expr {
+        ExprKind::Arrow { params, .. } => {
+            assert_eq!(params.len(), 0);
         }
         _ => panic!("expected arrow"),
     }
@@ -389,7 +400,7 @@ fn export_const() {
 
 #[test]
 fn function_decl() {
-    match first_item("function add(a: number, b: number): number { a + b }") {
+    match first_item("fn add(a: number, b: number) -> number { a + b }") {
         ItemKind::Function(decl) => {
             assert_eq!(decl.name, "add");
             assert_eq!(decl.params.len(), 2);
@@ -402,7 +413,7 @@ fn function_decl() {
 
 #[test]
 fn async_function() {
-    match first_item("async function fetchUser(id: string): Result<User, ApiError> { Ok(user) }") {
+    match first_item("async fn fetchUser(id: string) -> Result<User, ApiError> { Ok(user) }") {
         ItemKind::Function(decl) => {
             assert!(decl.async_fn);
             assert_eq!(decl.name, "fetchUser");
@@ -413,7 +424,7 @@ fn async_function() {
 
 #[test]
 fn function_with_defaults() {
-    match first_item("function f(x: number = 10) { x }") {
+    match first_item("fn f(x: number = 10) { x }") {
         ItemKind::Function(decl) => {
             assert!(decl.params[0].default.is_some());
         }
@@ -609,7 +620,7 @@ fn banned_keyword_error() {
 
 #[test]
 fn block_with_return() {
-    match first_item("function f() { const x = 1\nreturn x }") {
+    match first_item("fn f() { const x = 1\nreturn x }") {
         ItemKind::Function(decl) => match decl.body.kind {
             ExprKind::Block(items) => {
                 assert_eq!(items.len(), 2);
@@ -696,9 +707,9 @@ import { useState } from "react"
 
 type Todo = { id: string, text: string, done: bool }
 
-export function TodoApp() {
+export fn TodoApp() {
     const [todos, setTodos] = useState([])
-    return <div>{todos |> map(t => <li>{t.text}</li>)}</div>
+    return <div>{todos |> map(|t| <li>{t.text}</li>)}</div>
 }
 "#;
     let program = parse_ok(input);

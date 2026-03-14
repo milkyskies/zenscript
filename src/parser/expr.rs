@@ -433,11 +433,9 @@ impl Parser {
                 })
             }
 
-            // Parenthesized expression, arrow function, or unit value ()
+            // Parenthesized expression or unit value ()
             TokenKind::LeftParen => {
-                if self.is_arrow_function() {
-                    self.parse_arrow_function()
-                } else if self.peek_kind() == Some(&TokenKind::RightParen) {
+                if self.peek_kind() == Some(&TokenKind::RightParen) {
                     // Unit value: ()
                     self.advance(); // (
                     self.advance(); // )
@@ -458,6 +456,23 @@ impl Parser {
                 }
             }
 
+            // Pipe lambda: `|params| body` or `|| body` (zero-arg)
+            TokenKind::VerticalBar => self.parse_pipe_lambda(),
+
+            // Zero-arg lambda: `|| expr`
+            TokenKind::PipePipe => {
+                self.advance();
+                let body = self.parse_expr()?;
+                let end_span = self.previous_span();
+                Ok(Expr {
+                    kind: ExprKind::Arrow {
+                        params: vec![],
+                        body: Box::new(body),
+                    },
+                    span: self.merge_spans(start_span, end_span),
+                })
+            }
+
             // JSX: `<Component ...>` or `<>`
             TokenKind::LessThan => self.parse_jsx_expr(),
 
@@ -470,11 +485,6 @@ impl Parser {
                     && self.peek_kind() == Some(&TokenKind::LeftParen)
                 {
                     return self.parse_construct_expr();
-                }
-
-                // Single-arg arrow function: `x => expr`
-                if self.peek_kind() == Some(&TokenKind::FatArrow) {
-                    return self.parse_arrow_function_single_arg();
                 }
 
                 self.advance();
@@ -499,6 +509,50 @@ impl Parser {
 
             _ => Err(self.error(&format!("unexpected token: {:?}", self.current_kind()))),
         }
+    }
+
+    // ── Pipe Lambda ─────────────────────────────────────────────
+
+    /// Parse `|params| body` lambda expression.
+    fn parse_pipe_lambda(&mut self) -> Result<Expr, ParseError> {
+        let start_span = self.current_span();
+        self.expect(&TokenKind::VerticalBar)?;
+
+        let params = self.parse_lambda_params()?;
+
+        self.expect(&TokenKind::VerticalBar)?;
+
+        let body = self.parse_expr()?;
+        let end_span = self.previous_span();
+
+        Ok(Expr {
+            kind: ExprKind::Arrow {
+                params,
+                body: Box::new(body),
+            },
+            span: self.merge_spans(start_span, end_span),
+        })
+    }
+
+    /// Parse comma-separated params terminated by `|`.
+    fn parse_lambda_params(&mut self) -> Result<Vec<Param>, ParseError> {
+        let mut params = Vec::new();
+
+        if self.check(&TokenKind::VerticalBar) {
+            return Ok(params);
+        }
+
+        params.push(self.parse_param()?);
+
+        while self.check(&TokenKind::Comma) {
+            self.advance();
+            if self.check(&TokenKind::VerticalBar) {
+                break;
+            }
+            params.push(self.parse_param()?);
+        }
+
+        Ok(params)
     }
 
     // ── Constructors ─────────────────────────────────────────────
@@ -557,69 +611,5 @@ impl Parser {
 
         let expr = self.parse_expr()?;
         Ok(Arg::Positional(expr))
-    }
-
-    // ── Arrow Functions ──────────────────────────────────────────
-
-    fn parse_arrow_function(&mut self) -> Result<Expr, ParseError> {
-        let start_span = self.current_span();
-        self.expect(&TokenKind::LeftParen)?;
-        let params = self.parse_comma_separated(|p| p.parse_param())?;
-        self.expect(&TokenKind::RightParen)?;
-        self.expect(&TokenKind::FatArrow)?;
-        let body = self.parse_expr()?;
-        let end_span = self.previous_span();
-
-        Ok(Expr {
-            kind: ExprKind::Arrow {
-                params,
-                body: Box::new(body),
-            },
-            span: self.merge_spans(start_span, end_span),
-        })
-    }
-
-    fn parse_arrow_function_single_arg(&mut self) -> Result<Expr, ParseError> {
-        let start_span = self.current_span();
-        let name = self.expect_identifier()?;
-        self.expect(&TokenKind::FatArrow)?;
-        let body = self.parse_expr()?;
-        let end_span = self.previous_span();
-
-        Ok(Expr {
-            kind: ExprKind::Arrow {
-                params: vec![Param {
-                    name,
-                    type_ann: Option::None,
-                    default: Option::None,
-                    span: start_span,
-                }],
-                body: Box::new(body),
-            },
-            span: self.merge_spans(start_span, end_span),
-        })
-    }
-
-    /// Heuristic: is the current `(` the start of an arrow function?
-    /// Look ahead for `) =>`.
-    fn is_arrow_function(&self) -> bool {
-        let mut depth = 0;
-        let mut i = self.pos;
-        while i < self.tokens.len() {
-            match &self.tokens[i].kind {
-                TokenKind::LeftParen => depth += 1,
-                TokenKind::RightParen => {
-                    depth -= 1;
-                    if depth == 0 {
-                        return i + 1 < self.tokens.len()
-                            && self.tokens[i + 1].kind == TokenKind::FatArrow;
-                    }
-                }
-                TokenKind::Eof => return false,
-                _ => {}
-            }
-            i += 1;
-        }
-        false
     }
 }

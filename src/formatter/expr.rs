@@ -521,22 +521,21 @@ impl Formatter<'_> {
             .filter(|c| c.kind() == SyntaxKind::PARAM)
             .collect();
 
-        if params.len() == 1 && !self.param_has_type(&params[0]) {
-            if let Some(name) = self.first_ident(&params[0]) {
-                self.write(&name);
-            }
+        // Check if this is a zero-arg lambda (has || token)
+        let has_pipe_pipe = self.has_token(node, SyntaxKind::PIPE_PIPE);
+
+        if has_pipe_pipe && params.is_empty() {
+            self.write("|| ");
         } else {
-            self.write("(");
+            self.write("|");
             for (i, param) in params.iter().enumerate() {
                 if i > 0 {
                     self.write(", ");
                 }
                 self.fmt_param(param);
             }
-            self.write(")");
+            self.write("| ");
         }
-
-        self.write(" => ");
 
         for child in node.children() {
             if child.kind() != SyntaxKind::PARAM {
@@ -544,7 +543,7 @@ impl Formatter<'_> {
                 return;
             }
         }
-        self.fmt_token_expr_after_fat_arrow(node);
+        self.fmt_token_expr_after_lambda_delim(node);
     }
 
     // ── Return ──────────────────────────────────────────────────

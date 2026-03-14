@@ -9,7 +9,7 @@ All stdlib functions are **pipe-friendly**: the first argument is the data, so t
 ```floe
 [3, 1, 2]
   |> Array.sort
-  |> Array.map((n) => n * 10)
+  |> Array.map(|n| n * 10)
   |> Array.reverse
 // [30, 20, 10]
 ```
@@ -56,12 +56,12 @@ const empty = Array.head([])         // None
 const user1 = User(name: "Ryan")
 const found = Array.contains(users, user1)  // true if any user matches by value
 
-// Pipe chains
+// Pipe chains with dot shorthand
 const result = users
-  |> Array.filter((u) => u.active)
-  |> Array.sortBy((u) => u.name)
+  |> Array.filter(.active)
+  |> Array.sortBy(.name)
   |> Array.take(10)
-  |> Array.map((u) => u.email)
+  |> Array.map(.email)
 ```
 
 ---
@@ -84,12 +84,12 @@ Functions for working with `Option<T>` (`Some(v)` / `None`) values.
 ```floe
 // Transform without unwrapping
 const upper = user.nickname
-  |> Option.map((n) => String.toUpper(n))
+  |> Option.map(|n| String.toUpper(n))
 // Some("RYAN") or None
 
 // Chain lookups
 const avatar = user.nickname
-  |> Option.flatMap((n) => findAvatar(n))
+  |> Option.flatMap(|n| findAvatar(n))
 
 // Extract with fallback
 const display = user.nickname
@@ -121,15 +121,15 @@ Functions for working with `Result<T, E>` (`Ok(v)` / `Err(e)`) values.
 ```floe
 // Transform success value
 const doubled = fetchCount()
-  |> Result.map((n) => n * 2)
+  |> Result.map(|n| n * 2)
 
 // Handle errors
 const result = fetchUser(id)
-  |> Result.mapErr((e) => AppError(e))
+  |> Result.mapErr(|e| AppError(e))
 
 // Chain operations
 const profile = fetchUser(id)
-  |> Result.flatMap((u) => fetchProfile(u.profileId))
+  |> Result.flatMap(|u| fetchProfile(u.profileId))
 
 // Extract with fallback
 const count = fetchCount()
@@ -173,7 +173,7 @@ const cleaned = "  Hello, World!  "
 // Split and process
 const words = "one,two,three"
   |> String.split(",")
-  |> Array.map((w) => String.toUpper(w))
+  |> Array.map(|w| String.toUpper(w))
 // ["ONE", "TWO", "THREE"]
 ```
 
@@ -204,8 +204,8 @@ const bad = "not a number" |> Number.parse
 
 // Must handle the Result
 match Number.parse(input) {
-  Ok(n)  -> processNumber(n)
-  Err(_) -> showError("Invalid number")
+  Ok(n)  -> processNumber(n),
+  Err(_) -> showError("Invalid number"),
 }
 
 // Clamp to range

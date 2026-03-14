@@ -2,4 +2,4 @@
 source: tests/snapshot_codegen.rs
 expression: output
 ---
-const greeting = "Hello, ZenScript!";
+const greeting = "Hello, Floe!";

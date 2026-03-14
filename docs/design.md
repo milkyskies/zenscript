@@ -22,13 +22,14 @@ The compiler is a single Rust binary (`floe`) that takes `.fl` files and emits `
 
 A React developer should read Floe and understand it in 30 minutes. We keep familiar syntax and add targeted upgrades.
 
-### Three Operators, One Character Each
+### Three Operators
 
 ```
-=>  arrow functions          (a) => a + 1
-->  match arms               Ok(x) -> x
-|>  pipe data through        data |> transform
-?   unwrap Result/Option     fetchUser(id)?
+|x|  anonymous functions     |a| a + 1
+->   match arms              Ok(x) -> x
+|>   pipe data through       data |> transform
+?    unwrap Result/Option    fetchUser(id)?
+.x   dot shorthand           .name (implicit lambda for field access)
 ```
 
 All four of TypeScript's `?` uses (`?.`, `??`, `?:`, `? :`) are removed. `?` now means exactly one thing: unwrap or short-circuit.
@@ -36,8 +37,9 @@ All four of TypeScript's `?` uses (`?.`, `??`, `?:`, `? :`) are removed. `?` now
 ### What Stays from TypeScript
 
 - `const`, `export`, `import`, type annotations
-- `function` for named/exported functions
-- Arrow functions `=>` for inline/anonymous
+- `fn` for named/exported functions
+- Pipe lambdas `|x|` for inline/anonymous functions
+- Dot shorthand `.field` for implicit field-access lambdas
 - JSX / TSX (full support)
 - Generics, template literals
 - `async`/`await`
@@ -67,7 +69,11 @@ All four of TypeScript's `?` uses (`?.`, `??`, `?:`, `? :`) are removed. `?` now
 | Type constructors | `User(name: "Ryan", email: e)` | `{ name: "Ryan", email: e }` (compiler adds tags for unions) |
 | Record spread | `User(..user, name: "New")` | `{ ...user, name: "New" }` |
 | Named arguments | `fetchUsers(page: 3, limit: 50)` | `fetchUsers(3, 50)` (labels erased) |
-| Default values | `function f(x: number = 10)` | caller can omit, compiler fills in |
+| Pipe lambdas | `\|x\| x + 1` | `(x) => x + 1` |
+| Dot shorthand | `.name` in callback position | `(x) => x.name` |
+| Dot shorthand (predicate) | `.id != id` in callback position | `(x) => x.id != id` |
+| Implicit member expr | `.Variant` when type is known | `TypeName.Variant` |
+| Default values | `fn f(x: number = 10)` | caller can omit, compiler fills in |
 | Structural equality | `==` on objects compares by value | deep equality check |
 | Unit type | `()` as return type, usable in generics | `undefined` / `void` in TS |
 | Immutable sort | `Array.sort` returns new array | sorted copy, no mutation |
@@ -91,6 +97,8 @@ All four of TypeScript's `?` uses (`?.`, `??`, `?:`, `? :`) are removed. `?` now
 | `x?: T` | Optional fields | `x: Option<T>` |
 | `+` on strings | Silent coercion bugs | Template literals only (warning) |
 | `void` | Not a real type, can't use in generics | Unit type `()` — a real value |
+| `=>` | Two syntaxes for functions is one too many | `\|x\| expr` for anonymous functions |
+| `function` | Verbose keyword | `fn` |
 
 ---
 
@@ -101,9 +109,9 @@ All four of TypeScript's `?` uses (`?.`, `??`, `?:`, `? :`) are removed. `?` now
 ```floe
 // Default: piped value goes to first argument
 users
-  |> filter(u => u.active)       // filter(users, fn)
-  |> sortBy(u => u.name)         // sortBy(result, fn)
-  |> take(10)                    // take(result, 10)
+  |> filter(.active)                   // filter(users, x => x.active)
+  |> sortBy(.name)                     // sortBy(result, x => x.name)
+  |> take(10)                          // take(result, 10)
 
 // Need a different position? Use _ placeholder
 "hello" |> String.padStart(_, 10)      // padStart("hello", 10)
@@ -113,12 +121,20 @@ users
 const addTen = add(10, _)              // (x) => add(10, x)
 [1, 2, 3] |> map(multiply(_, 2))      // [2, 4, 6]
 
+// Dot shorthand — .field creates an implicit lambda
+todos |> Array.filter(.id != id)       // filter(todos, x => x.id != id)
+todos |> Array.map(.text)              // map(todos, x => x.text)
+
+// Pipe lambdas — |x| for when you need a named param
+todos |> Array.map(|t| Todo(..t, done: true))
+items |> Array.reduce(|acc, x| acc + x.price, 0)
+
 // Pipes in JSX
 <ul>
   {users
-    |> filter(u => u.active)
-    |> sortBy(u => u.name)
-    |> map(u => <li key={u.id}>{u.name}</li>)
+    |> filter(.active)
+    |> sortBy(.name)
+    |> map(|u| <li key={u.id}>{u.name}</li>)
   }
 </ul>
 ```
@@ -172,13 +188,13 @@ match action {
 
 ```
 
-Match uses `->` for arms (not `=>`), so it's visually distinct from arrow functions.
+Match uses `->` for arms (not `|x|`), so it's visually distinct from lambdas.
 
 ### The `?` Operator (Result/Option Unwrap)
 
 ```floe
 // On Result<T, E> — gives you T, or returns Err(E) from function
-function loadProfile(id: UserId): Result<Profile, AppError> {
+fn loadProfile(id: UserId): Result<Profile, AppError> {
   const user  = fetchUser(id)?
   const posts = fetchPosts(user.id)?
   const stats = fetchStats(user.id)?
@@ -186,7 +202,7 @@ function loadProfile(id: UserId): Result<Profile, AppError> {
 }
 
 // On Option<T> — gives you T, or returns None from function
-function getDisplayName(userId: UserId): Option<string> {
+fn getDisplayName(userId: UserId): Option<string> {
   const user     = findUser(userId)?
   const nickname = user.nickname?
   Some(toUpper(nickname))
@@ -196,7 +212,7 @@ function getDisplayName(userId: UserId): Option<string> {
 const name = fetchUser(id)? |> getName |> toUpper
 
 // Compiler enforces: function must return Result or Option to use ?
-function greet(): string {
+fn greet(): string {
   const user = fetchUser(id)?  // COMPILE ERROR: can't use ? in non-Result function
 }
 ```
@@ -229,10 +245,10 @@ const display = match user.nickname {
 const display = user.nickname |> Option.unwrapOr(user.name)
 
 // Transform inside without unwrapping
-const upper: Option<string> = user.nickname |> Option.map(n => toUpper(n))
+const upper: Option<string> = user.nickname |> Option.map(|n| toUpper(n))
 
 // Chain
-const avatar = user.nickname |> Option.flatMap(n => findAvatar(n))
+const avatar = user.nickname |> Option.flatMap(|n| findAvatar(n))
 
 ```
 
@@ -348,7 +364,7 @@ match appError {
 }
 
 // Pass sub-types to specialist functions
-function handleError(err: ApiError) {
+fn handleError(err: ApiError) {
   match err {
     Network(netErr) -> retryNetwork(netErr)   // pass NetworkError to specialist
     Auth(authErr)   -> handleAuth(authErr)     // pass AuthError to specialist
@@ -380,11 +396,11 @@ sendEmail(id, "hello")  // COMPILE ERROR: UserId is not Email
 // auth/password.fl
 opaque type HashedPassword = string
 
-export function hash(raw: string): HashedPassword {
+export fn hash(raw: string): HashedPassword {
   bcrypt(raw)  // only this module can create one
 }
 
-export function verify(raw: string, hashed: HashedPassword): bool {
+export fn verify(raw: string, hashed: HashedPassword): bool {
   bcryptCompare(raw, hashed)  // only this module can read it
 }
 
@@ -429,7 +445,7 @@ const updated = User(..user,
 
 // --- Named Arguments on Functions ---
 
-function createUser(name: string, email: Email, role: Role): Result<User, ApiError> {
+fn createUser(name: string, email: Email, role: Role): Result<User, ApiError> {
   // ...
 }
 
@@ -460,7 +476,7 @@ const config = Config(baseUrl: "https://api.example.com", timeout: 10000)
 // timeout overridden, rest defaulted
 
 // On functions
-function fetchUsers(
+fn fetchUsers(
   page: number = 1,
   limit: number = 20,
   sort: SortOrder = Ascending,
@@ -475,7 +491,7 @@ fetchUsers(limit: 50, sort: Descending)          // override two
 // On React component props
 type ButtonProps = {
   label: string                      // required
-  onClick: () => ()                  // required
+  onClick: () -> ()                   // required
   variant: Variant = Primary         // default
   size: Size = Medium                // default
   disabled: bool = false             // default
@@ -483,7 +499,7 @@ type ButtonProps = {
   icon: Option<Icon> = None          // default
 }
 
-export function Button(props: ButtonProps) {
+export fn Button(props: ButtonProps) {
   return <button>{props.label}</button>
 }
 
@@ -502,22 +518,29 @@ Default value rules:
 ### Function Conventions
 
 ```floe
-// Named/exported functions use `function`
-export function TodoApp() { ... }
-export function fetchUser(id: UserId): Result<User, ApiError> { ... }
+// Named/exported functions use `fn`
+export fn TodoApp() -> JSX.Element { ... }
+export fn fetchUser(id: UserId) -> Result<User, ApiError> { ... }
 
-// Inline/anonymous uses arrow functions
-const toggle = (id: string) => ...
-const double = (n: number) => n * 2
-todos |> map(t => t.name)
+// Inline/anonymous uses |x| pipe lambdas
+todos |> Array.map(|t| t.name)
+onClick={|| setCount(count + 1)}
+items |> Array.reduce(|acc, x| acc + x.price, 0)
 
-// Both support named args and defaults
-function greet(name: string, greeting: string = "Hello"): string {
+// Dot shorthand for simple field access
+todos |> Array.filter(.done == false)
+todos |> Array.map(.text)
+
+// Named args and defaults
+fn greet(name: string, greeting: string = "Hello") -> string {
   `${greeting}, ${name}!`
 }
 greet("Ryan")                    // "Hello, Ryan!"
 greet("Ryan", greeting: "Hey")  // "Hey, Ryan!"
 
+// COMPILE ERROR: const + lambda — use fn instead
+const double = |x| x * 2        // ERROR: Use `fn double(x) -> ...`
+fn double(x: number) -> number { x * 2 }  // correct
 ```
 
 ### Full Component Example
@@ -533,15 +556,15 @@ type Todo = {
 
 type Tab = Overview | Team | Analytics
 
-export function Dashboard(userId: UserId) {
+export fn Dashboard(userId: UserId) -> JSX.Element {
   const [tab, setTab] = useState<Tab>(Overview)
-  const user = useAsync(() => fetchUser(userId))
+  const user = useAsync(|| fetchUser(userId))
 
   return <Layout>
     <Sidebar>
       <NavItem
         active={match tab { Overview -> true, _ -> false }}
-        onClick={() => setTab(Overview)}>
+        onClick={|| setTab(Overview)}>
         Overview
       </NavItem>
     </Sidebar>
@@ -556,7 +579,7 @@ export function Dashboard(userId: UserId) {
   </Layout>
 }
 
-function OverviewPanel(user: AsyncState<User, ApiError>) {
+fn OverviewPanel(user: AsyncState<User, ApiError>) -> JSX.Element {
   return match user {
     Idle         -> <EmptyState>Click to load</EmptyState>
     Loading      -> <Skeleton lines={6} />
@@ -572,7 +595,7 @@ function OverviewPanel(user: AsyncState<User, ApiError>) {
   }
 }
 
-function describeError(err: ApiError): string {
+fn describeError(err: ApiError) -> string {
   match err {
     Network(msg)    -> `Connection failed: ${msg}`
     NotFound        -> "User not found"
@@ -591,7 +614,8 @@ These are enforced at compile time with clear error messages.
 
 | Rule | Error | Fix |
 |------|-------|-----|
-| Exported functions must declare return types | `ERROR: missing return type` | Add `: ReturnType` |
+| Exported functions must declare return types | `ERROR: missing return type` | Add `-> ReturnType` |
+| `const name = \|x\| ...` | `ERROR: use fn instead` | `fn name(x) -> T { ... }` |
 | No unused variables | `ERROR: x is never used` | Remove or prefix with `_` |
 | No unused imports | `ERROR: useRef is never used` | Remove the import |
 | No implicit type widening | `ERROR: mixed array needs explicit type` | Add type annotation |
@@ -636,10 +660,12 @@ Key tokens beyond standard TypeScript:
 | Token | Lexeme |
 |-------|--------|
 | `Pipe` | `\|>` |
-| `Arrow` | `->` (match arms) |
+| `Arrow` | `->` (match arms, return types, function types) |
 | `Question` | `?` (postfix, Result/Option unwrap) |
 | `Underscore` | `_` (placeholder/partial application) |
+| `PipePipe` | `\|\|` (zero-arg lambda, also boolean OR) |
 | `Match` | `match` keyword |
+| `Fn` | `fn` keyword |
 | `Some` | `Some` keyword |
 | `None` | `None` keyword |
 | `Ok` | `Ok` keyword |
@@ -657,6 +683,8 @@ Banned tokens (immediate compile errors with helpful messages):
 - `undefined` → "Use Option<T> with Some/None"
 - `enum` → "Use type with | variants"
 - `void` → "Use the unit type () instead"
+- `function` → "Use fn instead"
+- `=>` → "Use |x| for lambdas, -> for types and match arms"
 
 ### Parser (`zs_parser`)
 
@@ -669,7 +697,8 @@ enum Expr {
     Identifier(String),
     BinaryOp { left: Box<Expr>, op: BinOp, right: Box<Expr> },
     Call { callee: Box<Expr>, args: Vec<Arg> },
-    Arrow { params: Vec<Param>, body: Box<Expr> },
+    Lambda { params: Vec<Param>, body: Box<Expr> },  // |x| expr
+    DotShorthand(Box<Expr>),                          // .field or .field op expr
     Jsx(JsxElement),
 
     // Floe additions
@@ -764,6 +793,11 @@ Emits clean, readable `.tsx`. Zero runtime imports.
 | `a \|> f(b, c)` | `f(a, b, c)` |
 | `a \|> f(b, _, c)` | `f(b, a, c)` |
 | `add(10, _)` | `(x) => add(10, x)` |
+| `\|x\| x + 1` | `(x) => x + 1` |
+| `.name` (in callback) | `(x) => x.name` |
+| `.id != id` (in callback) | `(x) => x.id != id` |
+| `.Variant` (implicit member) | `Variant` (resolved by compiler) |
+| `fn f(x: T) -> U { ... }` | `function f(x: T): U { ... }` |
 | `match x { A -> ..., B -> ... }` | `x.tag === "A" ? ... : x.tag === "B" ? ... : absurd(x)` |
 | `fetchUser(id)?` | `const _r = fetchUser(id); if (!_r.ok) return _r; const val = _r.value;` |
 | `Ok(value)` | `{ ok: true, value }` |
@@ -776,7 +810,7 @@ Emits clean, readable `.tsx`. Zero runtime imports.
 | `f(x: number = 10)` | caller omits → compiler inserts `10` at call site |
 | `a == b` (objects) | deep structural equality check |
 | `()` (unit value) | `undefined` |
-| `(): ()` (unit return type) | `(): void` |
+| `fn f() -> ()` (unit return) | `function f(): void` |
 | `Array.sort(arr)` | `[...arr].sort((a, b) => a - b)` |
 | `Number.parse("123")` | strict parse returning `Result` |
 | `Brand<string, "UserId">` | `string` (erased) |
@@ -870,7 +904,7 @@ floe migrate file.tsx     # attempt to convert .tsx to .fl
 ### Phase 1: Proof of concept (2-4 weeks)
 
 - [ ] Lexer with pipe, match, `?` tokens and banned keyword errors
-- [ ] Parser for: const, function, arrows, pipes, basic expressions
+- [ ] Parser for: const, fn, |x| lambdas, .field shorthand, pipes, basic expressions
 - [ ] Parser: `Type(field: value)` constructor syntax and `..spread`
 - [ ] Parser: named arguments at call sites
 - [ ] Parser: default values on function params and record fields
@@ -955,19 +989,19 @@ TypeScript's `void` is not a real type — you can't use it in generics like `Re
 
 ```floe
 // Functions with no meaningful return value
-function log(msg: string): () {
+fn log(msg: string) -> () {
   console.log(msg)
 }
 
 // Works naturally in generics
-function deleteUser(id: UserId): Result<(), ApiError> {
+fn deleteUser(id: UserId) -> Result<(), ApiError> {
   // ...
   Ok(())
 }
 
 // Callbacks
 type ButtonProps = {
-  onClick: () => ()
+  onClick: () -> ()
 }
 ```
 
@@ -987,7 +1021,7 @@ const nums = [10, 2, 1]
 const sorted = nums |> Array.sort              // [1, 2, 10] — new array, numeric default
 nums                                            // [10, 2, 1] — unchanged
 
-const users = [u1, u2] |> Array.sortBy(u => u.name)  // explicit comparator
+const users = [u1, u2] |> Array.sortBy(.name)  // explicit comparator
 ```
 
 **Codegen:** compiles to `[...arr].sort((a, b) => a - b)` for numbers, `[...arr].sort(comparator)` for custom.
@@ -997,11 +1031,11 @@ const users = [u1, u2] |> Array.sortBy(u => u.name)  // explicit comparator
 JS functions without a return statement silently return `undefined`. Floe requires all non-unit functions to have an explicit return. Functions declared as returning `()` don't need one.
 
 ```floe
-function getName(user: User): string {
+fn getName(user: User) -> string {
   // COMPILE ERROR: missing return value
 }
 
-function log(msg: string): () {
+fn log(msg: string) -> () {
   console.log(msg)    // OK — unit functions don't need explicit return
 }
 ```
@@ -1041,8 +1075,11 @@ const c = { ...a, ...b }    // WARNING: 'y' from 'a' is overwritten by 'b'
 | Question | Decision | Rationale |
 |----------|----------|-----------|
 | Syntax style | TS keywords + Gleam match/pipe | Familiar to React devs, 30min learning curve |
-| Function style | `function` for named, `=>` for inline | Matches React convention |
-| Match arrow | `->` (not `=>`) | Visually distinct from arrow functions |
+| Function style | `fn` for named, `\|x\|` for inline lambdas, `.field` for shorthand | One keyword, two lambda forms, no overlap |
+| Arrow `->` | Match arms, return types, function types | "Maps to" everywhere — consistent single meaning |
+| `const name = \|x\| ...` | Compile error | If it has a name, use `fn`. No two ways to name a function. |
+| Dot shorthand | `.field` in callback position creates implicit lambda | Covers 80% of inline callbacks (filter, map, sort) |
+| Implicit member expr | `.Variant` when type is known from context | Swift-style; NOT used in match arms (match already establishes type) |
 | Pipe semantics | First-arg default, `_` placeholder | Gleam approach — clean 90% of the time |
 | Partial application | `f(a, _)` creates `(x) => f(a, x)` | Free bonus from `_` placeholder |
 | Result unwrap | `?` operator (Rust-style) | Cleaner than `use x <- f()`, less new syntax |

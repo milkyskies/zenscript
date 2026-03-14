@@ -27,15 +27,15 @@ const { name, age } = user
 ### Function
 
 ```floe
-function name(param: Type): ReturnType {
+fn name(param: Type) -> ReturnType {
   body
 }
 
-export function name(param: Type): ReturnType {
+export fn name(param: Type) -> ReturnType {
   body
 }
 
-async function name(): Promise<T> {
+async fn name() -> Promise<T> {
   await expr
 }
 ```
@@ -135,12 +135,28 @@ Some(value)   // Option present
 None          // Option absent
 ```
 
-### Arrow Function
+### Anonymous Functions (Lambdas)
 
 ```floe
-(a, b) => a + b
-x => x * 2
-(x: number): number => x + 1
+|a, b| a + b
+|x| x * 2
+|| doSomething()
+```
+
+Dot shorthand for field access:
+
+```floe
+.name           // |x| x.name
+.id != id       // |x| x.id != id
+.done == false  // |x| x.done == false
+```
+
+### Function Types
+
+```floe
+() -> ()                  // takes nothing, returns nothing
+(string) -> number        // takes string, returns number
+(number, number) -> bool  // takes two numbers, returns bool
 ```
 
 ### JSX

@@ -16,8 +16,8 @@ const result = "hello" |> toUpperCase
 
 ```floe
 const result = users
-  |> filter(u => u.active)
-  |> map(u => u.name)
+  |> filter(.active)
+  |> map(.name)
   |> sort
   |> join(", ")
 ```
@@ -46,6 +46,24 @@ const result = value
   |> toString
 ```
 
+## Dot Shorthand
+
+For simple field access or comparisons, use `.field`:
+
+```floe
+todos |> Array.filter(.done == false)
+todos |> Array.map(.text)
+users |> Array.sortBy(.name)
+```
+
+`.field` creates an implicit lambda — `.done == false` is shorthand for `|t| t.done == false`.
+
+For anything more complex, use `|x|`:
+
+```floe
+todos |> Array.map(|t| Todo(..t, done: !t.done))
+```
+
 ## Method-Style Pipes
 
 Pipes work with any function, including methods accessed via imports:
@@ -54,9 +72,9 @@ Pipes work with any function, including methods accessed via imports:
 import { map, filter, reduce } from "ramda"
 
 const total = orders
-  |> filter(o => o.status == "complete")
-  |> map(o => o.amount)
-  |> reduce((sum, n) => sum + n, 0, _)
+  |> filter(.status == "complete")
+  |> map(.amount)
+  |> reduce(|sum, n| sum + n, 0, _)
 ```
 
 ## When to Use Pipes
@@ -69,14 +87,14 @@ Pipes shine when you have a sequence of transformations. They replace:
 | `x.map(...).filter(...).reduce(...)` | `x \|> map(...) \|> filter(...) \|> reduce(...)` |
 | Temporary variables | Direct piping |
 
-## Three Operators
+## Operators
 
-Floe has exactly three arrow-like operators:
+Floe has three arrow-like operators:
 
 ```
-=>  arrow functions    (a) => a + 1
-->  match arms         Ok(x) -> x
-|>  pipe data          data |> transform
+|x|  anonymous lambdas   |a| a + 1
+->   match arms / types  Ok(x) -> x, (string) -> number
+|>   pipe data            data |> transform
 ```
 
 Each has a distinct purpose. No ambiguity.

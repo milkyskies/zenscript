@@ -95,7 +95,7 @@ impl<'src> CstParser<'src> {
                 self.parse_const_decl();
                 self.builder.finish_node();
             }
-            Some(TokenKind::Function) | Some(TokenKind::Async) => {
+            Some(TokenKind::Fn) | Some(TokenKind::Async) => {
                 self.builder
                     .start_node_at(checkpoint, SyntaxKind::ITEM.into());
                 self.parse_function_decl();
@@ -210,7 +210,7 @@ impl<'src> CstParser<'src> {
             self.eat_trivia();
         }
 
-        self.expect(TokenKind::Function);
+        self.expect(TokenKind::Fn);
         self.eat_trivia();
         self.expect_ident();
         self.eat_trivia();
@@ -222,7 +222,7 @@ impl<'src> CstParser<'src> {
         self.eat_trivia();
 
         // Optional return type
-        if self.at(TokenKind::Colon) {
+        if self.at(TokenKind::ThinArrow) {
             self.bump();
             self.eat_trivia();
             self.parse_type_expr();
@@ -424,7 +424,7 @@ impl<'src> CstParser<'src> {
         self.parse_comma_separated(Self::parse_type_expr, TokenKind::RightParen);
         self.expect(TokenKind::RightParen);
         self.eat_trivia();
-        self.expect(TokenKind::FatArrow);
+        self.expect(TokenKind::ThinArrow);
         self.eat_trivia();
         self.parse_type_expr();
     }
@@ -677,9 +677,7 @@ impl<'src> CstParser<'src> {
             }
 
             Some(TokenKind::LeftParen) => {
-                if self.is_arrow_function() {
-                    self.parse_arrow_function();
-                } else if self.peek_is(TokenKind::RightParen) {
+                if self.peek_is(TokenKind::RightParen) {
                     // Unit value: ()
                     self.bump(); // (
                     self.eat_trivia();
@@ -697,18 +695,25 @@ impl<'src> CstParser<'src> {
 
             Some(TokenKind::LessThan) => self.parse_jsx_element(),
 
+            Some(TokenKind::VerticalBar) => {
+                self.parse_pipe_lambda();
+            }
+
+            Some(TokenKind::PipePipe) => {
+                // Zero-arg lambda: `|| expr`
+                self.builder.start_node(SyntaxKind::ARROW_EXPR.into());
+                self.bump(); // ||
+                self.eat_trivia();
+                self.parse_expr();
+                self.builder.finish_node();
+            }
+
             Some(TokenKind::Identifier(name)) => {
                 let name = name.clone();
 
                 // Uppercase + ( → constructor
                 if name.starts_with(char::is_uppercase) && self.peek_is(TokenKind::LeftParen) {
                     self.parse_construct_expr();
-                    return;
-                }
-
-                // Single-arg arrow: `x => expr`
-                if self.peek_is(TokenKind::FatArrow) {
-                    self.parse_arrow_function_single_arg();
                     return;
                 }
 
@@ -790,28 +795,15 @@ impl<'src> CstParser<'src> {
         self.builder.finish_node();
     }
 
-    // ── Arrow Functions ──────────────────────────────────────────
+    // ── Pipe Lambda ──────────────────────────────────────────────
 
-    fn parse_arrow_function(&mut self) {
+    /// Parse `|params| body` pipe lambda.
+    fn parse_pipe_lambda(&mut self) {
         self.builder.start_node(SyntaxKind::ARROW_EXPR.into());
-        self.expect(TokenKind::LeftParen);
+        self.expect(TokenKind::VerticalBar);
         self.eat_trivia();
-        self.parse_comma_separated(Self::parse_param, TokenKind::RightParen);
-        self.expect(TokenKind::RightParen);
-        self.eat_trivia();
-        self.expect(TokenKind::FatArrow);
-        self.eat_trivia();
-        self.parse_expr();
-        self.builder.finish_node();
-    }
-
-    fn parse_arrow_function_single_arg(&mut self) {
-        self.builder.start_node(SyntaxKind::ARROW_EXPR.into());
-        self.builder.start_node(SyntaxKind::PARAM.into());
-        self.bump(); // identifier
-        self.builder.finish_node();
-        self.eat_trivia();
-        self.expect(TokenKind::FatArrow);
+        self.parse_comma_separated(Self::parse_param, TokenKind::VerticalBar);
+        self.expect(TokenKind::VerticalBar);
         self.eat_trivia();
         self.parse_expr();
         self.builder.finish_node();
@@ -1116,7 +1108,7 @@ impl<'src> CstParser<'src> {
     }
 
     fn at_pipe_in_union(&self) -> bool {
-        self.at_identifier("|")
+        self.at(TokenKind::VerticalBar)
     }
 
     fn is_ident(&self) -> bool {
@@ -1169,17 +1161,12 @@ impl<'src> CstParser<'src> {
 
     /// Heuristic: is the current `(` the start of a unit type `()`?
     fn is_unit_type(&self) -> bool {
-        self.peek_is(TokenKind::RightParen) && !self.peek_after_rparen_is(TokenKind::FatArrow)
+        self.peek_is(TokenKind::RightParen) && !self.peek_after_rparen_is(TokenKind::ThinArrow)
     }
 
     /// Heuristic: is the current `(` the start of a function type?
     fn is_function_type(&self) -> bool {
-        self.scan_for_rparen_followed_by(TokenKind::FatArrow)
-    }
-
-    /// Heuristic: is the current `(` the start of an arrow function?
-    fn is_arrow_function(&self) -> bool {
-        self.scan_for_rparen_followed_by(TokenKind::FatArrow)
+        self.scan_for_rparen_followed_by(TokenKind::ThinArrow)
     }
 
     /// Scan from current `(` to matching `)`, check if followed by `kind`.

@@ -24,8 +24,8 @@ npm run build
 ### Syntax Highlighting
 
 Full TextMate grammar for `.fl` files:
-- Keywords (`const`, `function`, `match`, `type`, etc.)
-- Operators (`|>`, `->`, `=>`, `?`)
+- Keywords (`const`, `fn`, `match`, `type`, etc.)
+- Operators (`|>`, `->`, `|x|`, `?`)
 - JSX elements and attributes
 - Template literals with interpolation
 - Banned keyword highlighting (visual warning for `let`, `class`, etc.)

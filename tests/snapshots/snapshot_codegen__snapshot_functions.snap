@@ -10,4 +10,6 @@ function _greet(name: string, greeting: string = "Hello"): string {
   return `${greeting}, ${name}!`;
 }
 
-const _double = (n: number) => n * 2;
+function _double(n: number): number {
+  return n * 2;
+}

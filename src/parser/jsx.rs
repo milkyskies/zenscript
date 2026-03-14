@@ -192,7 +192,7 @@ impl Parser {
 
             // Keywords — valid as JSX text
             TokenKind::Const => Some("const".into()),
-            TokenKind::Function => Some("function".into()),
+            TokenKind::Fn => Some("fn".into()),
             TokenKind::Export => Some("export".into()),
             TokenKind::Import => Some("import".into()),
             TokenKind::From => Some("from".into()),
@@ -226,6 +226,7 @@ impl Parser {
             TokenKind::GreaterEqual => Some(">=".into()),
             TokenKind::LessEqual => Some("<=".into()),
             TokenKind::Pipe => Some("|>".into()),
+            TokenKind::VerticalBar => Some("|".into()),
             TokenKind::ThinArrow => Some("->".into()),
             TokenKind::FatArrow => Some("=>".into()),
             TokenKind::Question => Some("?".into()),
@@ -302,9 +303,9 @@ impl Parser {
                 self.advance();
                 Ok("const".to_string())
             }
-            TokenKind::Function => {
+            TokenKind::Fn => {
                 self.advance();
-                Ok("function".to_string())
+                Ok("fn".to_string())
             }
             _ => Err(self.error(&format!(
                 "expected attribute name, found {:?}",

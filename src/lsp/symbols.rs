@@ -142,7 +142,7 @@ impl SymbolIndex {
                         end: item.span.end,
                         import_source: None,
                         detail: format!(
-                            "{vis}{async_kw}function {}({}){ret}",
+                            "{vis}{async_kw}fn {}({}){ret}",
                             decl.name,
                             params.join(", ")
                         ),
@@ -272,7 +272,7 @@ pub(super) fn type_expr_to_string(ty: &TypeExpr) -> String {
         } => {
             let ps: Vec<String> = params.iter().map(type_expr_to_string).collect();
             format!(
-                "({}) => {}",
+                "({}) -> {}",
                 ps.join(", "),
                 type_expr_to_string(return_type)
             )

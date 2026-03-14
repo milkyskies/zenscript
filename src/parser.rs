@@ -134,7 +134,7 @@ impl Parser {
                 decl.exported = exported;
                 ItemKind::Const(decl)
             }
-            TokenKind::Function => {
+            TokenKind::Fn => {
                 let mut decl = self.parse_function_decl()?;
                 decl.exported = exported;
                 ItemKind::Function(decl)
@@ -144,7 +144,7 @@ impl Parser {
                 decl.exported = exported;
                 ItemKind::TypeDecl(decl)
             }
-            TokenKind::Async if self.peek_kind() == Some(&TokenKind::Function) => {
+            TokenKind::Async if self.peek_kind() == Some(&TokenKind::Fn) => {
                 let mut decl = self.parse_function_decl()?;
                 decl.exported = exported;
                 ItemKind::Function(decl)
@@ -255,14 +255,14 @@ impl Parser {
             false
         };
 
-        self.expect(&TokenKind::Function)?;
+        self.expect(&TokenKind::Fn)?;
         let name = self.expect_identifier()?;
 
         self.expect(&TokenKind::LeftParen)?;
         let params = self.parse_comma_separated(|p| p.parse_param())?;
         self.expect(&TokenKind::RightParen)?;
 
-        let return_type = if self.check(&TokenKind::Colon) {
+        let return_type = if self.check(&TokenKind::ThinArrow) {
             self.advance();
             Some(self.parse_type_expr()?)
         } else {
@@ -532,7 +532,7 @@ impl Parser {
         self.expect(&TokenKind::LeftParen)?;
         let params = self.parse_comma_separated(|p| p.parse_type_expr())?;
         self.expect(&TokenKind::RightParen)?;
-        self.expect(&TokenKind::FatArrow)?;
+        self.expect(&TokenKind::ThinArrow)?;
         let return_type = self.parse_type_expr()?;
         let end_span = self.previous_span();
         Ok(TypeExpr {
@@ -545,16 +545,16 @@ impl Parser {
     }
 
     /// Is the current `(` the start of a unit type `()`?
-    /// True when `(` is immediately followed by `)` and NOT by `=>`.
+    /// True when `(` is immediately followed by `)` and NOT by `->`.
     fn is_unit_type(&self) -> bool {
         self.pos + 1 < self.tokens.len()
             && self.tokens[self.pos + 1].kind == TokenKind::RightParen
             && !(self.pos + 2 < self.tokens.len()
-                && self.tokens[self.pos + 2].kind == TokenKind::FatArrow)
+                && self.tokens[self.pos + 2].kind == TokenKind::ThinArrow)
     }
 
     /// Heuristic: is the current `(` the start of a function type?
-    /// Look ahead for `) =>`.
+    /// Look ahead for `) ->`.
     fn is_function_type(&self) -> bool {
         let mut depth = 0;
         let mut i = self.pos;
@@ -564,9 +564,9 @@ impl Parser {
                 TokenKind::RightParen => {
                     depth -= 1;
                     if depth == 0 {
-                        // Check if followed by `=>`
+                        // Check if followed by `->`
                         return i + 1 < self.tokens.len()
-                            && self.tokens[i + 1].kind == TokenKind::FatArrow;
+                            && self.tokens[i + 1].kind == TokenKind::ThinArrow;
                     }
                 }
                 TokenKind::Eof => return false,
@@ -685,9 +685,8 @@ impl Parser {
     }
 
     /// Check if the current token is `|` used in union type declarations.
-    /// The lexer emits bare `|` as `Identifier("|")`.
     fn check_pipe_in_union(&self) -> bool {
-        self.check_identifier("|")
+        self.check(&TokenKind::VerticalBar)
     }
 
     fn is_at_end(&self) -> bool {
@@ -753,7 +752,7 @@ impl Parser {
             // Stop at statement boundaries
             match self.current_kind() {
                 TokenKind::Const
-                | TokenKind::Function
+                | TokenKind::Fn
                 | TokenKind::Export
                 | TokenKind::Import
                 | TokenKind::Type

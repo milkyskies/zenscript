@@ -86,7 +86,7 @@ fn const_array_destructure() {
 
 #[test]
 fn function_decl() {
-    let result = emit("function add(a: number, b: number): number { a + b }");
+    let result = emit("fn add(a: number, b: number) -> number { a + b }");
     assert_eq!(
         result,
         "function add(a: number, b: number): number {\n  return a + b;\n}"
@@ -95,19 +95,19 @@ fn function_decl() {
 
 #[test]
 fn export_function() {
-    let result = emit("export function greet() { \"hi\" }");
+    let result = emit("export fn greet() { \"hi\" }");
     assert!(result.starts_with("export function greet()"));
 }
 
 #[test]
 fn async_function() {
-    let result = emit("async function fetch() { await getData() }");
+    let result = emit("async fn fetch() { await getData() }");
     assert!(result.starts_with("async function fetch()"));
 }
 
 #[test]
 fn function_with_defaults() {
-    let result = emit("function f(x: number = 10) { x }");
+    let result = emit("fn f(x: number = 10) { x }");
     assert!(result.contains("x: number = 10"));
 }
 
@@ -125,25 +125,25 @@ fn import_named() {
 
 #[test]
 fn pipe_simple() {
-    // x |> f → f(x)
+    // x |> f -> f(x)
     assert_eq!(emit("x |> f"), "f(x);");
 }
 
 #[test]
 fn pipe_with_args() {
-    // x |> f(y) → f(x, y)
+    // x |> f(y) -> f(x, y)
     assert_eq!(emit("x |> f(y)"), "f(x, y);");
 }
 
 #[test]
 fn pipe_with_placeholder() {
-    // x |> f(y, _, z) → f(y, x, z)
+    // x |> f(y, _, z) -> f(y, x, z)
     assert_eq!(emit("x |> f(y, _, z)"), "f(y, x, z);");
 }
 
 #[test]
 fn pipe_chained() {
-    // a |> f |> g → g(f(a))
+    // a |> f |> g -> g(f(a))
     assert_eq!(emit("a |> f |> g"), "g(f(a));");
 }
 
@@ -151,7 +151,7 @@ fn pipe_chained() {
 
 #[test]
 fn partial_application() {
-    // add(10, _) → (_x) => add(10, _x)
+    // add(10, _) -> (_x) => add(10, _x)
     assert_eq!(emit("add(10, _)"), "(_x) => add(10, _x);");
 }
 
@@ -172,13 +172,13 @@ fn err_constructor() {
 
 #[test]
 fn some_constructor() {
-    // Some(x) → x
+    // Some(x) -> x
     assert_eq!(emit("Some(x)"), "x;");
 }
 
 #[test]
 fn none_literal() {
-    // None → undefined
+    // None -> undefined
     assert_eq!(emit("None"), "undefined;");
 }
 
@@ -212,7 +212,7 @@ fn match_simple() {
 #[test]
 fn match_with_wildcard() {
     let result = emit("match x { Ok(v) -> v, _ -> 0 }");
-    // Last arm is wildcard → no condition needed
+    // Last arm is wildcard -> no condition needed
     assert!(result.contains(".tag === \"Ok\""));
     assert!(result.contains("0"));
 }
@@ -261,7 +261,7 @@ fn opaque_type_erased() {
 
 #[test]
 fn brand_type_erased() {
-    // Brand<string, "UserId"> → string
+    // Brand<string, "UserId"> -> string
     let result = emit("type UserId = Brand<string, UserId>");
     assert_eq!(result, "type UserId = string;");
 }
@@ -320,19 +320,19 @@ fn no_jsx_detection() {
     assert!(!output.has_jsx);
 }
 
-// ── Arrow Functions ──────────────────────────────────────────
+// ── Pipe Lambdas ─────────────────────────────────────────────
 
 #[test]
-fn arrow_single_arg() {
-    assert_eq!(emit("x => x + 1"), "(x) => x + 1;");
+fn lambda_single_arg() {
+    assert_eq!(emit("|x| x + 1"), "(x) => x + 1;");
 }
 
 #[test]
-fn arrow_multi_arg() {
-    assert_eq!(emit("(a, b) => a + b"), "(a, b) => a + b;");
+fn lambda_multi_arg() {
+    assert_eq!(emit("|a, b| a + b"), "(a, b) => a + b;");
 }
 
-// ── Equality → structural equality ──────────────────────────
+// ── Equality -> structural equality ──────────────────────────
 
 #[test]
 fn equality_becomes_structural() {
@@ -342,7 +342,7 @@ fn equality_becomes_structural() {
     assert!(result.contains("!__zenEq(a, b)"));
 }
 
-// ── If/Else → ternary ────────────────────────────────────────
+// ── If/Else -> ternary ────────────────────────────────────────
 
 #[test]
 fn if_else() {
@@ -363,7 +363,7 @@ fn await_expr() {
 
 #[test]
 fn return_expr() {
-    let result = emit("function f() { return 42 }");
+    let result = emit("fn f() { return 42 }");
     assert!(result.contains("return 42"));
 }
 
@@ -387,7 +387,7 @@ fn stdlib_array_sort() {
 #[test]
 fn stdlib_array_map() {
     assert_eq!(
-        emit("Array.map([1, 2], (n) => n * 2)"),
+        emit("Array.map([1, 2], |n| n * 2)"),
         "[1, 2].map((n) => n * 2);"
     );
 }
@@ -395,7 +395,7 @@ fn stdlib_array_map() {
 #[test]
 fn stdlib_array_filter() {
     assert_eq!(
-        emit("Array.filter([1, 2, 3], (n) => n > 1)"),
+        emit("Array.filter([1, 2, 3], |n| n > 1)"),
         "[1, 2, 3].filter((n) => n > 1);"
     );
 }
@@ -447,7 +447,7 @@ fn stdlib_array_contains() {
 
 #[test]
 fn stdlib_option_map() {
-    let result = emit("Option.map(Some(1), (n) => n * 2)");
+    let result = emit("Option.map(Some(1), |n| n * 2)");
     assert!(result.contains("!== undefined"));
 }
 
@@ -559,14 +559,14 @@ fn stdlib_pipe_bare() {
 #[test]
 fn stdlib_pipe_with_args() {
     assert_eq!(
-        emit("[1, 2, 3] |> Array.map((n) => n * 2)"),
+        emit("[1, 2, 3] |> Array.map(|n| n * 2)"),
         "[1, 2, 3].map((n) => n * 2);"
     );
 }
 
 #[test]
 fn stdlib_pipe_chain() {
-    let result = emit("[1, 2, 3] |> Array.filter((n) => n > 1) |> Array.reverse");
+    let result = emit("[1, 2, 3] |> Array.filter(|n| n > 1) |> Array.reverse");
     assert!(result.contains(".filter("));
     assert!(result.contains(".reverse()"));
 }

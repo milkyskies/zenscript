@@ -7,7 +7,7 @@ title: Your First Program
 Create a file called `hello.fl`:
 
 ```floe
-export function greet(name: string): string {
+export fn greet(name: string) -> string {
   return `Hello, ${name}!`
 }
 
@@ -37,7 +37,7 @@ Create `counter.fl`:
 ```floe
 import { useState } from "react"
 
-export function Counter(): JSX.Element {
+export fn Counter() -> JSX.Element {
   const [count, setCount] = useState(0)
 
   return <div>

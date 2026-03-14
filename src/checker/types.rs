@@ -87,7 +87,7 @@ impl Type {
                 return_type,
             } => {
                 let p: Vec<_> = params.iter().map(|t| t.display_name()).collect();
-                format!("({}) => {}", p.join(", "), return_type.display_name())
+                format!("({}) -> {}", p.join(", "), return_type.display_name())
             }
             Type::Array(inner) => format!("Array<{}>", inner.display_name()),
             Type::Tuple(types) => {

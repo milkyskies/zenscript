@@ -96,7 +96,7 @@ Result<User, Error>
 Option<string>
 
 // Function
-(a: number, b: number) => number
+(number, number) -> number
 
 // Record (inline)
 { name: string, age: number }

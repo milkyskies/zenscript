@@ -55,14 +55,13 @@ x |> f |> g     // g(f(x))
 
 The `?` operator unwraps `Ok(value)` or `Some(value)`, and returns early with `Err(e)` or `None` on failure. Only valid inside functions that return `Result` or `Option`.
 
-## Arrow Operators
-
-Floe has exactly three arrow-like operators:
+## Arrow and Lambda Operators
 
 | Operator | Context | Meaning |
 |----------|---------|---------|
-| `=>` | Arrow functions | `(x) => x + 1` |
-| `->` | Match arms | `Ok(x) -> x` |
+| `\|x\|` | Lambdas | `\|x\| x + 1` |
+| `.field` | Dot shorthand | `.name` (implicit field-access lambda) |
+| `->` | Match arms, return types, function types | `Ok(x) -> x`, `(string) -> number` |
 | `\|>` | Pipes | `data \|> transform` |
 
 ## Precedence (high to low)
