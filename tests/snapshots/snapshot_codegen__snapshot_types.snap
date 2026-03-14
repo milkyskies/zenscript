@@ -1,6 +1,5 @@
 ---
 source: tests/snapshot_codegen.rs
-assertion_line: 56
 expression: output
 ---
 type User = { id: string; name: string; email: string };

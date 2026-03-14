@@ -3,13 +3,13 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 
-use zenscript::checker::Checker;
-use zenscript::codegen::Codegen;
-use zenscript::diagnostic;
-use zenscript::parser::Parser as ZsParser;
+use floe::checker::Checker;
+use floe::codegen::Codegen;
+use floe::diagnostic;
+use floe::parser::Parser as ZsParser;
 
 #[derive(Parser)]
-#[command(name = "zsc", version, about = "The ZenScript compiler")]
+#[command(name = "floe", version, about = "The Floe compiler")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -17,7 +17,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Compile .zs files to .ts/.tsx
+    /// Compile .fl files to .ts/.tsx
     Build {
         /// File or directory to compile ("-" for stdin)
         path: PathBuf,
@@ -28,12 +28,12 @@ enum Command {
         #[arg(long)]
         emit_stdout: bool,
     },
-    /// Type-check .zs files without emitting output
+    /// Type-check .fl files without emitting output
     Check {
         /// File or directory to check
         path: PathBuf,
     },
-    /// Watch .zs files and recompile on change
+    /// Watch .fl files and recompile on change
     Watch {
         /// File or directory to watch
         path: PathBuf,
@@ -41,12 +41,12 @@ enum Command {
         #[arg(short, long)]
         out_dir: Option<PathBuf>,
     },
-    /// Scaffold a new ZenScript project
+    /// Scaffold a new Floe project
     Init {
         /// Project directory (defaults to current directory)
         path: Option<PathBuf>,
     },
-    /// Format .zs files
+    /// Format .fl files
     Fmt {
         /// File or directory to format
         path: PathBuf,
@@ -78,7 +78,7 @@ fn main() -> Result<()> {
         Command::Watch { path, out_dir } => cmd_watch(&path, out_dir.as_deref()),
         Command::Init { path } => cmd_init(path.as_deref()),
         Command::Lsp => {
-            tokio::runtime::Runtime::new()?.block_on(zenscript::lsp::run_lsp());
+            tokio::runtime::Runtime::new()?.block_on(floe::lsp::run_lsp());
             Ok(())
         }
     }
@@ -94,7 +94,7 @@ fn cmd_build_stdin() -> Result<()> {
         .read_to_string(&mut source)
         .context("failed to read from stdin")?;
 
-    let filename = std::env::var("ZSC_FILENAME").unwrap_or_else(|_| "<stdin>".to_string());
+    let filename = std::env::var("FLOE_FILENAME").unwrap_or_else(|_| "<stdin>".to_string());
 
     let program = ZsParser::new(&source).parse_program().map_err(|errs| {
         let diags = diagnostic::from_parse_errors(&errs);
@@ -122,9 +122,9 @@ fn cmd_build_stdin() -> Result<()> {
 // ── Build ────────────────────────────────────────────────────────
 
 fn cmd_build(path: &Path, out_dir: Option<&Path>) -> Result<()> {
-    let files = discover_zs_files(path)?;
+    let files = discover_fl_files(path)?;
     if files.is_empty() {
-        bail!("no .zs files found in {}", path.display());
+        bail!("no .fl files found in {}", path.display());
     }
 
     let mut compiled = 0;
@@ -193,9 +193,9 @@ fn compile_file(file: &Path, out_dir: Option<&Path>) -> Result<PathBuf> {
 // ── Check ────────────────────────────────────────────────────────
 
 fn cmd_check(path: &Path) -> Result<()> {
-    let files = discover_zs_files(path)?;
+    let files = discover_fl_files(path)?;
     if files.is_empty() {
-        bail!("no .zs files found in {}", path.display());
+        bail!("no .fl files found in {}", path.display());
     }
 
     let mut checked = 0;
@@ -241,9 +241,9 @@ fn cmd_check(path: &Path) -> Result<()> {
 // ── Fmt ──────────────────────────────────────────────────────────
 
 fn cmd_fmt(path: &Path, check_only: bool) -> Result<()> {
-    let files = discover_zs_files(path)?;
+    let files = discover_fl_files(path)?;
     if files.is_empty() {
-        bail!("no .zs files found in {}", path.display());
+        bail!("no .fl files found in {}", path.display());
     }
 
     let mut unformatted = 0;
@@ -253,7 +253,7 @@ fn cmd_fmt(path: &Path, check_only: bool) -> Result<()> {
         let source = std::fs::read_to_string(file)
             .with_context(|| format!("failed to read {}", file.display()))?;
 
-        let result = zenscript::formatter::format(&source);
+        let result = floe::formatter::format(&source);
 
         if result == source {
             formatted += 1;
@@ -339,8 +339,8 @@ fn cmd_init(path: Option<&Path>) -> Result<()> {
     let src_dir = dir.join("src");
     std::fs::create_dir_all(&src_dir)?;
 
-    // Create a sample main.zs
-    let main_zs = src_dir.join("main.zs");
+    // Create a sample main.fl
+    let main_zs = src_dir.join("main.fl");
     if !main_zs.exists() {
         std::fs::write(
             &main_zs,
@@ -356,7 +356,7 @@ export function App() {
   const [todos, setTodos] = useState([])
 
   return <div>
-    <h1>ZenScript App</h1>
+    <h1>Floe App</h1>
     {todos |> map(t => <p key={t.id}>{t.text}</p>)}
   </div>
 }
@@ -386,21 +386,21 @@ export function App() {
         println!("  created {}", tsconfig.display());
     }
 
-    println!("\nZenScript project initialized!");
-    println!("  zsc build src/   - compile .zs files");
-    println!("  zsc watch src/   - watch and recompile");
+    println!("\nFloe project initialized!");
+    println!("  floe build src/   - compile .fl files");
+    println!("  floe watch src/   - watch and recompile");
 
     Ok(())
 }
 
 // ── File Discovery ───────────────────────────────────────────────
 
-fn discover_zs_files(path: &Path) -> Result<Vec<PathBuf>> {
+fn discover_fl_files(path: &Path) -> Result<Vec<PathBuf>> {
     if path.is_file() {
         if path.extension().is_some_and(|ext| ext == "zs") {
             return Ok(vec![path.to_path_buf()]);
         }
-        bail!("{} is not a .zs file", path.display());
+        bail!("{} is not a .fl file", path.display());
     }
 
     if !path.is_dir() {
@@ -408,12 +408,12 @@ fn discover_zs_files(path: &Path) -> Result<Vec<PathBuf>> {
     }
 
     let mut files = Vec::new();
-    collect_zs_files(path, &mut files)?;
+    collect_fl_files(path, &mut files)?;
     files.sort();
     Ok(files)
 }
 
-fn collect_zs_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
+fn collect_fl_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
@@ -424,7 +424,7 @@ fn collect_zs_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
             {
                 continue;
             }
-            collect_zs_files(&path, files)?;
+            collect_fl_files(&path, files)?;
         } else if path.extension().is_some_and(|ext| ext == "zs") {
             files.push(path);
         }

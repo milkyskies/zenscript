@@ -6,7 +6,7 @@ The `match` expression lets you branch on the shape of data. The compiler ensure
 
 ## Basic Match
 
-```zenscript
+```floe
 match status {
   "active" -> handleActive(),
   "inactive" -> handleInactive(),
@@ -16,7 +16,7 @@ match status {
 
 ## Matching on Result
 
-```zenscript
+```floe
 match fetchUser(id) {
   Ok(user) -> renderProfile(user),
   Err(error) -> renderError(error),
@@ -27,7 +27,7 @@ Both `Ok` and `Err` must be handled. Missing a case is a compile error.
 
 ## Matching on Option
 
-```zenscript
+```floe
 match findItem(id) {
   Some(item) -> renderItem(item),
   None -> renderNotFound(),
@@ -36,7 +36,7 @@ match findItem(id) {
 
 ## Union Types
 
-```zenscript
+```floe
 type Shape =
   | Circle(radius: number)
   | Rectangle(width: number, height: number)
@@ -55,7 +55,7 @@ Adding a new variant to `Shape` without updating the `match` is a compile error.
 
 ## Range Patterns
 
-```zenscript
+```floe
 match score {
   0..59 -> "F",
   60..69 -> "D",
@@ -68,7 +68,7 @@ match score {
 
 ## Record Destructuring
 
-```zenscript
+```floe
 match event {
   { type: "click", x, y } -> handleClick(x, y),
   { type: "keydown", key } -> handleKey(key),
@@ -78,7 +78,7 @@ match event {
 
 ## Nested Patterns
 
-```zenscript
+```floe
 match result {
   Ok(Some(value)) -> process(value),
   Ok(None) -> useDefault(),
@@ -90,7 +90,7 @@ match result {
 
 The `_` pattern matches anything. Place it last as a default:
 
-```zenscript
+```floe
 match value {
   1 -> "one",
   2 -> "two",
@@ -102,7 +102,7 @@ match value {
 
 The compiler checks that your match is exhaustive:
 
-```zenscript
+```floe
 // Compile error: non-exhaustive match on bool
 match enabled {
   true -> "on",

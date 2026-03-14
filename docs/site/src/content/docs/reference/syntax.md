@@ -4,7 +4,7 @@ title: Syntax Reference
 
 ## Comments
 
-```zenscript
+```floe
 // Line comment
 /* Block comment */
 /* Nested /* block */ comments */
@@ -14,7 +14,7 @@ title: Syntax Reference
 
 ### Const
 
-```zenscript
+```floe
 const x = 42
 const name: string = "hello"
 export const PI = 3.14159
@@ -26,7 +26,7 @@ const { name, age } = user
 
 ### Function
 
-```zenscript
+```floe
 function name(param: Type): ReturnType {
   body
 }
@@ -42,7 +42,7 @@ async function name(): Promise<T> {
 
 ### Type
 
-```zenscript
+```floe
 // Record
 type User = {
   name: string,
@@ -68,7 +68,7 @@ opaque type Email = string
 
 ### Literals
 
-```zenscript
+```floe
 42              // number
 3.14            // number
 "hello"         // string
@@ -80,7 +80,7 @@ false           // bool
 
 ### Operators
 
-```zenscript
+```floe
 a + b    a - b    a * b    a / b    a % b   // arithmetic
 a == b   a != b   a < b    a > b             // comparison
 a <= b   a >= b                               // comparison
@@ -91,7 +91,7 @@ expr?                                         // unwrap
 
 ### Pipe
 
-```zenscript
+```floe
 value |> transform
 value |> f(other_arg, _)   // placeholder
 a |> b |> c                // chaining
@@ -99,7 +99,7 @@ a |> b |> c                // chaining
 
 ### Match
 
-```zenscript
+```floe
 match expr {
   pattern -> body,
   pattern -> body,
@@ -109,7 +109,7 @@ match expr {
 
 ### If/Else
 
-```zenscript
+```floe
 if condition {
   then_expr
 } else {
@@ -119,7 +119,7 @@ if condition {
 
 ### Function Call
 
-```zenscript
+```floe
 f(a, b)
 f(name: value)     // named argument
 Constructor(a: 1)  // record constructor
@@ -128,7 +128,7 @@ Constructor(..existing, a: 2)  // spread + update
 
 ### Built-in Constructors
 
-```zenscript
+```floe
 Ok(value)     // Result success
 Err(error)    // Result failure
 Some(value)   // Option present
@@ -137,7 +137,7 @@ None          // Option absent
 
 ### Arrow Function
 
-```zenscript
+```floe
 (a, b) => a + b
 x => x * 2
 (x: number): number => x + 1
@@ -145,7 +145,7 @@ x => x * 2
 
 ### JSX
 
-```zenscript
+```floe
 <Component prop={value}>children</Component>
 <div className="box">text</div>
 <Input />
@@ -154,7 +154,7 @@ x => x * 2
 
 ## Imports
 
-```zenscript
+```floe
 import { name } from "module"
 import { name as alias } from "module"
 import { a, b, c } from "module"
@@ -162,7 +162,7 @@ import { a, b, c } from "module"
 
 ## Patterns
 
-```zenscript
+```floe
 42                    // literal
 "hello"               // string literal
 true                  // boolean literal

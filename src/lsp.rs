@@ -512,10 +512,10 @@ fn resolve_npm_dts(specifier: &str, project_dir: &Path) -> Option<PathBuf> {
 }
 
 /// Resolve a relative import to an actual file path.
-/// Checks .zs, .ts, .tsx extensions and /index variants.
+/// Checks .fl, .ts, .tsx extensions and /index variants.
 fn resolve_relative_import(specifier: &str, source_dir: &Path) -> Option<PathBuf> {
     let base = source_dir.join(specifier);
-    for ext in &[".zs", ".ts", ".tsx", "/index.zs", "/index.ts", "/index.tsx"] {
+    for ext in &[".fl", ".ts", ".tsx", "/index.fl", "/index.ts", "/index.tsx"] {
         let path = PathBuf::from(format!("{}{}", base.display(), ext));
         if path.exists() {
             return Some(path);
@@ -619,15 +619,15 @@ struct Document {
     type_map: HashMap<String, String>,
 }
 
-/// The ZenScript Language Server.
-pub struct ZenScriptLsp {
+/// The Floe Language Server.
+pub struct FloeLsp {
     client: Client,
     documents: Arc<RwLock<HashMap<Url, Document>>>,
     /// Cache of resolved .d.ts exports per module specifier
     dts_cache: Arc<RwLock<HashMap<String, Vec<interop::DtsExport>>>>,
 }
 
-impl ZenScriptLsp {
+impl FloeLsp {
     fn new(client: Client) -> Self {
         Self {
             client,
@@ -689,7 +689,7 @@ impl ZenScriptLsp {
             .await;
     }
 
-    /// Convert ZenScript diagnostics to LSP diagnostics.
+    /// Convert Floe diagnostics to LSP diagnostics.
     fn convert_diagnostics(
         &self,
         source: &str,
@@ -710,7 +710,7 @@ impl ZenScriptLsp {
                     range,
                     severity: Some(severity),
                     code: d.code.as_ref().map(|c| NumberOrString::String(c.clone())),
-                    source: Some("zenscript".to_string()),
+                    source: Some("floe".to_string()),
                     message: d.message.clone(),
                     related_information: None,
                     tags: None,
@@ -777,7 +777,7 @@ impl ZenScriptLsp {
                         .path_segments()
                         .and_then(|mut s| s.next_back())
                         .unwrap_or("unknown")
-                        .trim_end_matches(".zs");
+                        .trim_end_matches(".fl");
 
                     item.detail = Some(format!(
                         "{} (auto-import from {})",
@@ -812,7 +812,7 @@ impl ZenScriptLsp {
 
 // ── LSP Protocol ────────────────────────────────────────────────
 
-/// ZenScript keywords and builtins for completion.
+/// Floe keywords and builtins for completion.
 const KEYWORDS: &[(&str, &str)] = &[
     ("const", "const ${1:name} = ${0:value}"),
     (
@@ -843,7 +843,7 @@ const BUILTINS: &[(&str, &str, &str)] = &[
 ];
 
 #[tower_lsp::async_trait]
-impl LanguageServer for ZenScriptLsp {
+impl LanguageServer for FloeLsp {
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
@@ -867,7 +867,7 @@ impl LanguageServer for ZenScriptLsp {
                 ..Default::default()
             },
             server_info: Some(ServerInfo {
-                name: "zenscript-lsp".to_string(),
+                name: "floe-lsp".to_string(),
                 version: Some(env!("CARGO_PKG_VERSION").to_string()),
             }),
         })
@@ -875,7 +875,7 @@ impl LanguageServer for ZenScriptLsp {
 
     async fn initialized(&self, _: InitializedParams) {
         self.client
-            .log_message(MessageType::INFO, "ZenScript LSP initialized")
+            .log_message(MessageType::INFO, "Floe LSP initialized")
             .await;
     }
 
@@ -927,7 +927,7 @@ impl LanguageServer for ZenScriptLsp {
             return Ok(Some(Hover {
                 contents: HoverContents::Markup(MarkupContent {
                     kind: MarkupKind::Markdown,
-                    value: format!("```zenscript\n{}\n```", sym.detail),
+                    value: format!("```floe\n{}\n```", sym.detail),
                 }),
                 range: None,
             }));
@@ -935,19 +935,17 @@ impl LanguageServer for ZenScriptLsp {
 
         // Fallback to builtin hover
         let hover_text = match word {
-            "Ok" => {
-                "```zenscript\nOk(value: T) -> Result<T, E>\n```\nWrap a success value in a Result."
-            }
+            "Ok" => "```floe\nOk(value: T) -> Result<T, E>\n```\nWrap a success value in a Result.",
             "Err" => {
-                "```zenscript\nErr(error: E) -> Result<T, E>\n```\nWrap an error value in a Result."
+                "```floe\nErr(error: E) -> Result<T, E>\n```\nWrap an error value in a Result."
             }
-            "Some" => "```zenscript\nSome(value: T) -> Option<T>\n```\nWrap a value in an Option.",
-            "None" => "```zenscript\nNone -> Option<T>\n```\nRepresents the absence of a value.",
+            "Some" => "```floe\nSome(value: T) -> Option<T>\n```\nWrap a value in an Option.",
+            "None" => "```floe\nNone -> Option<T>\n```\nRepresents the absence of a value.",
             "match" => {
-                "```zenscript\nmatch expr { pattern -> body, ... }\n```\nExhaustive pattern matching expression."
+                "```floe\nmatch expr { pattern -> body, ... }\n```\nExhaustive pattern matching expression."
             }
             "|>" => {
-                "```zenscript\nexpr |> function\n```\nPipe operator: passes left side as first argument to right side."
+                "```floe\nexpr |> function\n```\nPipe operator: passes left side as first argument to right side."
             }
             _ => return Ok(None),
         };
@@ -1016,7 +1014,7 @@ impl LanguageServer for ZenScriptLsp {
                     .path_segments()
                     .and_then(|mut s| s.next_back())
                     .unwrap_or("unknown")
-                    .trim_end_matches(".zs");
+                    .trim_end_matches(".fl");
 
                 let import_edit =
                     format!("import {{ {} }} from \"./{}\"\n", sym.name, relative_path);
@@ -1400,7 +1398,7 @@ pub async fn run_lsp() {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
 
-    let (service, socket) = LspService::new(ZenScriptLsp::new);
+    let (service, socket) = LspService::new(FloeLsp::new);
     Server::new(stdin, stdout, socket).serve(service).await;
 }
 
@@ -1702,7 +1700,7 @@ mod tests {
         assert_eq!(syms[0].return_type_str.as_deref(), Some("Array<T>"));
     }
 
-    // ── Integration tests on jsx_component.zs ──────────────
+    // ── Integration tests on jsx_component.fl ──────────────
 
     fn jsx_component_source() -> &'static str {
         r#"import { useState, JSX } from "react"

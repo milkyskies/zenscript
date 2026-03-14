@@ -2,11 +2,11 @@
 title: Comparison
 ---
 
-How ZenScript compares to other languages in its space.
+How Floe compares to other languages in its space.
 
 ## vs TypeScript
 
-| | TypeScript | ZenScript |
+| | TypeScript | Floe |
 |---|---|---|
 | **Target** | JavaScript | TypeScript |
 | **Null safety** | Optional (`strictNullChecks`) | Enforced (`Option<T>`) |
@@ -18,11 +18,11 @@ How ZenScript compares to other languages in its space.
 | **Escape hatches** | `any`, `as`, `!` | None |
 | **Runtime** | None | None |
 
-ZenScript is TypeScript with the escape hatches removed and functional features added.
+Floe is TypeScript with the escape hatches removed and functional features added.
 
 ## vs Gleam
 
-| | Gleam | ZenScript |
+| | Gleam | Floe |
 |---|---|---|
 | **Target** | Erlang/JS | TypeScript |
 | **Ecosystem** | Hex/npm | npm |
@@ -33,11 +33,11 @@ ZenScript is TypeScript with the escape hatches removed and functional features 
 | **Pattern matching** | Yes | Yes |
 | **Adoption** | New ecosystem | Existing TS ecosystem |
 
-ZenScript borrows Gleam's ideas (pipes, Result, no escape hatches) but targets the TypeScript/React ecosystem.
+Floe borrows Gleam's ideas (pipes, Result, no escape hatches) but targets the TypeScript/React ecosystem.
 
 ## vs Elm
 
-| | Elm | ZenScript |
+| | Elm | Floe |
 |---|---|---|
 | **Target** | JavaScript | TypeScript |
 | **Architecture** | TEA required | Any React pattern |
@@ -46,11 +46,11 @@ ZenScript borrows Gleam's ideas (pipes, Result, no escape hatches) but targets t
 | **JSX** | No (virtual DOM DSL) | Yes |
 | **Community** | Small | TS/React ecosystem |
 
-ZenScript is less opinionated than Elm. It doesn't enforce an architecture — it just makes your code safer.
+Floe is less opinionated than Elm. It doesn't enforce an architecture — it just makes your code safer.
 
 ## vs ReScript
 
-| | ReScript | ZenScript |
+| | ReScript | Floe |
 |---|---|---|
 | **Target** | JavaScript | TypeScript |
 | **Syntax** | OCaml-inspired | TS-inspired |
@@ -58,4 +58,4 @@ ZenScript is less opinionated than Elm. It doesn't enforce an architecture — i
 | **npm interop** | Bindings required | Direct imports |
 | **Output** | JavaScript | TypeScript |
 
-ZenScript's output is TypeScript, not JavaScript. This means the output itself is type-safe and can be checked by `tsc`.
+Floe's output is TypeScript, not JavaScript. This means the output itself is type-safe and can be checked by `tsc`.

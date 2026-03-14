@@ -1,12 +1,12 @@
 {
-  "name": "zenscript",
-  "displayName": "ZenScript",
-  "description": "Language support for ZenScript (.zs) - syntax highlighting, diagnostics, and LSP integration",
+  "name": "floe",
+  "displayName": "Floe",
+  "description": "Language support for Floe (.fl) - syntax highlighting, diagnostics, and LSP integration",
   "version": "0.1.0",
-  "publisher": "zenscript",
+  "publisher": "floe",
   "repository": {
     "type": "git",
-    "url": "https://github.com/milkyskies/zenscript"
+    "url": "https://github.com/milkyskies/floe"
   },
   "engines": {
     "vscode": "^1.75.0"
@@ -15,19 +15,19 @@
     "Programming Languages"
   ],
   "activationEvents": [
-    "onLanguage:zenscript"
+    "onLanguage:floe"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "languages": [
       {
-        "id": "zenscript",
+        "id": "floe",
         "aliases": [
-          "ZenScript",
-          "zenscript"
+          "Floe",
+          "floe"
         ],
         "extensions": [
-          ".zs"
+          ".fl"
         ],
         "configuration": "./language-configuration.json",
         "icon": {
@@ -38,26 +38,26 @@
     ],
     "grammars": [
       {
-        "language": "zenscript",
-        "scopeName": "source.zenscript",
-        "path": "./syntaxes/zenscript.tmLanguage.json"
+        "language": "floe",
+        "scopeName": "source.floe",
+        "path": "./syntaxes/floe.tmLanguage.json"
       }
     ],
     "snippets": [
       {
-        "language": "zenscript",
-        "path": "./snippets/zenscript.json"
+        "language": "floe",
+        "path": "./snippets/floe.json"
       }
     ],
     "configuration": {
-      "title": "ZenScript",
+      "title": "Floe",
       "properties": {
-        "zenscript.serverPath": {
+        "floe.serverPath": {
           "type": "string",
-          "default": "zsc",
-          "description": "Path to the zsc binary"
+          "default": "floe",
+          "description": "Path to the floe binary"
         },
-        "zenscript.trace.server": {
+        "floe.trace.server": {
           "type": "string",
           "enum": [
             "off",
@@ -65,7 +65,7 @@
             "verbose"
           ],
           "default": "off",
-          "description": "Trace communication between VS Code and the ZenScript language server"
+          "description": "Trace communication between VS Code and the Floe language server"
         }
       }
     }

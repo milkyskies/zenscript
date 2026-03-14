@@ -1,10 +1,10 @@
-//! Snapshot tests for ZenScript codegen: .zs fixtures -> TypeScript output.
+//! Snapshot tests for Floe codegen: .fl fixtures -> TypeScript output.
 //!
-//! Each test reads a .zs fixture file, parses + codegen, and compares
+//! Each test reads a .fl fixture file, parses + codegen, and compares
 //! against an insta snapshot. Run `cargo insta review` to accept new snapshots.
 
-use zenscript::codegen::Codegen;
-use zenscript::parser::Parser;
+use floe::codegen::Codegen;
+use floe::parser::Parser;
 
 fn compile(source: &str) -> String {
     let program = Parser::new(source)
@@ -14,7 +14,7 @@ fn compile(source: &str) -> String {
 }
 
 fn compile_fixture(name: &str) -> String {
-    let path = format!("tests/fixtures/{name}.zs");
+    let path = format!("tests/fixtures/{name}.fl");
     let source =
         std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("failed to read fixture {path}"));
     compile(&source)

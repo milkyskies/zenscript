@@ -2,41 +2,41 @@
 title: Vite Plugin
 ---
 
-The `vite-plugin-zenscript` package lets Vite transform `.zs` files during development and production builds.
+The `vite-plugin-floe` package lets Vite transform `.fl` files during development and production builds.
 
 ## Installation
 
 ```bash
-npm install -D vite-plugin-zenscript
+npm install -D vite-plugin-floe
 ```
 
-Make sure `zsc` is installed and available in your PATH.
+Make sure `floe` is installed and available in your PATH.
 
 ## Configuration
 
 ```typescript
 // vite.config.ts
 import { defineConfig } from "vite"
-import zenscript from "vite-plugin-zenscript"
+import floe from "vite-plugin-floe"
 
 export default defineConfig({
-  plugins: [zenscript()],
+  plugins: [floe()],
 })
 ```
 
 ### Options
 
 ```typescript
-zenscript({
-  // Path to the zsc binary (default: "zsc")
-  compiler: "/usr/local/bin/zsc",
+floe({
+  // Path to the floe binary (default: "floe")
+  compiler: "/usr/local/bin/floe",
 })
 ```
 
 ## How It Works
 
-1. Vite encounters a `.zs` import
-2. The plugin calls `zsc` to compile it to TypeScript
+1. Vite encounters a `.fl` import
+2. The plugin calls `floe` to compile it to TypeScript
 3. The TypeScript output is passed to Vite's normal pipeline
 4. Hot Module Replacement works automatically
 
@@ -46,11 +46,11 @@ zenscript({
 // vite.config.ts
 import { defineConfig } from "vite"
 import react from "@vitejs/plugin-react"
-import zenscript from "vite-plugin-zenscript"
+import floe from "vite-plugin-floe"
 
 export default defineConfig({
   plugins: [
-    zenscript(),  // must come before React plugin
+    floe(),  // must come before React plugin
     react(),
   ],
 })
@@ -61,11 +61,11 @@ export default defineConfig({
 ```
 my-app/
   src/
-    App.zs          # ZenScript component
-    utils.zs        # ZenScript utilities
+    App.fl          # Floe component
+    utils.fl        # Floe utilities
     legacy.tsx      # Existing TypeScript (works alongside)
   vite.config.ts
   package.json
 ```
 
-ZenScript files and TypeScript files coexist. Adopt incrementally.
+Floe files and TypeScript files coexist. Adopt incrementally.

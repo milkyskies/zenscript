@@ -2,7 +2,7 @@
 title: Migrating from TypeScript
 ---
 
-ZenScript is designed to be familiar to TypeScript developers. This guide covers the key differences.
+Floe is designed to be familiar to TypeScript developers. This guide covers the key differences.
 
 ## What Stays the Same
 
@@ -23,7 +23,7 @@ ZenScript is designed to be familiar to TypeScript developers. This guide covers
 let count = 0
 count += 1
 
-// ZenScript — no let, no mutation
+// Floe — no let, no mutation
 const count = 0
 const newCount = count + 1
 ```
@@ -34,16 +34,16 @@ const newCount = count + 1
 // TypeScript
 const active: boolean = true
 
-// ZenScript
+// Floe
 const active: bool = true
 ```
 
 ### `==` is `===`
 
-ZenScript's `==` compiles to `===`. There is no loose equality.
+Floe's `==` compiles to `===`. There is no loose equality.
 
-```zenscript
-// ZenScript
+```floe
+// Floe
 x == y    // compiles to: x === y
 x != y    // compiles to: x !== y
 ```
@@ -57,7 +57,7 @@ const result = users
   .map(u => u.name)
   .join(", ")
 
-// ZenScript
+// Floe
 const result = users
   |> filter(u => u.active)
   |> map(u => u.name)
@@ -74,7 +74,7 @@ switch (action.type) {
   default: return state
 }
 
-// ZenScript
+// Floe
 match action.type {
   "increment" -> state + 1,
   "decrement" -> state - 1,
@@ -93,7 +93,7 @@ try {
   return null
 }
 
-// ZenScript
+// Floe
 match await fetchData() {
   Ok(data) -> Some(data),
   Err(_) -> None,
@@ -108,7 +108,7 @@ function find(id: string): User | null {
   return users.find(u => u.id === id) ?? null
 }
 
-// ZenScript
+// Floe
 function find(id: string): Option<User> {
   match users |> find(u => u.id == id) {
     Some(user) -> Some(user),
@@ -134,9 +134,9 @@ function find(id: string): Option<User> {
 
 ## Incremental Adoption
 
-ZenScript compiles to `.ts/.tsx`, so you can adopt it file by file:
+Floe compiles to `.ts/.tsx`, so you can adopt it file by file:
 
-1. Add `zsc` to your project
-2. Write new files as `.zs`
+1. Add `floe` to your project
+2. Write new files as `.fl`
 3. Compile them alongside your existing `.ts` files
 4. Your build tool (Vite, Next.js) treats the output as normal TypeScript

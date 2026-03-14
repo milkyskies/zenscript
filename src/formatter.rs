@@ -8,7 +8,7 @@ use crate::cst::CstParser;
 use crate::lexer::Lexer;
 use crate::syntax::{SyntaxKind, SyntaxNode};
 
-/// Format ZenScript source code.
+/// Format Floe source code.
 pub fn format(source: &str) -> String {
     let tokens = Lexer::new(source).tokenize_with_trivia();
     let parse = CstParser::new(source, tokens).parse();

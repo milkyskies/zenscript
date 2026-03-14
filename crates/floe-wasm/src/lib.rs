@@ -1,10 +1,10 @@
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
-use zenscript::checker::Checker;
-use zenscript::codegen::Codegen;
-use zenscript::diagnostic;
-use zenscript::parser::Parser;
+use floe::checker::Checker;
+use floe::codegen::Codegen;
+use floe::diagnostic;
+use floe::parser::Parser;
 
 /// A diagnostic message returned to JavaScript.
 #[derive(Serialize)]
@@ -16,7 +16,7 @@ pub struct JsDiagnostic {
     pub code: Option<String>,
 }
 
-/// The result of compiling ZenScript source code.
+/// The result of compiling Floe source code.
 #[derive(Serialize)]
 pub struct CompileResult {
     pub output: String,
@@ -25,7 +25,7 @@ pub struct CompileResult {
     pub success: bool,
 }
 
-/// Compile ZenScript source to TypeScript.
+/// Compile Floe source to TypeScript.
 ///
 /// Returns a JSON-serialized `CompileResult` with the output code
 /// and any diagnostics (errors/warnings).
@@ -88,7 +88,7 @@ fn compile_inner(source: &str) -> CompileResult {
     }
 }
 
-/// Check ZenScript source without generating output.
+/// Check Floe source without generating output.
 /// Returns diagnostics only.
 #[wasm_bindgen]
 pub fn check(source: &str) -> JsValue {

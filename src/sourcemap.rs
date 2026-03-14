@@ -1,9 +1,9 @@
-//! Source map generation for ZenScript -> TypeScript compilation.
+//! Source map generation for Floe -> TypeScript compilation.
 //!
 //! Generates [Source Map v3](https://sourcemaps.info/spec.html) JSON that
 //! maps positions in the emitted `.ts`/`.tsx` output back to the original
-//! `.zs` source. This enables debugging in browser devtools with the
-//! original ZenScript source.
+//! `.fl` source. This enables debugging in browser devtools with the
+//! original Floe source.
 
 use serde::Serialize;
 
@@ -251,7 +251,7 @@ mod tests {
 
     #[test]
     fn empty_mappings() {
-        let builder = SourceMapBuilder::new("test.zs");
+        let builder = SourceMapBuilder::new("test.fl");
         let json = builder.build("test.ts", "");
         assert!(json.contains("\"version\":3"));
         assert!(json.contains("\"mappings\":\"\""));
@@ -259,7 +259,7 @@ mod tests {
 
     #[test]
     fn single_mapping() {
-        let mut builder = SourceMapBuilder::new("test.zs");
+        let mut builder = SourceMapBuilder::new("test.fl");
         builder.add_mapping(Mapping {
             gen_line: 0,
             gen_col: 0,
@@ -268,14 +268,14 @@ mod tests {
         });
         let json = builder.build("test.ts", "const x = 1");
         assert!(json.contains("\"version\":3"));
-        assert!(json.contains("\"sources\":[\"test.zs\"]"));
+        assert!(json.contains("\"sources\":[\"test.fl\"]"));
         // AAAA = gen_col:0, source:0, src_line:0, src_col:0
         assert!(json.contains("\"mappings\":\"AAAA\""));
     }
 
     #[test]
     fn multiple_lines() {
-        let mut builder = SourceMapBuilder::new("test.zs");
+        let mut builder = SourceMapBuilder::new("test.fl");
         builder.add_mapping(Mapping {
             gen_line: 0,
             gen_col: 0,
@@ -295,7 +295,7 @@ mod tests {
 
     #[test]
     fn mapping_with_offset() {
-        let mut builder = SourceMapBuilder::new("test.zs");
+        let mut builder = SourceMapBuilder::new("test.fl");
         // Source line 5, col 3 -> generated line 2, col 4
         builder.add_mapping(Mapping {
             gen_line: 2,
@@ -310,7 +310,7 @@ mod tests {
 
     #[test]
     fn multiple_segments_same_line() {
-        let mut builder = SourceMapBuilder::new("test.zs");
+        let mut builder = SourceMapBuilder::new("test.fl");
         builder.add_mapping(Mapping {
             gen_line: 0,
             gen_col: 0,
@@ -332,7 +332,7 @@ mod tests {
 
     #[test]
     fn add_mapping_1based_converts() {
-        let mut builder = SourceMapBuilder::new("test.zs");
+        let mut builder = SourceMapBuilder::new("test.fl");
         builder.add_mapping_1based(1, 1, 1, 1);
         assert_eq!(builder.mappings.len(), 1);
         assert_eq!(builder.mappings[0].gen_line, 0);
@@ -343,7 +343,7 @@ mod tests {
 
     #[test]
     fn source_content_included() {
-        let builder = SourceMapBuilder::new("test.zs");
+        let builder = SourceMapBuilder::new("test.fl");
         let source = "const x = 42\nconst y = 10";
         let json = builder.build("test.ts", source);
         assert!(json.contains("const x = 42"));
@@ -352,7 +352,7 @@ mod tests {
 
     #[test]
     fn build_pretty_is_formatted() {
-        let builder = SourceMapBuilder::new("test.zs");
+        let builder = SourceMapBuilder::new("test.fl");
         let json = builder.build_pretty("test.ts", "");
         assert!(json.contains('\n'));
         assert!(json.contains("  "));
@@ -360,7 +360,7 @@ mod tests {
 
     #[test]
     fn valid_json_output() {
-        let mut builder = SourceMapBuilder::new("hello.zs");
+        let mut builder = SourceMapBuilder::new("hello.fl");
         builder.add_mapping(Mapping {
             gen_line: 0,
             gen_col: 0,
@@ -377,6 +377,6 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed["version"], 3);
         assert_eq!(parsed["file"], "hello.ts");
-        assert_eq!(parsed["sources"][0], "hello.zs");
+        assert_eq!(parsed["sources"][0], "hello.fl");
     }
 }

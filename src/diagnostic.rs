@@ -140,7 +140,7 @@ pub fn from_parse_errors(errors: &[crate::parser::ParseError]) -> Vec<Diagnostic
             if e.message.contains("banned keyword") {
                 if let Some(help_start) = e.message.find(": ") {
                     let help_text = &e.message[help_start + 2..];
-                    diag = diag.with_label("banned in ZenScript").with_help(help_text);
+                    diag = diag.with_label("banned in Floe").with_help(help_text);
                 }
             } else if e.message.contains("expected") {
                 diag = diag.with_label("unexpected token here");
@@ -183,17 +183,17 @@ mod tests {
     #[test]
     fn render_single_error() {
         let diag = Diagnostic::error("unexpected token", Span::new(6, 7, 1, 7)).with_label("here");
-        let output = render_diagnostics("test.zs", "const ? = 42", &[diag]);
+        let output = render_diagnostics("test.fl", "const ? = 42", &[diag]);
         assert!(output.contains("unexpected token"));
-        assert!(output.contains("test.zs"));
+        assert!(output.contains("test.fl"));
     }
 
     #[test]
     fn render_banned_keyword() {
         let diag = Diagnostic::error("banned keyword 'let'", Span::new(0, 3, 1, 1))
-            .with_label("banned in ZenScript")
-            .with_help("Use `const` - all bindings are immutable in ZenScript");
-        let output = render_diagnostics("test.zs", "let x = 42", &[diag]);
+            .with_label("banned in Floe")
+            .with_help("Use `const` - all bindings are immutable in Floe");
+        let output = render_diagnostics("test.fl", "let x = 42", &[diag]);
         assert!(output.contains("banned"));
         assert!(output.contains("const"));
     }
@@ -204,7 +204,7 @@ mod tests {
             Diagnostic::error("first error", Span::new(0, 3, 1, 1)),
             Diagnostic::error("second error", Span::new(10, 13, 1, 11)),
         ];
-        let output = render_diagnostics("test.zs", "let x = 42\nlet y = 20", &diags);
+        let output = render_diagnostics("test.fl", "let x = 42\nlet y = 20", &diags);
         assert!(output.contains("first error"));
         assert!(output.contains("second error"));
     }

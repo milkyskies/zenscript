@@ -24,7 +24,7 @@ impl std::fmt::Display for ParseError {
     }
 }
 
-/// The ZenScript parser. Produces an AST from a token stream.
+/// The Floe parser. Produces an AST from a token stream.
 pub struct Parser {
     tokens: Vec<Token>,
     pos: usize,

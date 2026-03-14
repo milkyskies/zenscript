@@ -2,11 +2,11 @@
 title: Pipes
 ---
 
-The pipe operator `|>` is ZenScript's signature feature. It lets you chain transformations left-to-right, making data flow readable.
+The pipe operator `|>` is Floe's signature feature. It lets you chain transformations left-to-right, making data flow readable.
 
 ## Basic Pipes
 
-```zenscript
+```floe
 // Pipe the left side as the first argument to the right side
 const result = "hello" |> toUpperCase
 // Compiles to: toUpperCase("hello")
@@ -14,7 +14,7 @@ const result = "hello" |> toUpperCase
 
 ## Chaining
 
-```zenscript
+```floe
 const result = users
   |> filter(u => u.active)
   |> map(u => u.name)
@@ -34,12 +34,12 @@ The piped version reads like a recipe: take users, filter, map, sort, join.
 
 When the piped value isn't the first argument, use `_`:
 
-```zenscript
+```floe
 const result = 5 |> add(3, _)
 // Compiles to: add(3, 5)
 ```
 
-```zenscript
+```floe
 const result = value
   |> multiply(_, 2)
   |> add(10, _)
@@ -50,7 +50,7 @@ const result = value
 
 Pipes work with any function, including methods accessed via imports:
 
-```zenscript
+```floe
 import { map, filter, reduce } from "ramda"
 
 const total = orders
@@ -71,7 +71,7 @@ Pipes shine when you have a sequence of transformations. They replace:
 
 ## Three Operators
 
-ZenScript has exactly three arrow-like operators:
+Floe has exactly three arrow-like operators:
 
 ```
 =>  arrow functions    (a) => a + 1

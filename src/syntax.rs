@@ -1,6 +1,6 @@
 use crate::lexer::token::TokenKind;
 
-/// All syntax kinds for the ZenScript CST.
+/// All syntax kinds for the Floe CST.
 ///
 /// Token kinds (from the lexer) and composite node kinds (grammar productions)
 /// share the same enum so rowan can use a single `u16` tag.
@@ -160,7 +160,7 @@ impl From<SyntaxKind> for rowan::SyntaxKind {
     }
 }
 
-/// The language tag for ZenScript's CST.
+/// The language tag for Floe's CST.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ZenLang {}
 

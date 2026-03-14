@@ -2,11 +2,11 @@
 title: Standard Library
 ---
 
-ZenScript ships with built-in functions for common operations. These are known to the compiler and inlined as vanilla TypeScript during codegen — no runtime dependency.
+Floe ships with built-in functions for common operations. These are known to the compiler and inlined as vanilla TypeScript during codegen — no runtime dependency.
 
 All stdlib functions are **pipe-friendly**: the first argument is the data, so they work naturally with `|>`.
 
-```zenscript
+```floe
 [3, 1, 2]
   |> Array.sort
   |> Array.map((n) => n * 10)
@@ -42,7 +42,7 @@ All array functions return new arrays — they never mutate the original.
 
 ### Examples
 
-```zenscript
+```floe
 // Sort returns a new array — original unchanged
 const nums = [3, 1, 2]
 const sorted = Array.sort(nums)     // [1, 2, 3]
@@ -81,7 +81,7 @@ Functions for working with `Option<T>` (`Some(v)` / `None`) values.
 
 ### Examples
 
-```zenscript
+```floe
 // Transform without unwrapping
 const upper = user.nickname
   |> Option.map((n) => String.toUpper(n))
@@ -118,7 +118,7 @@ Functions for working with `Result<T, E>` (`Ok(v)` / `Err(e)`) values.
 
 ### Examples
 
-```zenscript
+```floe
 // Transform success value
 const doubled = fetchCount()
   |> Result.map((n) => n * 2)
@@ -162,13 +162,13 @@ Pipe-friendly string operations.
 
 ### Examples
 
-```zenscript
+```floe
 // Pipe-friendly
 const cleaned = "  Hello, World!  "
   |> String.trim
   |> String.toLower
-  |> String.replace("world", "zenscript")
-// "hello, zenscript!"
+  |> String.replace("world", "floe")
+// "hello, floe!"
 
 // Split and process
 const words = "one,two,three"
@@ -194,7 +194,7 @@ Safe numeric operations. Parsing returns `Result` instead of `NaN`.
 
 ### Examples
 
-```zenscript
+```floe
 // Safe parsing — no more NaN surprises
 const result = "42" |> Number.parse
 // Ok(42)

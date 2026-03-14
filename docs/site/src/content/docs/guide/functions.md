@@ -6,29 +6,29 @@ title: Functions & Const
 
 All bindings are immutable. Use `const`:
 
-```zenscript
-const name = "ZenScript"
+```floe
+const name = "Floe"
 const count = 42
 const active = true
 ```
 
 With type annotations:
 
-```zenscript
-const name: string = "ZenScript"
+```floe
+const name: string = "Floe"
 const count: number = 42
 ```
 
 ### Destructuring
 
-```zenscript
+```floe
 const [first, second] = getItems()
 const { name, age } = getUser()
 ```
 
 ## Functions
 
-```zenscript
+```floe
 function add(a: number, b: number): number {
   return a + b
 }
@@ -36,7 +36,7 @@ function add(a: number, b: number): number {
 
 Exported functions **must** have return type annotations:
 
-```zenscript
+```floe
 export function greet(name: string): string {
   return `Hello, ${name}!`
 }
@@ -44,7 +44,7 @@ export function greet(name: string): string {
 
 ### Default Parameters
 
-```zenscript
+```floe
 function greet(name: string = "world"): string {
   return `Hello, ${name}!`
 }
@@ -52,20 +52,20 @@ function greet(name: string = "world"): string {
 
 ### Arrow Functions
 
-```zenscript
+```floe
 const double = (x: number) => x * 2
 const add = (a: number, b: number) => a + b
 ```
 
 Single-argument arrows don't need parentheses:
 
-```zenscript
+```floe
 const double = x => x * 2
 ```
 
 ### Async Functions
 
-```zenscript
+```floe
 async function fetchUser(id: string): Promise<User> {
   const response = await fetch(`/api/users/${id}`)
   return await response.json()

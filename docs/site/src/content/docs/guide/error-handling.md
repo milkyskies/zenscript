@@ -2,11 +2,11 @@
 title: Error Handling
 ---
 
-ZenScript replaces exceptions with `Result<T, E>` and replaces null checks with `Option<T>`. Every error path is visible in the type system.
+Floe replaces exceptions with `Result<T, E>` and replaces null checks with `Option<T>`. Every error path is visible in the type system.
 
 ## Result
 
-```zenscript
+```floe
 function divide(a: number, b: number): Result<number, string> {
   match b {
     0 -> Err("division by zero"),
@@ -17,7 +17,7 @@ function divide(a: number, b: number): Result<number, string> {
 
 You **must** handle the result:
 
-```zenscript
+```floe
 match divide(10, 3) {
   Ok(value) -> console.log(value),
   Err(msg) -> console.error(msg),
@@ -26,7 +26,7 @@ match divide(10, 3) {
 
 Ignoring a `Result` is a compile error:
 
-```zenscript
+```floe
 // Error: Result must be handled
 divide(10, 3)
 ```
@@ -35,7 +35,7 @@ divide(10, 3)
 
 Propagate errors early instead of nesting matches:
 
-```zenscript
+```floe
 function processOrder(id: string): Result<Receipt, Error> {
   const order = fetchOrder(id)?       // returns Err early if it fails
   const payment = chargeCard(order)?  // same here
@@ -51,7 +51,7 @@ Using `?` outside a function that returns `Result` is a compile error.
 
 ## Option
 
-```zenscript
+```floe
 function findUser(id: string): Option<User> {
   match users |> find(u => u.id == id) {
     Some(user) -> Some(user),
@@ -62,7 +62,7 @@ function findUser(id: string): Option<User> {
 
 Handle with match:
 
-```zenscript
+```floe
 match findUser("123") {
   Some(user) -> greet(user.name),
   None -> greet("stranger"),
@@ -71,23 +71,23 @@ match findUser("123") {
 
 ## npm Interop
 
-When importing from npm packages, ZenScript automatically wraps nullable types:
+When importing from npm packages, Floe automatically wraps nullable types:
 
-```zenscript
+```floe
 import { getElementById } from "some-dom-lib"
 // .d.ts says: getElementById(id: string): Element | null
-// ZenScript sees: getElementById(id: string): Option<Element>
+// Floe sees: getElementById(id: string): Option<Element>
 ```
 
 The boundary wrapping also converts:
 - `T | undefined` to `Option<T>`
 - `any` to `unknown`
 
-This means npm libraries work transparently with ZenScript's type system.
+This means npm libraries work transparently with Floe's type system.
 
 ## Comparison with TypeScript
 
-| TypeScript | ZenScript |
+| TypeScript | Floe |
 |---|---|
 | `T \| null` | `Option<T>` |
 | `try/catch` | `Result<T, E>` |

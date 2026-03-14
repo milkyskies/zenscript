@@ -4,7 +4,7 @@ pub mod token;
 use span::Span;
 use token::{Token, TokenKind};
 
-/// The ZenScript lexer. Converts source text into a sequence of tokens.
+/// The Floe lexer. Converts source text into a sequence of tokens.
 pub struct Lexer<'src> {
     /// The full source text being lexed.
     source: &'src str,
@@ -223,7 +223,7 @@ impl<'src> Lexer<'src> {
                     self.advance();
                     TokenKind::AmpAmp
                 } else {
-                    // Single `&` is not used in ZenScript — treat as unknown
+                    // Single `&` is not used in Floe — treat as unknown
                     TokenKind::Identifier("&".to_string())
                 }
             }

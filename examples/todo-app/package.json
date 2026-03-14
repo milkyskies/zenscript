@@ -1,5 +1,5 @@
 {
-  "name": "zenscript-todo-app",
+  "name": "floe-todo-app",
   "private": true,
   "type": "module",
   "scripts": {
@@ -21,6 +21,6 @@
     "tailwindcss": "^4.1.0",
     "typescript": "^5.8.0",
     "vite": "^6.0.0",
-    "vite-plugin-zenscript": "file:../../integrations/vite-plugin-zenscript"
+    "vite-plugin-floe": "file:../../integrations/vite-plugin-floe"
   }
 }
