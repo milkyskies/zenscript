@@ -206,6 +206,16 @@ impl<'src> Lexer<'src> {
                         value.push(escaped as char);
                     }
                 }
+            } else if ch >= 0x80 {
+                // Multi-byte UTF-8: extract the full character from source
+                let char_start = self.pos - 1;
+                while !self.is_at_end()
+                    && self.bytes[self.pos] >= 0x80
+                    && self.bytes[self.pos] < 0xC0
+                {
+                    self.advance();
+                }
+                value.push_str(&self.source[char_start..self.pos]);
             } else {
                 value.push(ch as char);
             }
@@ -266,7 +276,19 @@ impl<'src> Lexer<'src> {
                     }
                 }
             } else {
-                current_raw.push(self.advance() as char);
+                let ch = self.advance();
+                if ch >= 0x80 {
+                    let char_start = self.pos - 1;
+                    while !self.is_at_end()
+                        && self.bytes[self.pos] >= 0x80
+                        && self.bytes[self.pos] < 0xC0
+                    {
+                        self.advance();
+                    }
+                    current_raw.push_str(&self.source[char_start..self.pos]);
+                } else {
+                    current_raw.push(ch as char);
+                }
             }
         }
 

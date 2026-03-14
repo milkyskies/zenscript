@@ -931,7 +931,12 @@ impl Codegen {
 
     fn emit_match_body(&mut self, subject: &Expr, pattern: &Pattern, body: &Expr) {
         // For patterns with bindings, wrap in an IIFE to introduce variables
-        let bindings = collect_bindings(subject, pattern, &|s| self.expr_to_string(s));
+        let bindings = collect_bindings(
+            subject,
+            pattern,
+            &|s| self.expr_to_string(s),
+            &self.variant_info,
+        );
         let needs_iife = !bindings.is_empty() || matches!(body.kind, ExprKind::Block(_));
         if needs_iife {
             self.push("(() => { ");
@@ -1261,9 +1266,10 @@ fn collect_bindings(
     subject: &Expr,
     pattern: &Pattern,
     expr_to_str: &dyn Fn(&Expr) -> String,
+    variant_info: &HashMap<String, (String, Vec<String>)>,
 ) -> Vec<(String, String)> {
     let mut bindings = Vec::new();
-    collect_bindings_inner(subject, pattern, expr_to_str, &mut bindings);
+    collect_bindings_inner(subject, pattern, expr_to_str, variant_info, &mut bindings);
     bindings
 }
 
@@ -1271,15 +1277,22 @@ fn collect_bindings_inner(
     subject: &Expr,
     pattern: &Pattern,
     expr_to_str: &dyn Fn(&Expr) -> String,
+    variant_info: &HashMap<String, (String, Vec<String>)>,
     bindings: &mut Vec<(String, String)>,
 ) {
     match &pattern.kind {
         PatternKind::Binding(name) => {
             bindings.push((name.clone(), expr_to_str(subject)));
         }
-        PatternKind::Variant { fields, .. } => {
+        PatternKind::Variant { name, fields } => {
+            // Look up field names from variant definition
+            let field_names = variant_info.get(name.as_str()).map(|(_, names)| names);
             for (i, field_pat) in fields.iter().enumerate() {
-                let field_access = if fields.len() == 1 {
+                let field_access = if let Some(names) = field_names
+                    && let Some(fname) = names.get(i)
+                {
+                    format!("{}.{}", expr_to_str(subject), fname)
+                } else if fields.len() == 1 {
                     format!("{}.value", expr_to_str(subject))
                 } else {
                     format!("{}._{i}", expr_to_str(subject))
@@ -1288,7 +1301,7 @@ fn collect_bindings_inner(
                     kind: ExprKind::Identifier(field_access.clone()),
                     span: subject.span,
                 };
-                collect_bindings_inner(&field_expr, field_pat, expr_to_str, bindings);
+                collect_bindings_inner(&field_expr, field_pat, expr_to_str, variant_info, bindings);
             }
         }
         PatternKind::Record { fields } => {
@@ -1298,7 +1311,7 @@ fn collect_bindings_inner(
                     kind: ExprKind::Identifier(field_access.clone()),
                     span: subject.span,
                 };
-                collect_bindings_inner(&field_expr, pat, expr_to_str, bindings);
+                collect_bindings_inner(&field_expr, pat, expr_to_str, variant_info, bindings);
             }
         }
         PatternKind::Wildcard | PatternKind::Literal(_) | PatternKind::Range { .. } => {}
