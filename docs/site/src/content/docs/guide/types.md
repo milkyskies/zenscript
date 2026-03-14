@@ -44,6 +44,33 @@ type Color =
   | Custom(r: number, g: number, b: number)
 ```
 
+### Qualified Variants
+
+When a variant name could be ambiguous (e.g., multiple unions have a variant called `Active`), use qualified syntax:
+
+```floe
+type Filter = All | Active | Completed
+
+const f = Filter.All
+const g = Filter.Active
+```
+
+This is especially useful when passing variants as arguments:
+
+```floe
+setFilter(Filter.Completed)
+```
+
+Unambiguous variants can still be used without qualification:
+
+```floe
+match filter {
+  All -> showAll(),
+  Active -> showActive(),
+  Completed -> showCompleted(),
+}
+```
+
 ## Result and Option
 
 ### Result

@@ -211,3 +211,88 @@ match Number.parse(input) {
 // Clamp to range
 const score = rawScore |> Number.clamp(0, 100)
 ```
+
+---
+
+## Console
+
+Output functions for debugging. These compile directly to their JavaScript `console` equivalents.
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `Console.log` | `T -> ()` | Log a value |
+| `Console.warn` | `T -> ()` | Log a warning |
+| `Console.error` | `T -> ()` | Log an error |
+| `Console.info` | `T -> ()` | Log info |
+| `Console.debug` | `T -> ()` | Log debug info |
+| `Console.time` | `string -> ()` | Start a named timer |
+| `Console.timeEnd` | `string -> ()` | End a named timer and print duration |
+
+### Examples
+
+```floe
+Console.log("hello")
+Console.warn("careful")
+
+// Timing
+Console.time("fetch")
+const data = try fetchData()?
+Console.timeEnd("fetch")
+```
+
+---
+
+## Math
+
+Standard math functions. Compile directly to JavaScript `Math` methods.
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `Math.floor` | `number -> number` | Round down |
+| `Math.ceil` | `number -> number` | Round up |
+| `Math.round` | `number -> number` | Round to nearest integer |
+| `Math.abs` | `number -> number` | Absolute value |
+| `Math.min` | `number, number -> number` | Smaller of two values |
+| `Math.max` | `number, number -> number` | Larger of two values |
+| `Math.pow` | `number, number -> number` | Exponentiation |
+| `Math.sqrt` | `number -> number` | Square root |
+| `Math.sign` | `number -> number` | Sign (-1, 0, or 1) |
+| `Math.trunc` | `number -> number` | Remove fractional digits |
+| `Math.log` | `number -> number` | Natural logarithm |
+| `Math.sin` | `number -> number` | Sine |
+| `Math.cos` | `number -> number` | Cosine |
+| `Math.tan` | `number -> number` | Tangent |
+
+### Examples
+
+```floe
+const rounded = 3.7 |> Math.floor    // 3
+const clamped = Math.max(0, Math.min(score, 100))
+const hyp = Math.sqrt(a * a + b * b)
+```
+
+---
+
+## JSON
+
+JSON serialization and parsing. `JSON.parse` returns `Result` instead of throwing.
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `JSON.stringify` | `T -> string` | Serialize a value to JSON |
+| `JSON.parse` | `string -> Result<T, ParseError>` | Parse JSON string safely |
+
+### Examples
+
+```floe
+const json = user |> JSON.stringify
+// '{"name":"Alice","age":30}'
+
+const parsed = json |> JSON.parse
+// Ok({name: "Alice", age: 30})
+
+match JSON.parse(input) {
+  Ok(data) -> process(data),
+  Err(e) -> Console.error(e),
+}
+```

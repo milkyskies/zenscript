@@ -64,6 +64,22 @@ type UserId = Brand<string, "UserId">
 opaque type Email = string
 ```
 
+### For Block
+
+```floe
+for Type {
+  fn method(self) -> ReturnType {
+    body
+  }
+}
+
+for Array<User> {
+  fn adults(self) -> Array<User> {
+    self |> Array.filter(.age >= 18)
+  }
+}
+```
+
 ## Expressions
 
 ### Literals
@@ -126,13 +142,22 @@ Constructor(a: 1)  // record constructor
 Constructor(..existing, a: 2)  // spread + update
 ```
 
-### Built-in Constructors
+### Constructors
 
 ```floe
 Ok(value)     // Result success
 Err(error)    // Result failure
 Some(value)   // Option present
 None          // Option absent
+```
+
+### Qualified Variants
+
+```floe
+Filter.All              // zero-arg variant
+Filter.Active           // zero-arg variant
+Option.Some(value)      // variant with data
+Result.Ok(value)        // variant with data
 ```
 
 ### Anonymous Functions (Lambdas)
@@ -181,7 +206,7 @@ import { a, b, c } from "module"
 ```floe
 42                    // literal
 "hello"               // string literal
-true                  // booleanean literal
+true                  // boolean literal
 x                     // binding
 _                     // wildcard
 Ok(x)                 // variant
