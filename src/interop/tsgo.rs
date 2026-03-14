@@ -93,6 +93,9 @@ struct ProbeCall {
     type_args: Vec<String>,
     /// Arguments as TypeScript expression strings
     args: Vec<String>,
+    /// The const binding (for mapping back to variable names)
+    #[allow(dead_code)]
+    binding: ConstBinding,
 }
 
 /// Information about a plain re-export from an npm import.
@@ -101,6 +104,37 @@ struct ProbeReexport {
     index: usize,
     /// The imported symbol name
     name: String,
+}
+
+/// Collect all const declarations from a program, including those inside function bodies.
+fn collect_all_consts(program: &Program) -> Vec<&ConstDecl> {
+    let mut consts = Vec::new();
+    for item in &program.items {
+        match &item.kind {
+            ItemKind::Const(decl) => consts.push(decl),
+            ItemKind::Function(func) => collect_consts_from_expr(&func.body, &mut consts),
+            ItemKind::ForBlock(block) => {
+                for func in &block.functions {
+                    collect_consts_from_expr(&func.body, &mut consts);
+                }
+            }
+            _ => {}
+        }
+    }
+    consts
+}
+
+/// Recursively collect const declarations from an expression (function body, block, etc.)
+fn collect_consts_from_expr<'a>(expr: &'a Expr, consts: &mut Vec<&'a ConstDecl>) {
+    if let ExprKind::Block(stmts) = &expr.kind {
+        for stmt in stmts {
+            match &stmt.kind {
+                ItemKind::Const(decl) => consts.push(decl),
+                ItemKind::Function(func) => collect_consts_from_expr(&func.body, consts),
+                _ => {}
+            }
+        }
+    }
 }
 
 /// Generate the TypeScript probe file content from a Floe program.
@@ -163,50 +197,32 @@ fn generate_probe(program: &Program) -> String {
     let mut probe_calls: Vec<ProbeCall> = Vec::new();
     let mut probe_reexports: Vec<ProbeReexport> = Vec::new();
 
-    // Scan const declarations for calls to imported functions
-    for item in &program.items {
-        if let ItemKind::Const(decl) = &item.kind {
-            if let ExprKind::Call {
-                callee,
-                type_args,
-                args,
-            } = &decl.value.kind
-            {
-                let callee_name = expr_to_callee_name(callee);
-                if let Some(name) = &callee_name
-                    && imported_names.contains_key(name)
-                    && !type_args.is_empty()
-                {
-                    // This is a call to an imported function with type args
-                    let ts_type_args: Vec<String> = type_args.iter().map(type_expr_to_ts).collect();
-                    let ts_args: Vec<String> = args.iter().map(arg_to_ts_approx).collect();
-                    probe_calls.push(ProbeCall {
-                        index: probe_index,
-                        callee: name.clone(),
-                        type_args: ts_type_args,
-                        args: ts_args,
-                    });
-                    probe_index += 1;
-                    continue;
-                }
-            }
+    // Collect all const declarations from all scopes (top-level + function bodies)
+    let all_consts = collect_all_consts(program);
 
-            // For calls without type args, we still need to probe to get return types
-            if let ExprKind::Call { callee, args, .. } = &decl.value.kind {
-                let callee_name = expr_to_callee_name(callee);
-                if let Some(name) = &callee_name
-                    && imported_names.contains_key(name)
-                {
-                    let ts_args: Vec<String> = args.iter().map(arg_to_ts_approx).collect();
-                    probe_calls.push(ProbeCall {
-                        index: probe_index,
-                        callee: name.clone(),
-                        type_args: Vec::new(),
-                        args: ts_args,
-                    });
-                    probe_index += 1;
-                    continue;
-                }
+    // Scan const declarations for calls to imported functions
+    for decl in &all_consts {
+        if let ExprKind::Call {
+            callee,
+            type_args,
+            args,
+        } = &decl.value.kind
+        {
+            let callee_name = expr_to_callee_name(callee);
+            if let Some(name) = &callee_name
+                && imported_names.contains_key(name)
+            {
+                let ts_type_args: Vec<String> = type_args.iter().map(type_expr_to_ts).collect();
+                let ts_args: Vec<String> = args.iter().map(arg_to_ts_approx).collect();
+                probe_calls.push(ProbeCall {
+                    index: probe_index,
+                    callee: name.clone(),
+                    type_args: ts_type_args,
+                    args: ts_args,
+                    binding: decl.binding.clone(),
+                });
+                probe_index += 1;
+                continue;
             }
         }
     }
@@ -527,62 +543,30 @@ fn build_specifier_map(
         }
     }
 
-    // Track which names were used in calls (same logic as generate_probe)
-    let mut called_names = std::collections::HashSet::new();
+    // Use the same recursive const collection as generate_probe
+    let all_consts = collect_all_consts(program);
 
     // Map call probe results
-    for item in &program.items {
-        if let ItemKind::Const(decl) = &item.kind {
-            if let ExprKind::Call {
-                callee, type_args, ..
-            } = &decl.value.kind
+    for decl in &all_consts {
+        if let ExprKind::Call { callee, .. } = &decl.value.kind {
+            let callee_name = expr_to_callee_name(callee);
+            if let Some(name) = &callee_name
+                && imported_names.contains_key(name)
             {
-                let callee_name = expr_to_callee_name(callee);
-                if let Some(name) = &callee_name
-                    && imported_names.contains_key(name)
-                    && !type_args.is_empty()
-                {
-                    called_names.insert(name.clone());
-                    // Find the corresponding probe export
-                    let probe_name = format!("_r{probe_index}");
-                    if let Some(export) = probe_exports.iter().find(|e| e.name == probe_name) {
-                        let specifier = &imported_names[name];
-                        // Create a DtsExport with the original const name
-                        let binding_name = const_binding_name(&decl.binding);
-                        result
-                            .entry(specifier.clone())
-                            .or_default()
-                            .push(DtsExport {
-                                name: format!("__probe_{}", binding_name),
-                                ts_type: export.ts_type.clone(),
-                            });
-                    }
-                    probe_index += 1;
-                    continue;
+                let probe_name = format!("_r{probe_index}");
+                if let Some(export) = probe_exports.iter().find(|e| e.name == probe_name) {
+                    let specifier = &imported_names[name];
+                    let binding_name = const_binding_name(&decl.binding);
+                    result
+                        .entry(specifier.clone())
+                        .or_default()
+                        .push(DtsExport {
+                            name: format!("__probe_{}", binding_name),
+                            ts_type: export.ts_type.clone(),
+                        });
                 }
-            }
-
-            if let ExprKind::Call { callee, .. } = &decl.value.kind {
-                let callee_name = expr_to_callee_name(callee);
-                if let Some(name) = &callee_name
-                    && imported_names.contains_key(name)
-                {
-                    called_names.insert(name.clone());
-                    let probe_name = format!("_r{probe_index}");
-                    if let Some(export) = probe_exports.iter().find(|e| e.name == probe_name) {
-                        let specifier = &imported_names[name];
-                        let binding_name = const_binding_name(&decl.binding);
-                        result
-                            .entry(specifier.clone())
-                            .or_default()
-                            .push(DtsExport {
-                                name: format!("__probe_{}", binding_name),
-                                ts_type: export.ts_type.clone(),
-                            });
-                    }
-                    probe_index += 1;
-                    continue;
-                }
+                probe_index += 1;
+                continue;
             }
         }
     }
