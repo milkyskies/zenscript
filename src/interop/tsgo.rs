@@ -60,12 +60,15 @@ impl TsgoResolver {
         let probe_dir = tmp.path();
 
         // Run tsgo
+        eprintln!("[tsgo] probe content:\n{probe}");
         let dts_content = match run_tsgo(probe_dir) {
             Ok(content) => content,
-            Err(_) => {
+            Err(e) => {
+                eprintln!("[tsgo] error: {e}");
                 return HashMap::new();
             }
         };
+        eprintln!("[tsgo] output .d.ts:\n{dts_content}");
 
         // Parse the output .d.ts
         let exports = match parse_dts_exports_from_str(&dts_content) {
@@ -674,6 +677,50 @@ const [count, setCount] = useState(0)"#;
             assert!(ts.contains("done: boolean;"));
         } else {
             panic!("expected type decl");
+        }
+    }
+
+    #[test]
+    fn resolve_imports_with_real_react() {
+        // Integration test: requires node_modules with react installed
+        let todo_app_dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/todo-app");
+        if !todo_app_dir.join("node_modules").is_dir() {
+            eprintln!("Skipping: no node_modules in todo-app");
+            return;
+        }
+
+        let source = r#"
+import trusted { useState } from "react"
+type Todo = { text: string, done: bool }
+const [todos, setTodos] = useState<Array<Todo>>([])
+const [input, setInput] = useState("")
+"#;
+        let program = Parser::new(source).parse_program().unwrap();
+        let mut resolver = TsgoResolver::new(&todo_app_dir);
+        let result = resolver.resolve_imports(&program);
+
+        eprintln!("tsgo result keys: {:?}", result.keys().collect::<Vec<_>>());
+        if let Some(react_exports) = result.get("react") {
+            for export in react_exports {
+                eprintln!("  export: {} -> {:?}", export.name, export.ts_type);
+            }
+            // Should have useState function type
+            assert!(
+                react_exports.iter().any(|e| e.name == "useState"),
+                "should have useState export"
+            );
+            // Should have probe results for the calls
+            assert!(
+                react_exports.iter().any(|e| e.name.starts_with("__probe_")),
+                "should have probe call results, got: {:?}",
+                react_exports.iter().map(|e| &e.name).collect::<Vec<_>>()
+            );
+        } else {
+            panic!(
+                "should have react exports, got keys: {:?}",
+                result.keys().collect::<Vec<_>>()
+            );
         }
     }
 

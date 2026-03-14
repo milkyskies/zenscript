@@ -387,6 +387,36 @@ fn convert_oxc_type(ty: &OxcTSType<'_>) -> TsType {
             _ => TsType::Named("literal".to_string()),
         },
 
+        // import("module").Name or import("module").Name<Args>
+        OxcTSType::TSImportType(import_ty) => {
+            if let Some(ref qualifier) = import_ty.qualifier {
+                let name = import_qualifier_to_string(qualifier);
+                if let Some(ref type_args) = import_ty.type_arguments {
+                    let args: Vec<TsType> = type_args
+                        .params
+                        .iter()
+                        .map(|t| convert_oxc_type(t))
+                        .collect();
+                    TsType::Generic { name, args }
+                } else {
+                    TsType::Named(name)
+                }
+            } else {
+                TsType::Named("unknown".to_string())
+            }
+        }
+
+        // typeof expression: typeof useState
+        OxcTSType::TSTypeQuery(query) => {
+            let name = match &query.expr_name {
+                oxc_ast::ast::TSTypeQueryExprName::IdentifierReference(ident) => {
+                    ident.name.to_string()
+                }
+                _ => "unknown".to_string(),
+            };
+            TsType::Named(format!("typeof {name}"))
+        }
+
         // Everything else
         _ => TsType::Named("unknown".to_string()),
     }
@@ -401,6 +431,16 @@ fn ts_type_name_to_string(name: &TSTypeName<'_>) -> String {
             format!("{}.{}", left, qn.right.name)
         }
         TSTypeName::ThisExpression(_) => "this".to_string(),
+    }
+}
+
+/// Convert a TSImportTypeQualifier to a string.
+fn import_qualifier_to_string(q: &oxc_ast::ast::TSImportTypeQualifier<'_>) -> String {
+    match q {
+        oxc_ast::ast::TSImportTypeQualifier::Identifier(ident) => ident.name.to_string(),
+        oxc_ast::ast::TSImportTypeQualifier::QualifiedName(qn) => {
+            format!("{}.{}", import_qualifier_to_string(&qn.left), qn.right.name)
+        }
     }
 }
 
@@ -490,6 +530,32 @@ fn convert_tuple_element(el: &TSTupleElement<'_>) -> TsType {
             TsType::Object(fields)
         }
         TSTupleElement::TSParenthesizedType(paren) => convert_oxc_type(&paren.type_annotation),
+        TSTupleElement::TSImportType(import_ty) => {
+            if let Some(ref qualifier) = import_ty.qualifier {
+                let name = import_qualifier_to_string(qualifier);
+                if let Some(ref type_args) = import_ty.type_arguments {
+                    let args: Vec<TsType> = type_args
+                        .params
+                        .iter()
+                        .map(|t| convert_oxc_type(t))
+                        .collect();
+                    TsType::Generic { name, args }
+                } else {
+                    TsType::Named(name)
+                }
+            } else {
+                TsType::Named("unknown".to_string())
+            }
+        }
+        TSTupleElement::TSTypeQuery(query) => {
+            let name = match &query.expr_name {
+                oxc_ast::ast::TSTypeQueryExprName::IdentifierReference(ident) => {
+                    ident.name.to_string()
+                }
+                _ => "unknown".to_string(),
+            };
+            TsType::Named(format!("typeof {name}"))
+        }
         TSTupleElement::TSLiteralType(lit) => match &lit.literal {
             oxc_ast::ast::TSLiteral::StringLiteral(_) => TsType::Primitive("string".to_string()),
             oxc_ast::ast::TSLiteral::NumericLiteral(_) => TsType::Primitive("number".to_string()),
