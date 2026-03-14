@@ -20,6 +20,52 @@
 
 Do **not** use parser generators (pest, nom, lalrpop). The parser is handwritten recursive descent for better error recovery and LSP integration.
 
+## Releases & Versioning
+
+This project uses **conventional commits** + **release-please** for automated versioning and releases.
+
+### How it works
+
+1. **You write commits with prefixes:**
+
+   | Prefix | Version bump | Example |
+   |---|---|---|
+   | `fix:` | patch (0.1.0 -> 0.1.1) | `fix: crash on nested match` |
+   | `feat:` | minor (0.1.0 -> 0.2.0) | `feat: add pipe lambdas` |
+   | `feat!:` | major (0.1.0 -> 1.0.0) | `feat!: remove arrow functions` |
+   | `chore:`, `docs:`, `ci:`, `refactor:`, `test:` | no bump | `docs: update README` |
+
+2. **release-please watches main** and auto-opens a "Release PR" that:
+   - Bumps the version in `Cargo.toml` based on commit prefixes
+   - Updates `CHANGELOG.md` with entries generated from commit messages
+   - Title looks like `chore(main): release 0.2.0`
+
+3. **Merging the Release PR** creates a git tag (`v0.2.0`) and a GitHub Release.
+
+4. **The tag triggers the release workflow** which:
+   - Cross-compiles binaries for macOS (arm64 + x86), Linux (x86 + arm64), Windows
+   - Uploads them as assets on the GitHub Release
+
+### What you need to do
+
+- Write meaningful conventional commit messages (the CHANGELOG is generated from them)
+- Periodically merge the Release PR that release-please opens
+- That's it - everything else is automated
+
+### Config files
+
+| File | Purpose |
+|---|---|
+| `.github/release-please-config.json` | release-please settings (release type, extra files to bump) |
+| `.github/release-please-manifest.json` | current version tracking |
+| `.github/workflows/release-please.yml` | workflow that opens Release PRs |
+| `.github/workflows/release.yml` | workflow that builds binaries on tag push |
+| `CHANGELOG.md` | auto-maintained changelog |
+
+### Pre-1.0 strategy
+
+While pre-1.0, breaking changes bump minor (0.1 -> 0.2) not major. Go to 1.0.0 when the language syntax is stable and people are using it in real projects.
+
 <!-- glb-agent-instructions -->
 ## Task Tracking with glb
 
