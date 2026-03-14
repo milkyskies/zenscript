@@ -45,6 +45,10 @@ pub enum TokenKind {
     Await,
     If,
     Else,
+    /// `for` — for block keyword (grouping functions under a type)
+    For,
+    /// `self` — explicit receiver parameter in for blocks
+    SelfKw,
 
     // Built-in type constructors
     Ok,
@@ -227,6 +231,8 @@ pub fn lookup_keyword(word: &str) -> Option<TokenKind> {
         "await" => Some(TokenKind::Await),
         "if" => Some(TokenKind::If),
         "else" => Some(TokenKind::Else),
+        "for" => Some(TokenKind::For),
+        "self" => Some(TokenKind::SelfKw),
         "true" => Some(TokenKind::Bool(true)),
         "false" => Some(TokenKind::Bool(false)),
 

@@ -144,6 +144,10 @@ impl Parser {
                 decl.exported = exported;
                 ItemKind::TypeDecl(decl)
             }
+            TokenKind::For if !exported => {
+                let block = self.parse_for_block()?;
+                ItemKind::ForBlock(block)
+            }
             TokenKind::Async if self.peek_kind() == Some(&TokenKind::Fn) => {
                 let mut decl = self.parse_function_decl()?;
                 decl.exported = exported;
@@ -454,6 +458,93 @@ impl Parser {
         })
     }
 
+    // ── For Blocks ───────────────────────────────────────────────
+
+    fn parse_for_block(&mut self) -> Result<ForBlock, ParseError> {
+        let start_span = self.current_span();
+        self.expect(&TokenKind::For)?;
+
+        let type_name = self.parse_type_expr()?;
+
+        self.expect(&TokenKind::LeftBrace)?;
+
+        let mut functions = Vec::new();
+        while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+            if self.check(&TokenKind::Fn) || self.check(&TokenKind::Async) {
+                let decl = self.parse_for_block_function()?;
+                functions.push(decl);
+            } else {
+                return Err(self.error("expected `fn` inside for block"));
+            }
+        }
+
+        self.expect(&TokenKind::RightBrace)?;
+        let end_span = self.previous_span();
+
+        Ok(ForBlock {
+            type_name,
+            functions,
+            span: self.merge_spans(start_span, end_span),
+        })
+    }
+
+    /// Parse a function declaration inside a `for` block.
+    /// `self` parameters get their type inferred from the `for` block's type.
+    fn parse_for_block_function(&mut self) -> Result<FunctionDecl, ParseError> {
+        let async_fn = if self.check(&TokenKind::Async) {
+            self.advance();
+            true
+        } else {
+            false
+        };
+
+        self.expect(&TokenKind::Fn)?;
+        let name = self.expect_identifier()?;
+
+        self.expect(&TokenKind::LeftParen)?;
+        let params = self.parse_comma_separated(|p| p.parse_for_block_param())?;
+        self.expect(&TokenKind::RightParen)?;
+
+        let return_type = if self.check(&TokenKind::ThinArrow) {
+            self.advance();
+            Some(self.parse_type_expr()?)
+        } else {
+            Option::None
+        };
+
+        let body = self.parse_block_expr()?;
+
+        Ok(FunctionDecl {
+            exported: false,
+            async_fn,
+            name,
+            params,
+            return_type,
+            body: Box::new(body),
+        })
+    }
+
+    /// Parse a parameter inside a `for` block function.
+    /// Handles `self` as a special parameter name (no type annotation needed).
+    fn parse_for_block_param(&mut self) -> Result<Param, ParseError> {
+        let start_span = self.current_span();
+
+        // Handle `self` keyword as parameter
+        if self.check(&TokenKind::SelfKw) {
+            self.advance();
+            let end_span = self.previous_span();
+            return Ok(Param {
+                name: "self".to_string(),
+                type_ann: Option::None, // type inferred from for block
+                default: Option::None,
+                span: self.merge_spans(start_span, end_span),
+            });
+        }
+
+        // Regular parameter
+        self.parse_param()
+    }
+
     // ── Type Expressions ─────────────────────────────────────────
 
     fn parse_type_expr(&mut self) -> Result<TypeExpr, ParseError> {
@@ -761,6 +852,7 @@ impl Parser {
                 | TokenKind::Import
                 | TokenKind::Type
                 | TokenKind::Opaque
+                | TokenKind::For
                 | TokenKind::Return => return,
                 _ => {
                     self.advance();

@@ -1,0 +1,25 @@
+type User = {
+  name: string,
+  age: number,
+  active: bool
+}
+
+for User {
+  fn display(self) -> string {
+    `${self.name} (${self.age})`
+  }
+
+  fn isAdult(self) -> bool {
+    self.age >= 18
+  }
+
+  fn greet(self, greeting: string) -> string {
+    `${greeting}, ${self.name}!`
+  }
+}
+
+for Array<User> {
+  fn adults(self) -> Array<User> {
+    self |> Array.filter(.age >= 18)
+  }
+}

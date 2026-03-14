@@ -204,6 +204,8 @@ impl Parser {
             TokenKind::Await => Some("await".into()),
             TokenKind::If => Some("if".into()),
             TokenKind::Else => Some("else".into()),
+            TokenKind::For => Some("for".into()),
+            TokenKind::SelfKw => Some("self".into()),
             TokenKind::Ok => Some("Ok".into()),
             TokenKind::Err => Some("Err".into()),
             TokenKind::Some => Some("Some".into()),

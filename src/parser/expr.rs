@@ -551,6 +551,15 @@ impl Parser {
                 })
             }
 
+            // `self` keyword — treat as identifier in expression context
+            TokenKind::SelfKw => {
+                self.advance();
+                Ok(Expr {
+                    kind: ExprKind::Identifier("self".to_string()),
+                    span: start_span,
+                })
+            }
+
             // Banned keyword — report it
             TokenKind::Banned(banned) => {
                 let msg = format!(

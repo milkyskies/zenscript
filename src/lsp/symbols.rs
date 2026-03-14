@@ -202,6 +202,60 @@ impl SymbolIndex {
                         }
                     }
                 }
+                ItemKind::ForBlock(block) => {
+                    let type_str = type_expr_to_string(&block.type_name);
+                    for func in &block.functions {
+                        let params: Vec<String> = func
+                            .params
+                            .iter()
+                            .map(|p| {
+                                if p.name == "self" {
+                                    format!("self: {type_str}")
+                                } else if let Some(ty) = &p.type_ann {
+                                    format!("{}: {}", p.name, type_expr_to_string(ty))
+                                } else {
+                                    p.name.clone()
+                                }
+                            })
+                            .collect();
+                        let ret = func
+                            .return_type
+                            .as_ref()
+                            .map(|t| format!(": {}", type_expr_to_string(t)))
+                            .unwrap_or_default();
+
+                        // First param type is the for block's type (for self params)
+                        let first_param_type =
+                            if func.params.first().is_some_and(|p| p.name == "self") {
+                                Some(type_str.clone())
+                            } else {
+                                func.params
+                                    .first()
+                                    .and_then(|p| p.type_ann.as_ref())
+                                    .map(type_expr_to_string)
+                            };
+
+                        let return_type_str = func.return_type.as_ref().map(type_expr_to_string);
+
+                        symbols.push(Symbol {
+                            name: func.name.clone(),
+                            kind: SymbolKind::FUNCTION,
+                            start: block.span.start,
+                            end: block.span.end,
+                            import_source: None,
+                            detail: format!(
+                                "for {type_str} {{ fn {}({}){}  }}",
+                                func.name,
+                                params.join(", "),
+                                ret
+                            ),
+                            first_param_type,
+                            return_type_str,
+                        });
+
+                        Self::collect_expr(&func.body, symbols);
+                    }
+                }
                 ItemKind::Expr(expr) => {
                     Self::collect_expr(expr, symbols);
                 }

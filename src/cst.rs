@@ -107,6 +107,12 @@ impl<'src> CstParser<'src> {
                 self.parse_type_decl();
                 self.builder.finish_node();
             }
+            Some(TokenKind::For) if !exported => {
+                self.builder
+                    .start_node_at(checkpoint, SyntaxKind::ITEM.into());
+                self.parse_for_block();
+                self.builder.finish_node();
+            }
             _ if exported => {
                 self.builder
                     .start_node_at(checkpoint, SyntaxKind::ERROR.into());
@@ -362,6 +368,97 @@ impl<'src> CstParser<'src> {
             self.bump();
             self.eat_trivia();
             self.parse_expr();
+        }
+
+        self.builder.finish_node();
+    }
+
+    // ── For Blocks ──────────────────────────────────────────────
+
+    fn parse_for_block(&mut self) {
+        self.builder.start_node(SyntaxKind::FOR_BLOCK.into());
+
+        self.expect(TokenKind::For);
+        self.eat_trivia();
+
+        // Parse the type name (e.g., `User`, `Array<T>`)
+        self.parse_type_expr();
+        self.eat_trivia();
+
+        self.expect(TokenKind::LeftBrace);
+        self.eat_trivia();
+
+        // Parse function declarations inside the block
+        while !self.at(TokenKind::RightBrace) && !self.at_end() {
+            if self.at(TokenKind::Fn) || self.at(TokenKind::Async) {
+                self.parse_for_block_function();
+                self.eat_trivia();
+            } else {
+                self.error("expected `fn` inside for block");
+                self.bump();
+                self.eat_trivia();
+            }
+        }
+
+        self.expect(TokenKind::RightBrace);
+
+        self.builder.finish_node();
+    }
+
+    fn parse_for_block_function(&mut self) {
+        self.builder.start_node(SyntaxKind::FUNCTION_DECL.into());
+
+        if self.at(TokenKind::Async) {
+            self.bump();
+            self.eat_trivia();
+        }
+
+        self.expect(TokenKind::Fn);
+        self.eat_trivia();
+        self.expect_ident();
+        self.eat_trivia();
+
+        self.expect(TokenKind::LeftParen);
+        self.eat_trivia();
+        self.parse_comma_separated(Self::parse_for_block_param, TokenKind::RightParen);
+        self.expect(TokenKind::RightParen);
+        self.eat_trivia();
+
+        // Optional return type
+        if self.at(TokenKind::ThinArrow) {
+            self.bump();
+            self.eat_trivia();
+            self.parse_type_expr();
+            self.eat_trivia();
+        }
+
+        self.parse_block_expr();
+
+        self.builder.finish_node();
+    }
+
+    fn parse_for_block_param(&mut self) {
+        self.builder.start_node(SyntaxKind::PARAM.into());
+
+        if self.at(TokenKind::SelfKw) {
+            // `self` parameter — bump as an ident-like token
+            self.bump();
+        } else {
+            self.expect_ident();
+            self.eat_trivia();
+
+            if self.at(TokenKind::Colon) {
+                self.bump();
+                self.eat_trivia();
+                self.parse_type_expr();
+                self.eat_trivia();
+            }
+
+            if self.at(TokenKind::Equal) {
+                self.bump();
+                self.eat_trivia();
+                self.parse_expr();
+            }
         }
 
         self.builder.finish_node();
@@ -710,6 +807,11 @@ impl<'src> CstParser<'src> {
                 self.eat_trivia();
                 self.parse_expr();
                 self.builder.finish_node();
+            }
+
+            // `self` keyword — treat as identifier in expression context
+            Some(TokenKind::SelfKw) => {
+                self.bump();
             }
 
             Some(TokenKind::Identifier(name)) => {

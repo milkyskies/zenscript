@@ -262,6 +262,7 @@ impl Checker {
             ItemKind::Const(decl) => self.check_const(decl, item.span),
             ItemKind::Function(decl) => self.check_function(decl, item.span),
             ItemKind::TypeDecl(_) => {} // already registered in first pass
+            ItemKind::ForBlock(block) => self.check_for_block(block, item.span),
             ItemKind::Expr(expr) => {
                 let ty = self.check_expr(expr);
                 // Rule 5: No floating Results/Options
@@ -435,6 +436,77 @@ impl Checker {
 
         self.env.pop_scope();
         self.current_return_type = prev_return_type;
+    }
+
+    fn check_for_block(&mut self, block: &ForBlock, _span: Span) {
+        let for_type = self.resolve_type(&block.type_name);
+
+        for func in &block.functions {
+            // Check each function, injecting `self` type for self params
+            let return_type = func
+                .return_type
+                .as_ref()
+                .map(|t| self.resolve_type(t))
+                .unwrap_or_else(|| self.fresh_type_var());
+
+            let param_types: Vec<_> = func
+                .params
+                .iter()
+                .map(|p| {
+                    if p.name == "self" {
+                        for_type.clone()
+                    } else {
+                        p.type_ann
+                            .as_ref()
+                            .map(|t| self.resolve_type(t))
+                            .unwrap_or_else(|| self.fresh_type_var())
+                    }
+                })
+                .collect();
+
+            let fn_type = Type::Function {
+                params: param_types.clone(),
+                return_type: Box::new(return_type.clone()),
+            };
+            self.env.define(&func.name, fn_type);
+            self.defined_names.push((func.name.clone(), block.span));
+
+            // Check the function body
+            let prev_return_type = self.current_return_type.take();
+            self.current_return_type = Some(return_type.clone());
+
+            self.env.push_scope();
+
+            for (param, ty) in func.params.iter().zip(param_types.iter()) {
+                self.env.define(&param.name, ty.clone());
+            }
+
+            let body_type = self.check_expr(&func.body);
+
+            if let Some(ref declared_return) = func.return_type {
+                let resolved = self.resolve_type(declared_return);
+                if !self.types_compatible(&resolved, &body_type)
+                    && !matches!(body_type, Type::Var(_))
+                {
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            format!(
+                                "function `{}` return type mismatch: expected `{}`, found `{}`",
+                                func.name,
+                                resolved.display_name(),
+                                body_type.display_name()
+                            ),
+                            block.span,
+                        )
+                        .with_label("return type mismatch")
+                        .with_code("E001"),
+                    );
+                }
+            }
+
+            self.env.pop_scope();
+            self.current_return_type = prev_return_type;
+        }
     }
 
     /// Checks if a function body contains a return expression.

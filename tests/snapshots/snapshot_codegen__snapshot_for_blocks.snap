@@ -1,0 +1,19 @@
+---
+source: tests/snapshot_codegen.rs
+expression: output
+---
+type User = { name: string; age: number; active: boolean };
+
+function display(self: User): string {
+  return `${self.name} (${self.age})`;
+}
+function isAdult(self: User): boolean {
+  return self.age >= 18;
+}
+function greet(self: User, greeting: string): string {
+  return `${greeting}, ${self.name}!`;
+}
+
+function adults(self: Array<User>): Array<User> {
+  return self.filter((_x) => _x.age >= 18);
+}

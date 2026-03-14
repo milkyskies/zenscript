@@ -97,6 +97,13 @@ impl<'src> Lowerer<'src> {
                         span,
                     });
                 }
+                SyntaxKind::FOR_BLOCK => {
+                    let block = self.lower_for_block(&child)?;
+                    return Some(Item {
+                        kind: ItemKind::ForBlock(block),
+                        span,
+                    });
+                }
                 _ => {}
             }
         }
@@ -286,6 +293,93 @@ impl<'src> Lowerer<'src> {
             type_params,
             def: def?,
         })
+    }
+
+    fn lower_for_block(&mut self, node: &SyntaxNode) -> Option<ForBlock> {
+        let span = self.node_span(node);
+
+        // Find the type expression (first TYPE_EXPR child)
+        let mut type_name = None;
+        let mut functions = Vec::new();
+
+        for child in node.children() {
+            match child.kind() {
+                SyntaxKind::TYPE_EXPR if type_name.is_none() => {
+                    type_name = self.lower_type_expr(&child);
+                }
+                SyntaxKind::FUNCTION_DECL => {
+                    // For block functions don't have an item_node wrapper,
+                    // so we pass the function node itself for export check
+                    if let Some(decl) = self.lower_for_block_function(&child) {
+                        functions.push(decl);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Some(ForBlock {
+            type_name: type_name?,
+            functions,
+            span,
+        })
+    }
+
+    fn lower_for_block_function(&mut self, node: &SyntaxNode) -> Option<FunctionDecl> {
+        let async_fn = self.has_keyword(node, SyntaxKind::KW_ASYNC);
+
+        let idents = self.collect_idents_direct(node);
+        let name = idents.first()?.clone();
+
+        let mut params = Vec::new();
+        let mut return_type = None;
+        let mut body = None;
+
+        for child in node.children() {
+            match child.kind() {
+                SyntaxKind::PARAM => {
+                    if let Some(param) = self.lower_for_block_param(&child) {
+                        params.push(param);
+                    }
+                }
+                SyntaxKind::TYPE_EXPR => {
+                    if return_type.is_none() {
+                        return_type = self.lower_type_expr(&child);
+                    }
+                }
+                SyntaxKind::BLOCK_EXPR => {
+                    body = self.lower_expr_node(&child);
+                }
+                _ => {}
+            }
+        }
+
+        Some(FunctionDecl {
+            exported: false,
+            async_fn,
+            name,
+            params,
+            return_type,
+            body: Box::new(body?),
+        })
+    }
+
+    fn lower_for_block_param(&mut self, node: &SyntaxNode) -> Option<Param> {
+        let span = self.node_span(node);
+
+        // Check if this is a `self` parameter
+        let has_self = self.has_keyword(node, SyntaxKind::KW_SELF);
+        if has_self {
+            return Some(Param {
+                name: "self".to_string(),
+                type_ann: None,
+                default: None,
+                span,
+            });
+        }
+
+        // Regular parameter
+        self.lower_param(node)
     }
 
     fn lower_type_def_record(&mut self, node: &SyntaxNode) -> TypeDef {

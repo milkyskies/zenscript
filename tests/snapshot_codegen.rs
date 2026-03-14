@@ -103,3 +103,9 @@ fn snapshot_dot_shorthand() {
     let output = compile_fixture("dot_shorthand");
     insta::assert_snapshot!(output);
 }
+
+#[test]
+fn snapshot_for_blocks() {
+    let output = compile_fixture("for_blocks");
+    insta::assert_snapshot!(output);
+}

@@ -101,6 +101,7 @@ impl Codegen {
             ItemKind::Const(decl) => self.emit_const(decl),
             ItemKind::Function(decl) => self.emit_function(decl),
             ItemKind::TypeDecl(decl) => self.emit_type_decl(decl),
+            ItemKind::ForBlock(block) => self.emit_for_block(block),
             ItemKind::Expr(expr) => {
                 self.emit_indent();
                 self.emit_expr(expr);
@@ -223,6 +224,65 @@ impl Codegen {
                 self.push(" = ");
                 self.emit_expr(default);
             }
+        }
+    }
+
+    // ── For Blocks ────────────────────────────────────────────────
+
+    fn emit_for_block(&mut self, block: &ForBlock) {
+        for (i, func) in block.functions.iter().enumerate() {
+            if i > 0 {
+                self.newline();
+            }
+            self.emit_for_block_function(func, &block.type_name);
+        }
+    }
+
+    fn emit_for_block_function(&mut self, func: &FunctionDecl, for_type: &TypeExpr) {
+        self.emit_indent();
+        if func.async_fn {
+            self.push("async ");
+        }
+        self.push("function ");
+        self.push(&func.name);
+        self.push("(");
+
+        // Emit parameters, replacing `self` with the for block's type
+        for (i, param) in func.params.iter().enumerate() {
+            if i > 0 {
+                self.push(", ");
+            }
+            self.push(&param.name);
+            if param.name == "self" {
+                self.push(": ");
+                self.emit_type_expr(for_type);
+            } else if let Some(type_ann) = &param.type_ann {
+                self.push(": ");
+                self.emit_type_expr(type_ann);
+            }
+            if let Some(default) = &param.default {
+                self.push(" = ");
+                self.emit_expr(default);
+            }
+        }
+
+        self.push(")");
+
+        let is_unit_return = func
+            .return_type
+            .as_ref()
+            .is_some_and(|rt| matches!(&rt.kind, TypeExprKind::Named { name, .. } if name == "()"));
+
+        if let Some(ret) = &func.return_type {
+            self.push(": ");
+            self.emit_type_expr(ret);
+        }
+
+        self.push(" ");
+        if is_unit_return {
+            self.emit_block_expr(&func.body);
+        } else {
+            self.emit_block_expr_with_return(&func.body);
         }
     }
 

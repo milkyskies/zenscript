@@ -533,6 +533,10 @@ impl<'src> Lowerer<'src> {
                 kind: ExprKind::None,
                 span,
             }),
+            SyntaxKind::KW_SELF => Some(Expr {
+                kind: ExprKind::Identifier("self".to_string()),
+                span,
+            }),
             _ => None,
         }
     }

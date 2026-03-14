@@ -31,6 +31,8 @@ pub enum SyntaxKind {
     KW_AWAIT,
     KW_IF,
     KW_ELSE,
+    KW_FOR,
+    KW_SELF,
 
     // Built-in constructors
     KW_OK,
@@ -95,6 +97,7 @@ pub enum SyntaxKind {
     TYPE_DEF_RECORD,
     TYPE_DEF_UNION,
     TYPE_DEF_ALIAS,
+    FOR_BLOCK,
     RECORD_FIELD,
     VARIANT,
     VARIANT_FIELD,
@@ -205,6 +208,8 @@ pub fn token_kind_to_syntax(kind: &TokenKind) -> SyntaxKind {
         TokenKind::Await => SyntaxKind::KW_AWAIT,
         TokenKind::If => SyntaxKind::KW_IF,
         TokenKind::Else => SyntaxKind::KW_ELSE,
+        TokenKind::For => SyntaxKind::KW_FOR,
+        TokenKind::SelfKw => SyntaxKind::KW_SELF,
         TokenKind::Ok => SyntaxKind::KW_OK,
         TokenKind::Err => SyntaxKind::KW_ERR,
         TokenKind::Some => SyntaxKind::KW_SOME,
