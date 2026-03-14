@@ -114,6 +114,52 @@ const _fixed = 3.14159.toFixed(2);
 
 const _str_num = String(42);
 
+console.log("hello");
+
+console.warn("warning");
+
+console.error("error");
+
+console.info("info");
+
+console.debug("debug");
+
+console.time("timer");
+
+console.timeEnd("timer");
+
+const _floored = Math.floor(3.7);
+
+const _ceiled = Math.ceil(3.2);
+
+const _rounded = Math.round(3.5);
+
+const _abs_val = Math.abs(-5);
+
+const _min_val = Math.min(1, 2);
+
+const _max_val = Math.max(1, 2);
+
+const _power = Math.pow(2, 3);
+
+const _root = Math.sqrt(16);
+
+const _sgn = Math.sign(-5);
+
+const _truncated = Math.trunc(3.9);
+
+const _ln = Math.log(1);
+
+const _sine = Math.sin(0);
+
+const _cosine = Math.cos(0);
+
+const _tangent = Math.tan(0);
+
+const _json_str = JSON.stringify([1, 2, 3]);
+
+const _json_parsed = (() => { try { return { ok: true as const, value: JSON.parse("{}") }; } catch (e) { return { ok: false as const, error: { message: String(e) } }; } })();
+
 const _piped = [...[3, 1, 2]].sort((a, b) => a - b);
 
 const _pipe_chain = [...[1, 2, 3, 4, 5].filter((n) => n > 2).map((n) => n * 10)].reverse();
