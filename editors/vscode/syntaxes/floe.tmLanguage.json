@@ -79,7 +79,7 @@
       "patterns": [
         {
           "name": "keyword.control.floe",
-          "match": "\\b(match|if|else|return|await|async|try)\\b"
+          "match": "\\b(match|if|else|return|await|async|try|for)\\b"
         },
         {
           "name": "keyword.control.import.floe",
@@ -91,7 +91,7 @@
         },
         {
           "name": "variable.language.floe",
-          "match": "\\b(Ok|Err|Some|None)\\b"
+          "match": "\\b(Ok|Err|Some|None|self)\\b"
         },
         {
           "name": "constant.language.boolean.floe",

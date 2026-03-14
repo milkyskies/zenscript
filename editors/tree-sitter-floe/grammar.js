@@ -50,6 +50,7 @@ module.exports = grammar({
         $.function_declaration,
         $.type_declaration,
         $.const_declaration,
+        $.for_block,
         $.expression_statement,
       ),
 
@@ -68,6 +69,19 @@ module.exports = grammar({
 
     import_specifier: ($) =>
       seq(optional("trusted"), $.identifier, optional(seq("as", $.identifier))),
+
+    // ── For Blocks ─────────────────────────────────────────
+
+    for_block: ($) =>
+      seq(
+        "for",
+        field("type", $._type_expression),
+        "{",
+        repeat(seq(optional("export"), $.function_declaration)),
+        "}",
+      ),
+
+    self: (_$) => "self",
 
     // ── Exports ─────────────────────────────────────────────
 
@@ -238,6 +252,7 @@ module.exports = grammar({
         $.parenthesized_expression,
         $.unit_value,
         $.none,
+        $.self,
         $.underscore,
       ),
 

@@ -11,7 +11,13 @@
 "export" @keyword
 "async" @keyword
 "await" @keyword
+"try" @keyword
+"trusted" @keyword
+"for" @keyword
 "opaque" @keyword
+
+; ── Self ────────────────────────────────────────────────
+(self) @variable.builtin
 
 ; ── Built-in constructors ────────────────────────────────
 "Ok" @constructor
