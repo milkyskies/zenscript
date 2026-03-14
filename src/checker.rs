@@ -204,6 +204,17 @@ impl Checker {
         Type::Var(id)
     }
 
+    /// Emit an error if `name` is already defined in the current scope.
+    fn check_no_redefinition(&mut self, name: &str, span: Span) {
+        if self.env.is_defined_in_current_scope(name) {
+            self.diagnostics.push(
+                Diagnostic::error(format!("`{name}` is already defined in this scope"), span)
+                    .with_label("already defined")
+                    .with_code("E016"),
+            );
+        }
+    }
+
     // ── Type Registration ────────────────────────────────────────
 
     fn register_type_decl(&mut self, decl: &TypeDecl) {
@@ -527,6 +538,7 @@ impl Checker {
 
         match &decl.binding {
             ConstBinding::Name(name) => {
+                self.check_no_redefinition(name, span);
                 self.env.define(name, final_type);
                 if decl.exported {
                     self.used_names.insert(name.clone());
@@ -545,12 +557,14 @@ impl Checker {
                         // give each name the full type
                         other => other.clone(),
                     };
+                    self.check_no_redefinition(name, span);
                     self.env.define(name, elem_ty);
                     self.defined_names.push((name.clone(), span));
                 }
             }
             ConstBinding::Object(names) => {
                 for name in names {
+                    self.check_no_redefinition(name, span);
                     self.env.define(name, Type::Unknown);
                     self.defined_names.push((name.clone(), span));
                 }
@@ -597,6 +611,7 @@ impl Checker {
             params: param_types.clone(),
             return_type: Box::new(return_type.clone()),
         };
+        self.check_no_redefinition(&decl.name, span);
         self.env.define(&decl.name, fn_type);
         if decl.exported {
             self.used_names.insert(decl.name.clone());
@@ -691,6 +706,7 @@ impl Checker {
                 params: param_types.clone(),
                 return_type: Box::new(return_type.clone()),
             };
+            self.check_no_redefinition(&func.name, block.span);
             self.env.define(&func.name, fn_type);
             if func.exported {
                 self.used_names.insert(func.name.clone());

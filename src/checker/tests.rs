@@ -743,3 +743,68 @@ const _r = [1, 2, 3] |> sort
     );
     assert!(!has_error(&diags, "E001"));
 }
+
+// ── Variable shadowing tests (#189) ─────────────────────────
+
+#[test]
+fn shadow_const_redefinition_errors() {
+    // Defining the same const name twice in the same scope should error
+    let diags = check(
+        r#"
+const x = 5
+const x = 10
+"#,
+    );
+    assert!(has_error_containing(&diags, "already defined"));
+}
+
+#[test]
+fn shadow_const_shadows_function_errors() {
+    // A const shadowing a function name should error
+    let diags = check(
+        r#"
+fn double(x: number) -> number { x * 2 }
+const double = 42
+"#,
+    );
+    assert!(has_error_containing(&diags, "already defined"));
+}
+
+#[test]
+fn shadow_const_shadows_for_block_fn_errors() {
+    // A const shadowing a for-block function should error
+    let diags = check(
+        r#"
+type Todo = { text: string, done: boolean }
+for Array<Todo> {
+    export fn remaining(self) -> number { 0 }
+}
+const remaining = 5
+"#,
+    );
+    assert!(has_error_containing(&diags, "already defined"));
+}
+
+#[test]
+fn shadow_function_redefinition_errors() {
+    // Defining two functions with the same name should error
+    let diags = check(
+        r#"
+fn foo() -> number { 1 }
+fn foo() -> string { "hi" }
+"#,
+    );
+    assert!(has_error_containing(&diags, "already defined"));
+}
+
+#[test]
+fn shadow_allowed_in_inner_scope() {
+    // Shadowing in an inner scope (e.g., function params) should be OK
+    let diags = check(
+        r#"
+const x = 5
+fn double(x: number) -> number { x * 2 }
+"#,
+    );
+    assert!(!has_error_containing(&diags, "already defined"));
+}
