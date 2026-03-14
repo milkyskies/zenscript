@@ -197,7 +197,19 @@ impl FloeLsp {
             }
             Ok(program) => {
                 let mut index = SymbolIndex::build(&program);
-                let (mut check_diags, type_map) = Checker::new().check_with_types(&program);
+
+                // Resolve .fl imports for cross-file type checking
+                let resolved_imports = if let Ok(source_path) = uri.to_file_path() {
+                    crate::resolve::resolve_imports(&source_path, &program)
+                } else {
+                    Default::default()
+                };
+                let checker = if resolved_imports.is_empty() {
+                    Checker::new()
+                } else {
+                    Checker::with_imports(resolved_imports)
+                };
+                let (mut check_diags, type_map) = checker.check_with_types(&program);
 
                 // Resolve imports: enrich symbols from .d.ts, validate relative paths
                 if let Ok(source_path) = uri.to_file_path() {
