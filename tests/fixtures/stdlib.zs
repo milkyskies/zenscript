@@ -1,0 +1,71 @@
+// ── Array ────────────────────────────────────────────────────
+const _sorted = Array.sort([3, 1, 2])
+const _sorted_by = Array.sortBy([3, 1, 2], (n) => n)
+const _mapped = Array.map([1, 2, 3], (n) => n * 2)
+const _filtered = Array.filter([1, 2, 3, 4], (n) => n > 2)
+const _found = Array.find([1, 2, 3], (n) => n == 2)
+const _found_idx = Array.findIndex([1, 2, 3], (n) => n == 2)
+const _flat_mapped = Array.flatMap([1, 2], (n) => [n, n * 10])
+const _at = Array.at([1, 2, 3], 1)
+const _has = Array.contains([1, 2, 3], 2)
+const _first = Array.head([1, 2, 3])
+const _last_item = Array.last([1, 2, 3])
+const _taken = Array.take([1, 2, 3, 4, 5], 3)
+const _dropped = Array.drop([1, 2, 3, 4, 5], 2)
+const _reversed = Array.reverse([1, 2, 3])
+const _reduced = Array.reduce([1, 2, 3], 0, (acc, n) => acc + n)
+const _len = Array.length([1, 2, 3])
+const _zipped = Array.zip([1, 2], ["a", "b"])
+
+// ── Option ──────────────────────────────────────────────────
+const _opt_mapped = Option.map(Some(42), (n) => n * 2)
+const _opt_flat = Option.flatMap(Some(42), (n) => Some(n * 2))
+const _opt_unwrap = Option.unwrapOr(None, 0)
+const _opt_some = Option.isSome(Some(1))
+const _opt_none = Option.isNone(None)
+const _opt_to_res = Option.toResult(Some(42), "not found")
+
+// ── Result ──────────────────────────────────────────────────
+const _res_mapped = Result.map(Ok(42), (n) => n + 1)
+const _res_map_err = Result.mapErr(Err("bad"), (e) => e)
+const _res_flat = Result.flatMap(Ok(42), (n) => Ok(n + 1))
+const _res_unwrap = Result.unwrapOr(Err("fail"), 0)
+const _res_ok = Result.isOk(Ok(1))
+const _res_err = Result.isErr(Err("fail"))
+const _res_to_opt = Result.toOption(Ok(42))
+
+// ── String ──────────────────────────────────────────────────
+const _trimmed = String.trim("  hello  ")
+const _trim_s = String.trimStart("  hello")
+const _trim_e = String.trimEnd("hello  ")
+const _split = String.split("a,b,c", ",")
+const _replaced = String.replace("hello", "l", "r")
+const _starts = String.startsWith("hello", "he")
+const _ends = String.endsWith("hello", "lo")
+const _str_has = String.contains("hello world", "world")
+const _upper = String.toUpper("hello")
+const _lower = String.toLower("HELLO")
+const _str_len = String.length("hello")
+const _sliced = String.slice("hello", 1, 3)
+const _pad_s = String.padStart("42", 5, "0")
+const _pad_e = String.padEnd("hi", 5, "!")
+const _repeated = String.repeat("ha", 3)
+
+// ── Number ──────────────────────────────────────────────────
+const _parsed = Number.parse("42")
+const _clamped = Number.clamp(15, 0, 10)
+const _finite = Number.isFinite(42)
+const _integer = Number.isInteger(3.14)
+const _fixed = Number.toFixed(3.14159, 2)
+const _str_num = Number.toString(42)
+
+// ── Pipes with stdlib ───────────────────────────────────────
+const _piped = [3, 1, 2] |> Array.sort
+const _pipe_chain = [1, 2, 3, 4, 5]
+  |> Array.filter((n) => n > 2)
+  |> Array.map((n) => n * 10)
+  |> Array.reverse
+
+const _pipe_opt = Some(10) |> Option.map((n) => n + 1)
+const _pipe_str = "  hello  " |> String.trim
+const _pipe_num = "42" |> Number.parse

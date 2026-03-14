@@ -1,0 +1,125 @@
+---
+source: tests/snapshot_codegen.rs
+expression: output
+---
+function __zenEq(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a == null || b == null) return false;
+  if (typeof a !== "object" || typeof b !== "object") return false;
+  const ka = Object.keys(a as object);
+  const kb = Object.keys(b as object);
+  if (ka.length !== kb.length) return false;
+  return ka.every((k) => __zenEq((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+}
+
+const _sorted = [...[3, 1, 2]].sort((a, b) => a - b);
+
+const _sorted_by = [...[3, 1, 2]].sort((a, b) => ((n) => n)(a) - ((n) => n)(b));
+
+const _mapped = [1, 2, 3].map((n) => n * 2);
+
+const _filtered = [1, 2, 3, 4].filter((n) => n > 2);
+
+const _found = [1, 2, 3].find((n) => __zenEq(n, 2));
+
+const _found_idx = (() => { const _i = [1, 2, 3].findIndex((n) => __zenEq(n, 2)); return _i === -1 ? undefined : _i; })();
+
+const _flat_mapped = [1, 2].flatMap((n) => [n, n * 10]);
+
+const _at = [1, 2, 3][1];
+
+const _has = [1, 2, 3].some((_item) => __zenEq(_item, 2));
+
+const _first = [1, 2, 3][0];
+
+const _last_item = [1, 2, 3][[1, 2, 3].length - 1];
+
+const _taken = [1, 2, 3, 4, 5].slice(0, 3);
+
+const _dropped = [1, 2, 3, 4, 5].slice(2);
+
+const _reversed = [...[1, 2, 3]].reverse();
+
+const _reduced = [1, 2, 3].reduce((acc, n) => acc + n, 0);
+
+const _len = [1, 2, 3].length;
+
+const _zipped = [1, 2].map((_v, _i) => [_v, ["a", "b"][_i]] as const);
+
+const _opt_mapped = 42 !== undefined ? ((n) => n * 2)(42) : undefined;
+
+const _opt_flat = 42 !== undefined ? ((n) => n * 2)(42) : undefined;
+
+const _opt_unwrap = undefined !== undefined ? undefined : 0;
+
+const _opt_some = 1 !== undefined;
+
+const _opt_none = undefined === undefined;
+
+const _opt_to_res = 42 !== undefined ? { ok: true as const, value: 42 } : { ok: false as const, error: "not found" };
+
+const _res_mapped = { ok: true as const, value: 42 }.ok ? { ok: true as const, value: ((n) => n + 1)({ ok: true as const, value: 42 }.value) } : { ok: true as const, value: 42 };
+
+const _res_map_err = { ok: false as const, error: "bad" }.ok ? { ok: false as const, error: "bad" } : { ok: false as const, error: ((e) => e)({ ok: false as const, error: "bad" }.error) };
+
+const _res_flat = { ok: true as const, value: 42 }.ok ? ((n) => { ok: true as const, value: n + 1 })({ ok: true as const, value: 42 }.value) : { ok: true as const, value: 42 };
+
+const _res_unwrap = { ok: false as const, error: "fail" }.ok ? { ok: false as const, error: "fail" }.value : 0;
+
+const _res_ok = { ok: true as const, value: 1 }.ok;
+
+const _res_err = !{ ok: false as const, error: "fail" }.ok;
+
+const _res_to_opt = { ok: true as const, value: 42 }.ok ? { ok: true as const, value: 42 }.value : undefined;
+
+const _trimmed = "  hello  ".trim();
+
+const _trim_s = "  hello".trimStart();
+
+const _trim_e = "hello  ".trimEnd();
+
+const _split = "a,b,c".split(",");
+
+const _replaced = "hello".replace("l", "r");
+
+const _starts = "hello".startsWith("he");
+
+const _ends = "hello".endsWith("lo");
+
+const _str_has = "hello world".includes("world");
+
+const _upper = "hello".toUpperCase();
+
+const _lower = "HELLO".toLowerCase();
+
+const _str_len = "hello".length;
+
+const _sliced = "hello".slice(1, 3);
+
+const _pad_s = "42".padStart(5, "0");
+
+const _pad_e = "hi".padEnd(5, "!");
+
+const _repeated = "ha".repeat(3);
+
+const _parsed = (() => { const _n = Number("42"); return Number.isNaN(_n) || "42".trim() === "" ? { ok: false as const, error: { message: `Failed to parse "${"42"}" as number` } } : { ok: true as const, value: _n }; })();
+
+const _clamped = Math.min(Math.max(15, 0), 10);
+
+const _finite = Number.isFinite(42);
+
+const _integer = Number.isInteger(3.14);
+
+const _fixed = 3.14159.toFixed(2);
+
+const _str_num = String(42);
+
+const _piped = [...[3, 1, 2]].sort((a, b) => a - b);
+
+const _pipe_chain = [...[1, 2, 3, 4, 5].filter((n) => n > 2).map((n) => n * 10)].reverse();
+
+const _pipe_opt = 10 !== undefined ? ((n) => n + 1)(10) : undefined;
+
+const _pipe_str = "  hello  ".trim();
+
+const _pipe_num = (() => { const _n = Number("42"); return Number.isNaN(_n) || "42".trim() === "" ? { ok: false as const, error: { message: `Failed to parse "${"42"}" as number` } } : { ok: true as const, value: _n }; })();

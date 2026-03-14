@@ -1,4 +1,5 @@
 use crate::parser::ast::*;
+use crate::stdlib::StdlibRegistry;
 
 /// Code generation result: the emitted TypeScript source and whether it contains JSX.
 pub struct CodegenOutput {
@@ -12,6 +13,7 @@ pub struct Codegen {
     indent: usize,
     has_jsx: bool,
     needs_deep_equal: bool,
+    stdlib: StdlibRegistry,
 }
 
 impl Codegen {
@@ -21,6 +23,7 @@ impl Codegen {
             indent: 0,
             has_jsx: false,
             needs_deep_equal: false,
+            stdlib: StdlibRegistry::new(),
         }
     }
 
@@ -407,8 +410,11 @@ impl Codegen {
             }
 
             ExprKind::Call { callee, args } => {
-                // Check if this is a partial application (has placeholder args)
-                if has_placeholder_arg(args) {
+                // Check for stdlib call: Array.sort(arr), Option.map(opt, fn), etc.
+                if let Some(output) = self.try_emit_stdlib_call(callee, args) {
+                    self.push(&output);
+                } else if has_placeholder_arg(args) {
+                    // Check if this is a partial application (has placeholder args)
                     self.emit_partial_application(callee, args);
                 } else {
                     self.emit_expr(callee);
@@ -560,8 +566,101 @@ impl Codegen {
 
     // ── Pipe Lowering ────────────────────────────────────────────
 
+    /// Try to emit a stdlib call. Returns Some(output) if the callee is a stdlib function.
+    fn try_emit_stdlib_call(&mut self, callee: &Expr, args: &[Arg]) -> Option<String> {
+        if let ExprKind::Member { object, field } = &callee.kind
+            && let ExprKind::Identifier(module) = &object.kind
+            && let Some(stdlib_fn) = self.stdlib.lookup(module, field)
+        {
+            // Collect emitted args
+            let arg_strings: Vec<String> = args
+                .iter()
+                .map(|arg| {
+                    let mut sub = Codegen::new();
+                    match arg {
+                        Arg::Positional(e) => sub.emit_expr(e),
+                        Arg::Named { value, .. } => sub.emit_expr(value),
+                    }
+                    sub.output
+                })
+                .collect();
+
+            if stdlib_fn.codegen.contains("__zenEq") {
+                self.needs_deep_equal = true;
+            }
+
+            Some(expand_codegen_template(stdlib_fn.codegen, &arg_strings))
+        } else {
+            None
+        }
+    }
+
+    /// Try to emit a stdlib call in pipe context (piped value is first arg).
+    fn try_emit_stdlib_pipe(
+        &mut self,
+        left: &Expr,
+        callee: &Expr,
+        extra_args: &[Arg],
+    ) -> Option<String> {
+        if let ExprKind::Member { object, field } = &callee.kind
+            && let ExprKind::Identifier(module) = &object.kind
+            && let Some(stdlib_fn) = self.stdlib.lookup(module, field)
+        {
+            // First arg is the piped value
+            let mut sub = Codegen::new();
+            sub.emit_expr(left);
+            let mut arg_strings = vec![sub.output];
+
+            // Remaining args
+            for arg in extra_args {
+                let mut sub = Codegen::new();
+                match arg {
+                    Arg::Positional(e) => sub.emit_expr(e),
+                    Arg::Named { value, .. } => sub.emit_expr(value),
+                }
+                arg_strings.push(sub.output);
+            }
+
+            if stdlib_fn.codegen.contains("__zenEq") {
+                self.needs_deep_equal = true;
+            }
+
+            Some(expand_codegen_template(stdlib_fn.codegen, &arg_strings))
+        } else {
+            None
+        }
+    }
+
     fn emit_pipe(&mut self, left: &Expr, right: &Expr) {
         match &right.kind {
+            // Stdlib pipe: `arr |> Array.sort` or `arr |> Array.map(fn)`
+            ExprKind::Call { callee, args } if !has_placeholder_arg(args) => {
+                if let Some(output) = self.try_emit_stdlib_pipe(left, callee, args) {
+                    self.push(&output);
+                    return;
+                }
+                // Fall through to normal call handling below
+                self.emit_expr(callee);
+                self.push("(");
+                self.emit_expr(left);
+                if !args.is_empty() {
+                    self.push(", ");
+                    self.emit_args(args);
+                }
+                self.push(")");
+            }
+            ExprKind::Member { .. } => {
+                // Bare stdlib: `arr |> Array.sort` (no args)
+                if let Some(output) = self.try_emit_stdlib_pipe(left, right, &[]) {
+                    self.push(&output);
+                    return;
+                }
+                // Fallback: treat as function call
+                self.emit_expr(right);
+                self.push("(");
+                self.emit_expr(left);
+                self.push(")");
+            }
             // `a |> f(b, _, c)` → `f(b, a, c)` — placeholder replacement
             ExprKind::Call { callee, args } if has_placeholder_arg(args) => {
                 self.emit_expr(callee);
@@ -585,17 +684,6 @@ impl Codegen {
                             }
                         }
                     }
-                }
-                self.push(")");
-            }
-            // `a |> f(b, c)` → `f(a, b, c)` — first arg insertion
-            ExprKind::Call { callee, args } => {
-                self.emit_expr(callee);
-                self.push("(");
-                self.emit_expr(left);
-                if !args.is_empty() {
-                    self.push(", ");
-                    self.emit_args(args);
                 }
                 self.push(")");
             }
@@ -936,6 +1024,16 @@ impl Default for Codegen {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
+
+/// Expand a codegen template like `$0.map($1)` with actual arg strings.
+fn expand_codegen_template(template: &str, args: &[String]) -> String {
+    let mut result = template.to_string();
+    // Replace in reverse order so $10 doesn't get matched by $1
+    for (i, arg) in args.iter().enumerate().rev() {
+        result = result.replace(&format!("${i}"), arg);
+    }
+    result
+}
 
 fn binop_str(op: BinOp) -> &'static str {
     match op {
@@ -1402,5 +1500,207 @@ mod tests {
     #[test]
     fn array_literal() {
         assert_eq!(emit("[1, 2, 3]"), "[1, 2, 3];");
+    }
+
+    // ── Stdlib: Array ────────────────────────────────────────────
+
+    #[test]
+    fn stdlib_array_sort() {
+        assert_eq!(
+            emit("Array.sort([3, 1, 2])"),
+            "[...[3, 1, 2]].sort((a, b) => a - b);"
+        );
+    }
+
+    #[test]
+    fn stdlib_array_map() {
+        assert_eq!(
+            emit("Array.map([1, 2], (n) => n * 2)"),
+            "[1, 2].map((n) => n * 2);"
+        );
+    }
+
+    #[test]
+    fn stdlib_array_filter() {
+        assert_eq!(
+            emit("Array.filter([1, 2, 3], (n) => n > 1)"),
+            "[1, 2, 3].filter((n) => n > 1);"
+        );
+    }
+
+    #[test]
+    fn stdlib_array_head() {
+        assert_eq!(emit("Array.head([1, 2, 3])"), "[1, 2, 3][0];");
+    }
+
+    #[test]
+    fn stdlib_array_last() {
+        assert_eq!(
+            emit("Array.last([1, 2, 3])"),
+            "[1, 2, 3][[1, 2, 3].length - 1];"
+        );
+    }
+
+    #[test]
+    fn stdlib_array_reverse() {
+        assert_eq!(
+            emit("Array.reverse([1, 2, 3])"),
+            "[...[1, 2, 3]].reverse();"
+        );
+    }
+
+    #[test]
+    fn stdlib_array_take() {
+        assert_eq!(emit("Array.take([1, 2, 3], 2)"), "[1, 2, 3].slice(0, 2);");
+    }
+
+    #[test]
+    fn stdlib_array_drop() {
+        assert_eq!(emit("Array.drop([1, 2, 3], 1)"), "[1, 2, 3].slice(1);");
+    }
+
+    #[test]
+    fn stdlib_array_length() {
+        assert_eq!(emit("Array.length([1, 2])"), "[1, 2].length;");
+    }
+
+    #[test]
+    fn stdlib_array_contains() {
+        let result = emit("Array.contains([1, 2], 2)");
+        assert!(result.contains("__zenEq"));
+        assert!(result.contains(".some("));
+    }
+
+    // ── Stdlib: Option ───────────────────────────────────────────
+
+    #[test]
+    fn stdlib_option_map() {
+        let result = emit("Option.map(Some(1), (n) => n * 2)");
+        assert!(result.contains("!== undefined"));
+    }
+
+    #[test]
+    fn stdlib_option_unwrap_or() {
+        let result = emit("Option.unwrapOr(None, 0)");
+        assert!(result.contains("!== undefined"));
+        assert!(result.contains(": 0"));
+    }
+
+    #[test]
+    fn stdlib_option_is_some() {
+        assert_eq!(emit("Option.isSome(Some(1))"), "1 !== undefined;");
+    }
+
+    #[test]
+    fn stdlib_option_is_none() {
+        assert_eq!(emit("Option.isNone(None)"), "undefined === undefined;");
+    }
+
+    // ── Stdlib: Result ───────────────────────────────────────────
+
+    #[test]
+    fn stdlib_result_is_ok() {
+        let result = emit("Result.isOk(Ok(1))");
+        assert!(result.contains(".ok;"));
+    }
+
+    #[test]
+    fn stdlib_result_is_err() {
+        let result = emit(r#"Result.isErr(Err("fail"))"#);
+        assert!(result.contains("!"));
+        assert!(result.contains(".ok;"));
+    }
+
+    #[test]
+    fn stdlib_result_to_option() {
+        let result = emit("Result.toOption(Ok(42))");
+        assert!(result.contains(".ok ?"));
+        assert!(result.contains("undefined"));
+    }
+
+    // ── Stdlib: String ───────────────────────────────────────────
+
+    #[test]
+    fn stdlib_string_trim() {
+        assert_eq!(emit(r#"String.trim("  hi  ")"#), r#""  hi  ".trim();"#);
+    }
+
+    #[test]
+    fn stdlib_string_to_upper() {
+        assert_eq!(
+            emit(r#"String.toUpper("hello")"#),
+            r#""hello".toUpperCase();"#
+        );
+    }
+
+    #[test]
+    fn stdlib_string_contains() {
+        assert_eq!(
+            emit(r#"String.contains("hello", "el")"#),
+            r#""hello".includes("el");"#
+        );
+    }
+
+    #[test]
+    fn stdlib_string_split() {
+        assert_eq!(emit(r#"String.split("a,b", ",")"#), r#""a,b".split(",");"#);
+    }
+
+    #[test]
+    fn stdlib_string_length() {
+        assert_eq!(emit(r#"String.length("hi")"#), r#""hi".length;"#);
+    }
+
+    // ── Stdlib: Number ───────────────────────────────────────────
+
+    #[test]
+    fn stdlib_number_clamp() {
+        assert_eq!(
+            emit("Number.clamp(15, 0, 10)"),
+            "Math.min(Math.max(15, 0), 10);"
+        );
+    }
+
+    #[test]
+    fn stdlib_number_parse() {
+        let result = emit(r#"Number.parse("42")"#);
+        assert!(result.contains("Number.isNaN"));
+        assert!(result.contains("ok: true"));
+        assert!(result.contains("ok: false"));
+    }
+
+    #[test]
+    fn stdlib_number_is_finite() {
+        assert_eq!(emit("Number.isFinite(42)"), "Number.isFinite(42);");
+    }
+
+    // ── Stdlib: Pipes ────────────────────────────────────────────
+
+    #[test]
+    fn stdlib_pipe_bare() {
+        assert_eq!(
+            emit("[3, 1, 2] |> Array.sort"),
+            "[...[3, 1, 2]].sort((a, b) => a - b);"
+        );
+    }
+
+    #[test]
+    fn stdlib_pipe_with_args() {
+        assert_eq!(
+            emit("[1, 2, 3] |> Array.map((n) => n * 2)"),
+            "[1, 2, 3].map((n) => n * 2);"
+        );
+    }
+
+    #[test]
+    fn stdlib_pipe_chain() {
+        let result = emit("[1, 2, 3] |> Array.filter((n) => n > 1) |> Array.reverse");
+        assert!(result.contains(".filter("));
+        assert!(result.contains(".reverse()"));
+    }
+
+    #[test]
+    fn stdlib_pipe_string() {
+        assert_eq!(emit(r#""  hi  " |> String.trim"#), r#""  hi  ".trim();"#);
     }
 }
