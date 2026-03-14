@@ -12,6 +12,11 @@ export default defineConfig({
   integrations: [
     starlight({
       title: "Floe",
+      logo: {
+        src: "./src/assets/logo.svg",
+        alt: "Floe",
+      },
+      favicon: "/logo.svg",
       description:
         "A Gleam-inspired language that compiles to TypeScript + React",
       social: [
