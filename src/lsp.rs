@@ -216,16 +216,11 @@ impl FloeLsp {
                     let (import_diags, new_cache) =
                         enrich_from_imports(&program, &project_dir, source_dir, &mut index, &cache);
                     import_diags_early = import_diags;
-                    // Build dts_map for the checker
-                    for (specifier, exports) in &new_cache {
-                        dts_map.insert(specifier.clone(), exports.clone());
-                    }
-                    // Also include cached entries
-                    for (specifier, exports) in &cache {
-                        dts_map
-                            .entry(specifier.clone())
-                            .or_insert_with(|| exports.clone());
-                    }
+
+                    // Use tsgo for fully-resolved types — no fallback
+                    let mut tsgo_resolver = crate::interop::TsgoResolver::new(&project_dir);
+                    dts_map = tsgo_resolver.resolve_imports(&program);
+
                     if !new_cache.is_empty() {
                         let mut cache_write = self.dts_cache.write().await;
                         cache_write.extend(new_cache);

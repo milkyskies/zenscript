@@ -12,6 +12,7 @@
 
 mod dts;
 mod ts_types;
+pub mod tsgo;
 mod wrapper;
 
 #[cfg(test)]
@@ -26,6 +27,7 @@ use crate::checker::Type;
 // Re-export public API
 pub use dts::{DtsExport, parse_dts_exports};
 pub use ts_types::{TsType, ts_type_to_string};
+pub use tsgo::TsgoResolver;
 pub use wrapper::wrap_boundary_type;
 
 // Re-export internal helpers so tests (and sibling submodules) can access via `use super::*`

@@ -310,6 +310,7 @@ dependencies = [
  "rowan",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tower-lsp",
 ]
