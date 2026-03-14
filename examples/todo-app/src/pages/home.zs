@@ -1,0 +1,176 @@
+import { useState } from "react"
+import { v4 } from "uuid"
+
+type Todo = {
+    id: string,
+    text: string,
+    done: bool,
+}
+
+type Filter =
+    | All
+    | Active
+    | Completed
+
+type Validation =
+    | Valid(text: string)
+    | TooShort
+    | TooLong
+    | Empty
+
+function validate(text: string): Validation {
+    const trimmed = text |> String.trim
+    const len = trimmed |> String.length
+    match len {
+        0 -> Empty,
+        1 -> TooShort,
+        _ -> match len > 100 {
+            true -> TooLong,
+            false -> Valid(trimmed),
+        },
+    }
+}
+
+function filterTodos(todos: Array<Todo>, filter: Filter): Array<Todo> {
+    match filter {
+        All -> todos,
+        Active -> todos |> Array.filter((t) => t.done == false),
+        Completed -> todos |> Array.filter((t) => t.done == true),
+    }
+}
+
+function countRemaining(todos: Array<Todo>): number {
+    todos
+        |> Array.filter((t) => t.done == false)
+        |> Array.length
+}
+
+export function HomePage(): JSX.Element {
+    const [todos, setTodos] = useState([])
+    const [input, setInput] = useState("")
+    const [filter, setFilter] = useState(All)
+    const [error, setError] = useState("")
+
+    const visible = filterTodos(todos, filter)
+    const remaining = countRemaining(todos)
+
+    const handleAdd = () => {
+        match validate(input) {
+            Empty -> setError("Please enter a todo"),
+            TooShort -> setError("Todo must be at least 2 characters"),
+            TooLong -> setError("Todo must be under 100 characters"),
+            Valid(text) -> {
+                setTodos(todos |> Array.append(Todo(id: v4(), text: text, done: false)))
+                setInput("")
+                setError("")
+            },
+        }
+    }
+
+    const handleToggle = (id: string) => {
+        setTodos(todos |> Array.map((t) =>
+            match t.id == id {
+                true -> Todo(id: t.id, text: t.text, done: !t.done),
+                false -> t,
+            }
+        ))
+    }
+
+    const handleDelete = (id: string) => {
+        setTodos(todos |> Array.filter((t) => t.id != id))
+    }
+
+    return <div>
+        <h1 className="text-3xl font-bold mb-6">Todos</h1>
+
+        <div className="flex gap-2 mb-4">
+            <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => match e.key {
+                    "Enter" -> handleAdd(),
+                    _ -> (),
+                }}
+                placeholder="What needs to be done?"
+                className="flex-1 rounded-lg bg-zinc-800 px-4 py-2 text-zinc-100 placeholder-zinc-500 outline-none ring-1 ring-zinc-700 focus:ring-indigo-500"
+            />
+            <button
+                onClick={handleAdd}
+                className="rounded-lg bg-indigo-600 px-4 py-2 font-medium text-white hover:bg-indigo-500 transition-colors"
+            >
+                Add
+            </button>
+        </div>
+
+        {match error {
+            "" -> <span />,
+            _ -> <p className="text-red-400 text-sm mb-4">{error}</p>,
+        }}
+
+        <div className="flex gap-2 mb-6">
+            <button
+                onClick={() => setFilter(All)}
+                className={match filter {
+                    All -> "rounded-full px-3 py-1 text-sm font-medium bg-indigo-600 text-white",
+                    _ -> "rounded-full px-3 py-1 text-sm font-medium bg-zinc-800 text-zinc-400 hover:text-zinc-100",
+                }}
+            >
+                All
+            </button>
+            <button
+                onClick={() => setFilter(Active)}
+                className={match filter {
+                    Active -> "rounded-full px-3 py-1 text-sm font-medium bg-indigo-600 text-white",
+                    _ -> "rounded-full px-3 py-1 text-sm font-medium bg-zinc-800 text-zinc-400 hover:text-zinc-100",
+                }}
+            >
+                Active
+            </button>
+            <button
+                onClick={() => setFilter(Completed)}
+                className={match filter {
+                    Completed -> "rounded-full px-3 py-1 text-sm font-medium bg-indigo-600 text-white",
+                    _ -> "rounded-full px-3 py-1 text-sm font-medium bg-zinc-800 text-zinc-400 hover:text-zinc-100",
+                }}
+            >
+                Completed
+            </button>
+        </div>
+
+        <ul className="space-y-2">
+            {visible |> Array.map((todo) =>
+                <li key={todo.id} className="flex items-center gap-3 rounded-lg bg-zinc-800/50 px-4 py-3">
+                    <button
+                        onClick={() => handleToggle(todo.id)}
+                        className={match todo.done {
+                            true -> "h-5 w-5 rounded-full border-2 border-indigo-500 bg-indigo-500 flex items-center justify-center",
+                            false -> "h-5 w-5 rounded-full border-2 border-zinc-600",
+                        }}
+                    >
+                        {match todo.done {
+                            true -> <span className="text-white text-xs">✓</span>,
+                            false -> <span />,
+                        }}
+                    </button>
+                    <span className={match todo.done {
+                        true -> "flex-1 text-zinc-500 line-through",
+                        false -> "flex-1 text-zinc-100",
+                    }}>
+                        {todo.text}
+                    </span>
+                    <button
+                        onClick={() => handleDelete(todo.id)}
+                        className="text-zinc-600 hover:text-red-400 transition-colors"
+                    >
+                        ✕
+                    </button>
+                </li>
+            )}
+        </ul>
+
+        <p className="mt-6 text-sm text-zinc-500">
+            {`${remaining} item(s) remaining`}
+        </p>
+    </div>
+}

@@ -30,7 +30,9 @@ export default function zenscript(options: ZenScriptOptions = {}): Plugin {
     enforce: "pre",
 
     transform(code, id) {
-      if (!id.endsWith(".zs")) return null;
+      // Strip query params for extension check (Vite adds ?import, ?t=xxx, etc.)
+      const cleanId = id.split("?")[0];
+      if (!cleanId.endsWith(".zs")) return null;
 
       try {
         const result = compileZenScript(compiler, code, id);

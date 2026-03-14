@@ -4,6 +4,6 @@ expression: output
 ---
 type Route = { tag: "Home" } | { tag: "Profile"; id: string } | { tag: "NotFound" };
 
-const route = Home;
+const route = { tag: "Home" };
 
-const _page = route.tag === "Home" ? "home" : route.tag === "Profile" ? (() => { const id = route.value; return id; })() : route.tag === "NotFound" ? "404" : (() => { throw new Error("non-exhaustive match"); })();
+const _page = route.tag === "Home" ? "home" : route.tag === "Profile" ? (() => { const id = route.id; return id; })() : route.tag === "NotFound" ? "404" : (() => { throw new Error("non-exhaustive match"); })();
