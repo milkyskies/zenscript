@@ -502,7 +502,7 @@ fn builtin_types_no_error() {
         r#"
 const _a: number = 42
 const _b: string = "hi"
-const _c: bool = true
+const _c: boolean = true
 "#,
     );
     assert!(!has_error_containing(&diags, "unknown type"));

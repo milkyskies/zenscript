@@ -59,6 +59,35 @@ const _integer = Number.isInteger(3.14)
 const _fixed = Number.toFixed(3.14159, 2)
 const _str_num = Number.toString(42)
 
+// ── Console ────────────────────────────────────────────────
+Console.log("hello")
+Console.warn("warning")
+Console.error("error")
+Console.info("info")
+Console.debug("debug")
+Console.time("timer")
+Console.timeEnd("timer")
+
+// ── Math ───────────────────────────────────────────────────
+const _floored = Math.floor(3.7)
+const _ceiled = Math.ceil(3.2)
+const _rounded = Math.round(3.5)
+const _abs_val = Math.abs(-5)
+const _min_val = Math.min(1, 2)
+const _max_val = Math.max(1, 2)
+const _power = Math.pow(2, 3)
+const _root = Math.sqrt(16)
+const _sgn = Math.sign(-5)
+const _truncated = Math.trunc(3.9)
+const _ln = Math.log(1)
+const _sine = Math.sin(0)
+const _cosine = Math.cos(0)
+const _tangent = Math.tan(0)
+
+// ── JSON ───────────────────────────────────────────────────
+const _json_str = JSON.stringify([1, 2, 3])
+const _json_parsed = JSON.parse("{}")
+
 // ── Pipes with stdlib ───────────────────────────────────────
 const _piped = [3, 1, 2] |> Array.sort
 const _pipe_chain = [1, 2, 3, 4, 5]

@@ -482,6 +482,170 @@ fn build_stdlib() -> Vec<StdlibFn> {
             return_type: Type::String,
             codegen: "String($0)",
         },
+        // ── Console ────────────────────────────────────────────
+        StdlibFn {
+            module: "Console",
+            name: "log",
+            params: vec![t.clone()],
+            return_type: Type::Unit,
+            codegen: "console.log($0)",
+        },
+        StdlibFn {
+            module: "Console",
+            name: "warn",
+            params: vec![t.clone()],
+            return_type: Type::Unit,
+            codegen: "console.warn($0)",
+        },
+        StdlibFn {
+            module: "Console",
+            name: "error",
+            params: vec![t.clone()],
+            return_type: Type::Unit,
+            codegen: "console.error($0)",
+        },
+        StdlibFn {
+            module: "Console",
+            name: "info",
+            params: vec![t.clone()],
+            return_type: Type::Unit,
+            codegen: "console.info($0)",
+        },
+        StdlibFn {
+            module: "Console",
+            name: "debug",
+            params: vec![t.clone()],
+            return_type: Type::Unit,
+            codegen: "console.debug($0)",
+        },
+        StdlibFn {
+            module: "Console",
+            name: "time",
+            params: vec![Type::String],
+            return_type: Type::Unit,
+            codegen: "console.time($0)",
+        },
+        StdlibFn {
+            module: "Console",
+            name: "timeEnd",
+            params: vec![Type::String],
+            return_type: Type::Unit,
+            codegen: "console.timeEnd($0)",
+        },
+        // ── Math ───────────────────────────────────────────────
+        StdlibFn {
+            module: "Math",
+            name: "floor",
+            params: vec![Type::Number],
+            return_type: Type::Number,
+            codegen: "Math.floor($0)",
+        },
+        StdlibFn {
+            module: "Math",
+            name: "ceil",
+            params: vec![Type::Number],
+            return_type: Type::Number,
+            codegen: "Math.ceil($0)",
+        },
+        StdlibFn {
+            module: "Math",
+            name: "round",
+            params: vec![Type::Number],
+            return_type: Type::Number,
+            codegen: "Math.round($0)",
+        },
+        StdlibFn {
+            module: "Math",
+            name: "abs",
+            params: vec![Type::Number],
+            return_type: Type::Number,
+            codegen: "Math.abs($0)",
+        },
+        StdlibFn {
+            module: "Math",
+            name: "min",
+            params: vec![Type::Number, Type::Number],
+            return_type: Type::Number,
+            codegen: "Math.min($0, $1)",
+        },
+        StdlibFn {
+            module: "Math",
+            name: "max",
+            params: vec![Type::Number, Type::Number],
+            return_type: Type::Number,
+            codegen: "Math.max($0, $1)",
+        },
+        StdlibFn {
+            module: "Math",
+            name: "pow",
+            params: vec![Type::Number, Type::Number],
+            return_type: Type::Number,
+            codegen: "Math.pow($0, $1)",
+        },
+        StdlibFn {
+            module: "Math",
+            name: "sqrt",
+            params: vec![Type::Number],
+            return_type: Type::Number,
+            codegen: "Math.sqrt($0)",
+        },
+        StdlibFn {
+            module: "Math",
+            name: "sign",
+            params: vec![Type::Number],
+            return_type: Type::Number,
+            codegen: "Math.sign($0)",
+        },
+        StdlibFn {
+            module: "Math",
+            name: "trunc",
+            params: vec![Type::Number],
+            return_type: Type::Number,
+            codegen: "Math.trunc($0)",
+        },
+        StdlibFn {
+            module: "Math",
+            name: "log",
+            params: vec![Type::Number],
+            return_type: Type::Number,
+            codegen: "Math.log($0)",
+        },
+        StdlibFn {
+            module: "Math",
+            name: "sin",
+            params: vec![Type::Number],
+            return_type: Type::Number,
+            codegen: "Math.sin($0)",
+        },
+        StdlibFn {
+            module: "Math",
+            name: "cos",
+            params: vec![Type::Number],
+            return_type: Type::Number,
+            codegen: "Math.cos($0)",
+        },
+        StdlibFn {
+            module: "Math",
+            name: "tan",
+            params: vec![Type::Number],
+            return_type: Type::Number,
+            codegen: "Math.tan($0)",
+        },
+        // ── JSON ───────────────────────────────────────────────
+        StdlibFn {
+            module: "JSON",
+            name: "stringify",
+            params: vec![t.clone()],
+            return_type: Type::String,
+            codegen: "JSON.stringify($0)",
+        },
+        StdlibFn {
+            module: "JSON",
+            name: "parse",
+            params: vec![Type::String],
+            return_type: result_of(t.clone(), Type::Named("ParseError".to_string())),
+            codegen: "(() => { try { return { ok: true as const, value: JSON.parse($0) }; } catch (e) { return { ok: false as const, error: { message: String(e) } }; } })()",
+        },
     ]
 }
 
@@ -518,6 +682,9 @@ mod tests {
         assert!(reg.is_module("Result"));
         assert!(reg.is_module("String"));
         assert!(reg.is_module("Number"));
+        assert!(reg.is_module("Console"));
+        assert!(reg.is_module("Math"));
+        assert!(reg.is_module("JSON"));
         assert!(!reg.is_module("Foo"));
     }
 
@@ -529,5 +696,29 @@ mod tests {
         assert!(reg.module_functions("Result").len() >= 6);
         assert!(reg.module_functions("String").len() >= 10);
         assert!(reg.module_functions("Number").len() >= 5);
+        assert!(reg.module_functions("Console").len() >= 5);
+        assert!(reg.module_functions("Math").len() >= 14);
+        assert!(reg.module_functions("JSON").len() >= 2);
+    }
+
+    #[test]
+    fn lookup_console_log() {
+        let reg = StdlibRegistry::new();
+        let f = reg.lookup("Console", "log").unwrap();
+        assert_eq!(f.codegen, "console.log($0)");
+    }
+
+    #[test]
+    fn lookup_math_floor() {
+        let reg = StdlibRegistry::new();
+        let f = reg.lookup("Math", "floor").unwrap();
+        assert_eq!(f.codegen, "Math.floor($0)");
+    }
+
+    #[test]
+    fn lookup_json_stringify() {
+        let reg = StdlibRegistry::new();
+        let f = reg.lookup("JSON", "stringify").unwrap();
+        assert_eq!(f.codegen, "JSON.stringify($0)");
     }
 }
