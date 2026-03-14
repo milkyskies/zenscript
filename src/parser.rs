@@ -1522,7 +1522,7 @@ impl Parser {
 
     fn parse_jsx_prop(&mut self) -> Result<JsxProp, ParseError> {
         let start_span = self.current_span();
-        let name = self.expect_identifier()?;
+        let name = self.expect_jsx_attr_name()?;
 
         let value = if self.check(&TokenKind::Equal) {
             self.advance();
@@ -1662,12 +1662,75 @@ impl Parser {
     }
 
     /// Try to interpret the current token as JSX text content.
+    /// In JSX children, almost everything that isn't `{`, `<`, or `</` is text.
     fn token_as_jsx_text(&self) -> Option<String> {
         match &self.tokens[self.pos].kind {
-            TokenKind::Identifier(s) => Some(s.clone()),
-            TokenKind::Number(s) => Some(s.clone()),
-            TokenKind::String(s) => Some(s.clone()),
-            _ => None,
+            // These end text content — never treat as text
+            TokenKind::LeftBrace | TokenKind::LessThan | TokenKind::Eof => None,
+
+            // Identifiers and literals
+            TokenKind::Identifier(s) | TokenKind::Number(s) | TokenKind::String(s) => {
+                Some(s.clone())
+            }
+            TokenKind::Bool(b) => Some(b.to_string()),
+
+            // Keywords — valid as JSX text
+            TokenKind::Const => Some("const".into()),
+            TokenKind::Function => Some("function".into()),
+            TokenKind::Export => Some("export".into()),
+            TokenKind::Import => Some("import".into()),
+            TokenKind::From => Some("from".into()),
+            TokenKind::Return => Some("return".into()),
+            TokenKind::Match => Some("match".into()),
+            TokenKind::Type => Some("type".into()),
+            TokenKind::Opaque => Some("opaque".into()),
+            TokenKind::Async => Some("async".into()),
+            TokenKind::Await => Some("await".into()),
+            TokenKind::If => Some("if".into()),
+            TokenKind::Else => Some("else".into()),
+            TokenKind::Ok => Some("Ok".into()),
+            TokenKind::Err => Some("Err".into()),
+            TokenKind::Some => Some("Some".into()),
+            TokenKind::None => Some("None".into()),
+
+            // Punctuation — valid in JSX text
+            TokenKind::Comma => Some(",".into()),
+            TokenKind::Colon => Some(":".into()),
+            TokenKind::Dot => Some(".".into()),
+            TokenKind::Plus => Some("+".into()),
+            TokenKind::Minus => Some("-".into()),
+            TokenKind::Star => Some("*".into()),
+            TokenKind::Slash => Some("/".into()),
+            TokenKind::Percent => Some("%".into()),
+            TokenKind::EqualEqual => Some("==".into()),
+            TokenKind::BangEqual => Some("!=".into()),
+            TokenKind::Bang => Some("!".into()),
+            TokenKind::Equal => Some("=".into()),
+            TokenKind::GreaterThan => Some(">".into()),
+            TokenKind::GreaterEqual => Some(">=".into()),
+            TokenKind::LessEqual => Some("<=".into()),
+            TokenKind::Pipe => Some("|>".into()),
+            TokenKind::ThinArrow => Some("->".into()),
+            TokenKind::FatArrow => Some("=>".into()),
+            TokenKind::Question => Some("?".into()),
+            TokenKind::Underscore => Some("_".into()),
+            TokenKind::DotDot => Some("..".into()),
+            TokenKind::AmpAmp => Some("&&".into()),
+            TokenKind::PipePipe => Some("||".into()),
+            TokenKind::Semicolon => Some(";".into()),
+
+            // Parens/brackets in text
+            TokenKind::LeftParen => Some("(".into()),
+            TokenKind::RightParen => Some(")".into()),
+            TokenKind::LeftBracket => Some("[".into()),
+            TokenKind::RightBracket => Some("]".into()),
+            TokenKind::RightBrace => Some("}".into()),
+
+            // Banned keywords — still valid as text content
+            TokenKind::Banned(b) => Some(format!("{b:?}").to_lowercase()),
+
+            // Template literals in JSX text — skip
+            TokenKind::TemplateLiteral(_) => None,
         }
     }
 
@@ -1708,6 +1771,66 @@ impl Parser {
             }
             _ => Err(self.error(&format!(
                 "expected identifier, found {:?}",
+                self.current_kind()
+            ))),
+        }
+    }
+
+    /// Like `expect_identifier` but also accepts keywords (e.g. `type`, `match`)
+    /// since JSX attribute names can be any valid HTML attribute.
+    fn expect_jsx_attr_name(&mut self) -> Result<String, ParseError> {
+        match self.current_kind() {
+            TokenKind::Identifier(name) => {
+                self.advance();
+                Ok(name)
+            }
+            // Allow keywords as JSX attribute names (e.g. <input type="text" />)
+            TokenKind::Type => {
+                self.advance();
+                Ok("type".to_string())
+            }
+            TokenKind::Match => {
+                self.advance();
+                Ok("match".to_string())
+            }
+            TokenKind::Return => {
+                self.advance();
+                Ok("return".to_string())
+            }
+            TokenKind::If => {
+                self.advance();
+                Ok("if".to_string())
+            }
+            TokenKind::Else => {
+                self.advance();
+                Ok("else".to_string())
+            }
+            TokenKind::Async => {
+                self.advance();
+                Ok("async".to_string())
+            }
+            TokenKind::Export => {
+                self.advance();
+                Ok("export".to_string())
+            }
+            TokenKind::Import => {
+                self.advance();
+                Ok("import".to_string())
+            }
+            TokenKind::From => {
+                self.advance();
+                Ok("from".to_string())
+            }
+            TokenKind::Const => {
+                self.advance();
+                Ok("const".to_string())
+            }
+            TokenKind::Function => {
+                self.advance();
+                Ok("function".to_string())
+            }
+            _ => Err(self.error(&format!(
+                "expected attribute name, found {:?}",
                 self.current_kind()
             ))),
         }

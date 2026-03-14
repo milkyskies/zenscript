@@ -208,6 +208,27 @@ fn build_stdlib() -> Vec<StdlibFn> {
         },
         StdlibFn {
             module: "Array",
+            name: "concat",
+            params: vec![array_of(t.clone()), array_of(t.clone())],
+            return_type: array_of(t.clone()),
+            codegen: "[...$0, ...$1]",
+        },
+        StdlibFn {
+            module: "Array",
+            name: "append",
+            params: vec![array_of(t.clone()), t.clone()],
+            return_type: array_of(t.clone()),
+            codegen: "[...$0, $1]",
+        },
+        StdlibFn {
+            module: "Array",
+            name: "prepend",
+            params: vec![array_of(t.clone()), t.clone()],
+            return_type: array_of(t.clone()),
+            codegen: "[$1, ...$0]",
+        },
+        StdlibFn {
+            module: "Array",
             name: "zip",
             params: vec![array_of(t.clone()), array_of(u.clone())],
             return_type: array_of(Type::Tuple(vec![t.clone(), u.clone()])),

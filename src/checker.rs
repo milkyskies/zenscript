@@ -643,6 +643,9 @@ impl Checker {
                 self.used_names.insert(name.clone());
                 if let Some(ty) = self.env.lookup(name).cloned() {
                     ty
+                } else if self.stdlib.is_module(name) {
+                    // Stdlib module names (Array, String, etc.) are valid identifiers
+                    Type::Unknown
                 } else {
                     self.diagnostics.push(
                         Diagnostic::error(format!("`{name}` is not defined"), expr.span)
@@ -771,11 +774,18 @@ impl Checker {
 
                 let type_info = self.env.lookup_type(type_name).cloned();
                 if type_info.is_none() {
-                    self.diagnostics.push(
-                        Diagnostic::error(format!("unknown type `{type_name}`"), expr.span)
-                            .with_label("not a known type")
-                            .with_code("E002"),
-                    );
+                    // Also accept union variant names as constructors
+                    let is_variant = self
+                        .env
+                        .lookup(type_name)
+                        .is_some_and(|ty| matches!(ty, Type::Union { .. }));
+                    if !is_variant {
+                        self.diagnostics.push(
+                            Diagnostic::error(format!("unknown type `{type_name}`"), expr.span)
+                                .with_label("not a known type")
+                                .with_code("E002"),
+                        );
+                    }
                 }
 
                 // Rule 3: Opaque enforcement
@@ -1121,6 +1131,19 @@ impl Checker {
     // ── Match Exhaustiveness ─────────────────────────────────────
 
     fn check_match_exhaustiveness(&mut self, subject_ty: &Type, arms: &[MatchArm], span: Span) {
+        // Resolve Named types to their actual definitions
+        let resolved_ty;
+        let subject_ty = if let Type::Named(type_name) = subject_ty {
+            if let Some(actual) = self.env.lookup(type_name) {
+                resolved_ty = actual.clone();
+                &resolved_ty
+            } else {
+                subject_ty
+            }
+        } else {
+            subject_ty
+        };
+
         let has_catch_all = arms.iter().any(|arm| {
             matches!(
                 arm.pattern.kind,
@@ -1251,6 +1274,19 @@ impl Checker {
     // ── Pattern Checking ─────────────────────────────────────────
 
     fn check_pattern(&mut self, pattern: &Pattern, subject_ty: &Type) {
+        // Resolve Named types to their actual definitions for pattern matching
+        let resolved_ty;
+        let subject_ty = if let Type::Named(type_name) = subject_ty {
+            if let Some(actual) = self.env.lookup(type_name) {
+                resolved_ty = actual.clone();
+                &resolved_ty
+            } else {
+                subject_ty
+            }
+        } else {
+            subject_ty
+        };
+
         match &pattern.kind {
             PatternKind::Literal(_) | PatternKind::Range { .. } | PatternKind::Wildcard => {}
             PatternKind::Variant { name, fields } => {
@@ -1360,6 +1396,9 @@ impl Checker {
             | (Type::Unit, Type::Unit)
             | (Type::Undefined, Type::Undefined) => true,
             (Type::Named(a), Type::Named(b)) => a == b,
+            (Type::Named(a), Type::Union { name: b, .. })
+            | (Type::Union { name: a, .. }, Type::Named(b)) => a == b,
+            (Type::Union { name: a, .. }, Type::Union { name: b, .. }) => a == b,
             (Type::Brand { tag: a, .. }, Type::Brand { tag: b, .. }) => a == b,
             (Type::Result { ok: o1, err: e1 }, Type::Result { ok: o2, err: e2 }) => {
                 self.types_compatible(o1, o2) && self.types_compatible(e1, e2)
