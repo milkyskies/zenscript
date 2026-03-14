@@ -1,0 +1,5 @@
+packages:
+  - "integrations/*"
+  - "examples/*"
+  - "docs/site"
+  - "editors/vscode"
