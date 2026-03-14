@@ -3,7 +3,9 @@
   "displayName": "Floe",
   "description": "Language support for Floe (.fl) - syntax highlighting, diagnostics, and LSP integration",
   "version": "0.1.0",
+  "license": "MIT",
   "publisher": "floe",
+  "icon": "icons/floe-icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/milkyskies/floe"
@@ -31,8 +33,8 @@
         ],
         "configuration": "./language-configuration.json",
         "icon": {
-          "light": "./icons/zs-light.png",
-          "dark": "./icons/zs-dark.png"
+          "light": "./icons/floe-light.png",
+          "dark": "./icons/floe-dark.png"
         }
       }
     ],

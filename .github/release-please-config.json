@@ -1,0 +1,12 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "rust",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true,
+      "extra-files": [
+        "crates/floe-wasm/Cargo.toml"
+      ]
+    }
+  }
+}
