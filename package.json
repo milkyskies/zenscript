@@ -1,0 +1,12 @@
+{
+  "private": true,
+  "scripts": {
+    "build:plugin": "pnpm --filter vite-plugin-zenscript build",
+    "dev:todo": "pnpm build:plugin && pnpm --filter zenscript-todo-app dev",
+    "dev:docs": "pnpm --filter zenscript-docs dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "format": "pnpm -r format",
+    "clean": "pnpm -r exec rm -rf node_modules dist out"
+  }
+}

@@ -21,6 +21,6 @@
     "tailwindcss": "^4.1.0",
     "typescript": "^5.8.0",
     "vite": "^6.0.0",
-    "vite-plugin-floe": "file:../../integrations/vite-plugin-floe"
+    "vite-plugin-floe": "workspace:*"
   }
 }
