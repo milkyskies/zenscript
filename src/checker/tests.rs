@@ -694,3 +694,52 @@ const _r = "hello" |> double
         "expected `number`, found `string`"
     ));
 }
+
+#[test]
+fn pipe_stdlib_wrong_type_via_type_directed() {
+    // `5 |> trim` should error: trim expects string, got number
+    // This goes through type-directed resolution (Number -> Number module, no trim found)
+    // then falls back to name-based lookup (finds String.trim)
+    let diags = check(
+        r#"
+const _r = 5 |> trim
+"#,
+    );
+    assert!(has_error_containing(
+        &diags,
+        "expected `string`, found `number`"
+    ));
+}
+
+#[test]
+fn pipe_stdlib_wrong_type_number_to_sort() {
+    // `5 |> sort` should error: sort expects Array<T>, got number
+    let diags = check(
+        r#"
+const _r = 5 |> sort
+"#,
+    );
+    assert!(has_error_containing(&diags, "found `number`"));
+}
+
+#[test]
+fn pipe_stdlib_correct_type() {
+    // `"hello" |> trim` should NOT error
+    let diags = check(
+        r#"
+const _r = "hello" |> trim
+"#,
+    );
+    assert!(!has_error(&diags, "E001"));
+}
+
+#[test]
+fn pipe_stdlib_correct_array_type() {
+    // `[1, 2, 3] |> sort` should NOT error
+    let diags = check(
+        r#"
+const _r = [1, 2, 3] |> sort
+"#,
+    );
+    assert!(!has_error(&diags, "E001"));
+}

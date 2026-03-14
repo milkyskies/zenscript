@@ -753,12 +753,47 @@ impl Checker {
                 self.used_names.insert(name.to_string());
                 let stdlib_fn = self.stdlib.lookup(m, name).unwrap();
                 let ret = stdlib_fn.return_type.clone();
+                // Validate piped value against first parameter
+                if let Some(first_param) = stdlib_fn.params.first()
+                    && !self.types_compatible(first_param, left_ty)
+                {
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            format!(
+                                "argument 1 to `{m}.{name}`: expected `{}`, found `{}`",
+                                first_param.display_name(),
+                                left_ty.display_name()
+                            ),
+                            right.span,
+                        )
+                        .with_label(format!("expected `{}`", first_param.display_name()))
+                        .with_code("E001"),
+                    );
+                }
                 self.check_pipe_right_args(right);
                 return ret;
             } else if !fallback_matches.is_empty() {
+                let stdlib_fn = fallback_matches[0];
+                // Validate piped value against first parameter
+                if let Some(first_param) = stdlib_fn.params.first()
+                    && !self.types_compatible(first_param, left_ty)
+                {
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            format!(
+                                "argument 1 to `{name}`: expected `{}`, found `{}`",
+                                first_param.display_name(),
+                                left_ty.display_name()
+                            ),
+                            right.span,
+                        )
+                        .with_label(format!("expected `{}`", first_param.display_name()))
+                        .with_code("E001"),
+                    );
+                }
                 // Found via name-based fallback (unknown left type)
                 self.used_names.insert(name.to_string());
-                let ret = fallback_matches[0].return_type.clone();
+                let ret = stdlib_fn.return_type.clone();
                 self.check_pipe_right_args(right);
                 return ret;
             }
