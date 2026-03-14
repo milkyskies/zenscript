@@ -437,6 +437,61 @@ fn simulate_hover(source: &str, name: &str) -> Option<String> {
 }
 
 #[test]
+fn hover_destructured_const_shows_type() {
+    let source = r#"
+import { useState } from "react"
+export fn App() -> JSX.Element {
+    const [input, setInput] = useState("")
+    return <div>{input}</div>
+}
+"#;
+    let (index, type_map) = build_index_and_types(source);
+    eprintln!("TYPE MAP: {:?}", type_map);
+    let syms = index.find_by_name("input");
+    eprintln!(
+        "SYMBOLS for input: {:?}",
+        syms.iter()
+            .map(|s| (&s.name, &s.detail, s.kind, &s.import_source))
+            .collect::<Vec<_>>()
+    );
+    let hover = simulate_hover(source, "input");
+    let detail = hover.unwrap();
+    eprintln!("HOVER for destructured input: {detail}");
+}
+
+#[test]
+fn hover_simple_const_debug() {
+    let source = r#"const pee = "test""#;
+    let hover = simulate_hover(source, "pee");
+    assert!(hover.is_some());
+    let detail = hover.unwrap();
+    eprintln!("HOVER for pee: {detail}");
+    assert!(
+        detail.contains("string"),
+        "should show string type, got: {detail}"
+    );
+}
+
+#[test]
+fn shadow_error_in_checker() {
+    let source = r#"
+const x = 5
+const x = 10
+"#;
+    let (_index, _type_map) = build_index_and_types(source);
+    let (diags, _) = crate::checker::Checker::new()
+        .check_with_types(&crate::parser::Parser::new(source).parse_program().unwrap());
+    eprintln!(
+        "SHADOW DIAGS: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    assert!(
+        diags.iter().any(|d| d.message.contains("already defined")),
+        "should have shadowing error"
+    );
+}
+
+#[test]
 fn hover_const_shows_inferred_type() {
     // const without explicit type annotation should show inferred type
     let hover = simulate_hover("const x = 42", "x");

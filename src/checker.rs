@@ -49,6 +49,9 @@ pub struct Checker {
     /// When inside a pipe, holds the type of the piped (left) value.
     /// The Call handler uses this to account for the implicit first argument.
     pipe_input_type: Option<Type>,
+    /// Maps variable/function names to their inferred type display names.
+    /// Accumulated as names are defined so inner-scope names aren't lost.
+    name_types: HashMap<String, String>,
 }
 
 impl Default for Checker {
@@ -74,6 +77,7 @@ impl Checker {
             registering_types: false,
             resolved_imports: HashMap::new(),
             pipe_input_type: None,
+            name_types: HashMap::new(),
         }
     }
 
@@ -186,16 +190,16 @@ impl Checker {
             }
         }
 
-        // Build type map from the top-level scope
-        let type_map: HashMap<String, String> = self
-            .env
-            .scopes
-            .iter()
-            .flat_map(|scope| scope.iter())
-            .map(|(name, ty)| (name.clone(), ty.display_name()))
-            .collect();
+        // Merge any remaining scope entries into name_types
+        for scope in &self.env.scopes {
+            for (name, ty) in scope {
+                self.name_types
+                    .entry(name.clone())
+                    .or_insert_with(|| ty.display_name());
+            }
+        }
 
-        (self.diagnostics, type_map, self.expr_types)
+        (self.diagnostics, self.name_types, self.expr_types)
     }
 
     fn fresh_type_var(&mut self) -> Type {
@@ -539,6 +543,8 @@ impl Checker {
         match &decl.binding {
             ConstBinding::Name(name) => {
                 self.check_no_redefinition(name, span);
+                self.name_types
+                    .insert(name.clone(), final_type.display_name());
                 self.env.define(name, final_type);
                 if decl.exported {
                     self.used_names.insert(name.clone());
@@ -558,6 +564,7 @@ impl Checker {
                         other => other.clone(),
                     };
                     self.check_no_redefinition(name, span);
+                    self.name_types.insert(name.clone(), elem_ty.display_name());
                     self.env.define(name, elem_ty);
                     self.defined_names.push((name.clone(), span));
                 }
