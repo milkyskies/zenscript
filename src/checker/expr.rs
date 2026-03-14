@@ -334,7 +334,7 @@ impl Checker {
                 let inner_ty = self.check_expr(inner);
                 Type::Result {
                     ok: Box::new(inner_ty),
-                    err: Box::new(Type::Unknown),
+                    err: Box::new(Type::Named("Error".to_string())),
                 }
             }
 
