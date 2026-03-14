@@ -15,7 +15,7 @@ export interface FloeOptions {
  * @example
  * ```ts
  * import { defineConfig } from "vite"
- * import floe from "vite-plugin-floe"
+ * import floe from "@floelang/vite-plugin"
  *
  * export default defineConfig({
  *   plugins: [floe()],
