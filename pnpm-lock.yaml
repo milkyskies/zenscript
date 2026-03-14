@@ -72,11 +72,11 @@ importers:
       vite:
         specifier: ^6.0.0
         version: 6.4.1(@types/node@25.5.0)(jiti@2.6.1)(lightningcss@1.31.1)
-      vite-plugin-zenscript:
+      vite-plugin-floe:
         specifier: workspace:*
-        version: link:../../integrations/vite-plugin-zenscript
+        version: link:../../integrations/vite-plugin-floe
 
-  integrations/vite-plugin-zenscript:
+  integrations/vite-plugin-floe:
     devDependencies:
       '@types/node':
         specifier: ^25.5.0

@@ -31,6 +31,10 @@ pub struct Checker {
     imported_names: Vec<(String, Span)>,
     /// Standard library function registry.
     stdlib: StdlibRegistry,
+    /// Names of untrusted (external TS) imports that require `try`.
+    untrusted_imports: HashSet<String>,
+    /// Whether we are currently inside a `try` expression.
+    inside_try: bool,
 }
 
 impl Default for Checker {
@@ -50,6 +54,8 @@ impl Checker {
             defined_names: Vec::new(),
             imported_names: Vec::new(),
             stdlib: StdlibRegistry::new(),
+            untrusted_imports: HashSet::new(),
+            inside_try: false,
         }
     }
 
@@ -283,6 +289,11 @@ impl Checker {
             self.env.define(effective_name, Type::Unknown);
             self.imported_names
                 .push((effective_name.to_string(), spec.span));
+
+            // Track untrusted imports (not trusted at module or specifier level)
+            if !decl.trusted && !spec.trusted {
+                self.untrusted_imports.insert(effective_name.to_string());
+            }
         }
     }
 

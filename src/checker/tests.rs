@@ -276,3 +276,66 @@ fn floating_result_error() {
     let diags = check("Ok(42)");
     assert!(has_error_containing(&diags, "unhandled Result"));
 }
+
+// ── Untrusted Import Enforcement ─────────────────────────────
+
+#[test]
+fn untrusted_import_requires_try() {
+    let diags = check(
+        r#"
+import { fetchUser } from "some-lib"
+const _x = fetchUser("id")
+"#,
+    );
+    assert!(has_error(&diags, "E014"));
+    assert!(has_error_containing(&diags, "untrusted import"));
+}
+
+#[test]
+fn untrusted_import_ok_with_try() {
+    let diags = check(
+        r#"
+import { fetchUser } from "some-lib"
+const _x = try fetchUser("id")
+"#,
+    );
+    assert!(!has_error(&diags, "E014"));
+}
+
+#[test]
+fn trusted_specifier_no_error() {
+    let diags = check(
+        r#"
+import { trusted capitalize } from "some-lib"
+const _x = capitalize("hello")
+"#,
+    );
+    assert!(!has_error(&diags, "E014"));
+}
+
+#[test]
+fn trusted_module_no_error() {
+    let diags = check(
+        r#"
+import trusted { capitalize, slugify } from "string-utils"
+const _x = capitalize("hello")
+const _y = slugify("hello world")
+"#,
+    );
+    assert!(!has_error(&diags, "E014"));
+}
+
+#[test]
+fn mixed_trusted_untrusted() {
+    let diags = check(
+        r#"
+import { trusted capitalize, fetchUser } from "some-lib"
+const _x = capitalize("hello")
+const _y = fetchUser("id")
+"#,
+    );
+    // capitalize is trusted — no error
+    assert!(!has_error_containing(&diags, "capitalize"));
+    // fetchUser is untrusted — error
+    assert!(has_error_containing(&diags, "fetchUser"));
+}

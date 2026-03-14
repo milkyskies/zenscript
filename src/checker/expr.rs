@@ -129,6 +129,24 @@ impl Checker {
                     return ret;
                 }
 
+                // Check for untrusted import call without try
+                if let ExprKind::Identifier(name) = &callee.kind
+                    && !self.inside_try
+                    && self.untrusted_imports.contains(name)
+                {
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            format!("calling untrusted import `{name}` requires `try`"),
+                            expr.span,
+                        )
+                        .with_label("untrusted TS import")
+                        .with_help(format!(
+                            "Use `try {name}(...)` or mark the import as `trusted`"
+                        ))
+                        .with_code("E014"),
+                    );
+                }
+
                 let callee_ty = self.check_expr(callee);
                 for arg in args {
                     match arg {
@@ -331,7 +349,10 @@ impl Checker {
             ExprKind::Await(inner) => self.check_expr(inner),
 
             ExprKind::Try(inner) => {
+                let prev_inside_try = self.inside_try;
+                self.inside_try = true;
                 let inner_ty = self.check_expr(inner);
+                self.inside_try = prev_inside_try;
                 Type::Result {
                     ok: Box::new(inner_ty),
                     err: Box::new(Type::Named("Error".to_string())),
