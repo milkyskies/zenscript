@@ -208,8 +208,12 @@ pub enum ExprKind {
     Unwrap(Box<Expr>),
 
     // -- Calls & Construction --
-    /// Function call: `f(a, b, name: c)`
-    Call { callee: Box<Expr>, args: Vec<Arg> },
+    /// Function call: `f(a, b, name: c)` or `f<T>(a, b)`
+    Call {
+        callee: Box<Expr>,
+        type_args: Vec<TypeExpr>,
+        args: Vec<Arg>,
+    },
     /// Type constructor: `User(name: "Ryan", email: e)` or `User(..existing, name: "New")`
     Construct {
         type_name: String,

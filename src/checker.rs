@@ -345,9 +345,13 @@ impl Checker {
                 // Infer element types from the value type
                 for (i, name) in names.iter().enumerate() {
                     let elem_ty = match &final_type {
-                        Type::Array(inner) => (**inner).clone(),
+                        // Tuple destructuring: each name gets its positional type
                         Type::Tuple(types) => types.get(i).cloned().unwrap_or(Type::Unknown),
-                        _ => Type::Unknown,
+                        // Unknown: no info
+                        Type::Unknown | Type::Var(_) => Type::Unknown,
+                        // Known type (e.g., Array<Todo> from useState<Array<Todo>>):
+                        // give each name the full type
+                        other => other.clone(),
                     };
                     self.env.define(name, elem_ty);
                     self.defined_names.push((name.clone(), span));

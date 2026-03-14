@@ -79,7 +79,7 @@ impl Codegen {
                 self.push("!");
             }
 
-            ExprKind::Call { callee, args } => {
+            ExprKind::Call { callee, args, .. } => {
                 // Check for stdlib call: Array.sort(arr), Option.map(opt, fn), etc.
                 if let Some(output) = self.try_emit_stdlib_call(callee, args) {
                     self.push(&output);
@@ -436,7 +436,7 @@ impl Codegen {
         match &right.kind {
             // Stdlib pipe: `arr |> Array.sort` or `arr |> Array.map(fn)`
             // Also handles type-directed resolution: `arr |> map(fn)` → stdlib lookup by name
-            ExprKind::Call { callee, args } if !has_placeholder_arg(args) => {
+            ExprKind::Call { callee, args, .. } if !has_placeholder_arg(args) => {
                 if let Some(output) = self.try_emit_stdlib_pipe(left, callee, args) {
                     self.push(&output);
                     return;
@@ -469,7 +469,7 @@ impl Codegen {
                 self.push(")");
             }
             // `a |> f(b, _, c)` → `f(b, a, c)` — placeholder replacement
-            ExprKind::Call { callee, args } if has_placeholder_arg(args) => {
+            ExprKind::Call { callee, args, .. } if has_placeholder_arg(args) => {
                 self.emit_expr(callee);
                 self.push("(");
                 for (i, arg) in args.iter().enumerate() {

@@ -323,6 +323,33 @@ const _x = greet(User(name: "Ryan"), "Hello")
 }
 
 #[test]
+fn call_site_type_args_infer_return() {
+    let (diags, types) = {
+        let program = crate::parser::Parser::new(
+            r#"
+import { useState } from "react"
+type Todo = { text: string }
+const [todos, setTodos] = useState<Array<Todo>>([])
+const _x = todos
+"#,
+        )
+        .parse_program()
+        .expect("should parse");
+        Checker::new().check_with_types(&program)
+    };
+    // todos should be Array<Todo>, not Unknown
+    assert!(
+        !has_error_containing(&diags, "not defined"),
+        "unexpected errors: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    // Check that todos has Array type via the name map
+    if let Some(ty) = types.get("todos") {
+        assert!(ty.contains("Array"), "expected Array type, got: {ty}");
+    }
+}
+
+#[test]
 fn for_block_with_pipe() {
     let diags = check(
         r#"

@@ -668,6 +668,35 @@ impl Parser {
         false
     }
 
+    /// Heuristic: is the current `<` the start of generic type arguments in a call?
+    /// Look ahead for `< types > (` pattern. Handles nesting.
+    fn is_generic_call(&self) -> bool {
+        let mut depth = 0;
+        let mut i = self.pos;
+        while i < self.tokens.len() {
+            match &self.tokens[i].kind {
+                TokenKind::LessThan => depth += 1,
+                TokenKind::GreaterThan => {
+                    depth -= 1;
+                    if depth == 0 {
+                        // Must be followed by `(`
+                        return i + 1 < self.tokens.len()
+                            && self.tokens[i + 1].kind == TokenKind::LeftParen;
+                    }
+                }
+                // If we see something that can't be in a type, bail
+                TokenKind::LeftBrace
+                | TokenKind::RightBrace
+                | TokenKind::Semicolon
+                | TokenKind::Equal
+                | TokenKind::Eof => return false,
+                _ => {}
+            }
+            i += 1;
+        }
+        false
+    }
+
     // ── If Expression ────────────────────────────────────────────
 
     fn parse_if_expr(&mut self) -> Result<Expr, ParseError> {

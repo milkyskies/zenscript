@@ -118,7 +118,11 @@ impl Checker {
                 }
             }
 
-            ExprKind::Call { callee, args } => {
+            ExprKind::Call {
+                callee,
+                type_args,
+                args,
+            } => {
                 // Check for stdlib call: Array.sort(arr), Option.map(opt, fn), etc.
                 if let ExprKind::Member { object, field } = &callee.kind
                     && let ExprKind::Identifier(module) = &object.kind
@@ -146,7 +150,15 @@ impl Checker {
                 }
                 match callee_ty {
                     Type::Function { return_type, .. } => *return_type,
-                    _ => Type::Unknown,
+                    _ => {
+                        // For unknown external functions with type args (e.g., useState<Array<Todo>>),
+                        // use the first type arg as the return type
+                        if !type_args.is_empty() {
+                            self.resolve_type(&type_args[0])
+                        } else {
+                            Type::Unknown
+                        }
+                    }
                 }
             }
 
