@@ -3,7 +3,7 @@ import starlight from "@astrojs/starlight";
 
 export default defineConfig({
   site: "https://milkyskies.github.io",
-  base: "/zenscript",
+  base: "/floe",
   vite: {
     ssr: {
       noExternal: ["zod"],
@@ -11,14 +11,14 @@ export default defineConfig({
   },
   integrations: [
     starlight({
-      title: "ZenScript",
+      title: "Floe",
       description:
         "A Gleam-inspired language that compiles to TypeScript + React",
       social: [
         {
           icon: "github",
           label: "GitHub",
-          href: "https://github.com/milkyskies/zenscript",
+          href: "https://github.com/milkyskies/floe",
         },
       ],
       sidebar: [

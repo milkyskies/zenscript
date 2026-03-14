@@ -24,7 +24,7 @@ title: Types Reference
 
 Named product types with fields:
 
-```zenscript
+```floe
 type User = {
   name: string,
   email: string,
@@ -46,7 +46,7 @@ type User = {
 
 Tagged discriminated unions:
 
-```zenscript
+```floe
 type Shape =
   | Circle(radius: number)
   | Rectangle(width: number, height: number)
@@ -66,7 +66,7 @@ type Shape =
 
 Types that are distinct at compile time but erase to their base type at runtime:
 
-```zenscript
+```floe
 type UserId = Brand<string, "UserId">
 type PostId = Brand<string, "PostId">
 ```
@@ -77,7 +77,7 @@ type PostId = Brand<string, "PostId">
 
 Types where internals are hidden from other modules:
 
-```zenscript
+```floe
 opaque type Email = string
 ```
 
@@ -85,7 +85,7 @@ Only code in the module that defines `Email` can construct or destructure it. Ot
 
 ## Type Expressions
 
-```zenscript
+```floe
 // Named
 User
 string

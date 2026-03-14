@@ -1,5 +1,5 @@
 vim.filetype.add({
   extension = {
-    zs = "zenscript",
+    fl = "floe",
   },
 })

@@ -1,4 +1,4 @@
-//! ZenScript standard library — built-in functions known to the compiler.
+//! Floe standard library — built-in functions known to the compiler.
 //!
 //! These functions exist only at compile time. The checker uses them for type
 //! checking, and the codegen inlines them as vanilla TypeScript. No runtime

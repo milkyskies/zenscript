@@ -2,11 +2,11 @@
 title: JSX & React
 ---
 
-ZenScript has first-class JSX support. Write React components with all the safety guarantees.
+Floe has first-class JSX support. Write React components with all the safety guarantees.
 
 ## Components
 
-```zenscript
+```floe
 import { useState, JSX } from "react"
 
 export function Counter(): JSX.Element {
@@ -23,7 +23,7 @@ Components are just exported functions that return `JSX.Element`.
 
 ## Props
 
-```zenscript
+```floe
 type ButtonProps = {
   label: string,
   onClick: () => void,
@@ -44,7 +44,7 @@ export function Button(props: ButtonProps): JSX.Element {
 
 Use `if`/`else` expressions:
 
-```zenscript
+```floe
 return <div>
   {if isLoggedIn {
     <UserProfile user={user} />
@@ -58,7 +58,7 @@ return <div>
 
 Use pipes with `map`:
 
-```zenscript
+```floe
 return <ul>
   {items |> map(item => <li key={item.id}>{item.name}</li>)}
 </ul>
@@ -66,7 +66,7 @@ return <ul>
 
 ## Fragments
 
-```zenscript
+```floe
 return <>
   <Header />
   <Main />

@@ -9,7 +9,7 @@ pub struct CodegenOutput {
     pub has_jsx: bool,
 }
 
-/// The ZenScript code generator. Emits clean, readable TypeScript / TSX.
+/// The Floe code generator. Emits clean, readable TypeScript / TSX.
 pub struct Codegen {
     output: String,
     indent: usize,
@@ -35,7 +35,7 @@ impl Codegen {
         }
     }
 
-    /// Generate TypeScript from a ZenScript program.
+    /// Generate TypeScript from a Floe program.
     pub fn generate(mut self, program: &Program) -> CodegenOutput {
         // First pass: collect union variant info
         for item in &program.items {

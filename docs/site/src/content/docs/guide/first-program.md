@@ -4,9 +4,9 @@ title: Your First Program
 
 ## Hello World
 
-Create a file called `hello.zs`:
+Create a file called `hello.fl`:
 
-```zenscript
+```floe
 export function greet(name: string): string {
   return `Hello, ${name}!`
 }
@@ -17,7 +17,7 @@ greet("world") |> console.log
 Compile it:
 
 ```bash
-zsc build hello.zs
+floe build hello.fl
 ```
 
 This produces `hello.ts`:
@@ -32,9 +32,9 @@ console.log(greet("world"));
 
 ## A React Component
 
-Create `counter.zs`:
+Create `counter.fl`:
 
-```zenscript
+```floe
 import { useState } from "react"
 
 export function Counter(): JSX.Element {
@@ -50,7 +50,7 @@ export function Counter(): JSX.Element {
 Compile it:
 
 ```bash
-zsc build counter.zs
+floe build counter.fl
 ```
 
 This produces `counter.tsx` — a standard React component that works with any React setup.
@@ -59,7 +59,7 @@ This produces `counter.tsx` — a standard React component that works with any R
 
 Pipes let you read transformations left-to-right instead of inside-out:
 
-```zenscript
+```floe
 // Without pipes (nested calls)
 const result = toString(add(multiply(value, 2), 1))
 
@@ -77,7 +77,7 @@ The `_` placeholder marks where the piped value goes.
 Run the type checker without generating output:
 
 ```bash
-zsc check src/
+floe check src/
 ```
 
 This catches errors like:

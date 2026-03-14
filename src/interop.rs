@@ -2,7 +2,7 @@
 //!
 //! Resolves npm modules by shelling out to `tsc`, parses the type
 //! declarations from `.d.ts` files, and wraps types at the import
-//! boundary so they conform to ZenScript semantics.
+//! boundary so they conform to Floe semantics.
 //!
 //! Boundary conversions:
 //! - `T | null`          → `Option<T>`
@@ -30,7 +30,7 @@ pub struct ResolvedModule {
 /// Result of looking up exports from a resolved module.
 #[derive(Debug, Clone)]
 pub struct ModuleExports {
-    /// Named exports: name -> wrapped ZenScript type
+    /// Named exports: name -> wrapped Floe type
     pub exports: HashMap<String, Type>,
     /// The module specifier
     pub specifier: String,
@@ -562,7 +562,7 @@ fn find_matching_paren(s: &str) -> Option<usize> {
 
 // ── Boundary Wrapping ───────────────────────────────────────────
 
-/// Converts a TypeScript type to a ZenScript type, applying boundary wrapping:
+/// Converts a TypeScript type to a Floe type, applying boundary wrapping:
 /// - `T | null` → `Option<T>`
 /// - `T | undefined` → `Option<T>`
 /// - `T | null | undefined` → `Option<T>`
@@ -580,7 +580,7 @@ pub fn wrap_boundary_type(ts_type: &TsType) -> Type {
 
         TsType::Null | TsType::Undefined => Type::Undefined,
 
-        // any → unknown (forces narrowing in ZenScript)
+        // any → unknown (forces narrowing in Floe)
         TsType::Any => Type::Unknown,
 
         TsType::Unknown => Type::Unknown,
@@ -658,7 +658,7 @@ fn wrap_union_boundary(parts: &[TsType]) -> Type {
     }
 }
 
-/// Resolves a module specifier and returns wrapped ZenScript types for its exports.
+/// Resolves a module specifier and returns wrapped Floe types for its exports.
 ///
 /// This is the main entry point: resolve the module, parse its .d.ts,
 /// and wrap all exported types at the boundary.

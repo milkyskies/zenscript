@@ -4,18 +4,18 @@ title: Installation
 
 ## Install the Compiler
 
-ZenScript ships as a single Rust binary called `zsc`.
+Floe ships as a single Rust binary called `floe`.
 
 ### From Source
 
 ```bash
 # Clone and build
-git clone https://github.com/milkyskies/zenscript
-cd zenscript
+git clone https://github.com/milkyskies/floe
+cd floe
 cargo install --path .
 
 # Verify
-zsc --version
+floe --version
 ```
 
 ### Prerequisites
@@ -26,25 +26,25 @@ zsc --version
 ## Create a Project
 
 ```bash
-# Scaffold a new ZenScript project
-zsc init my-app
+# Scaffold a new Floe project
+floe init my-app
 cd my-app
 
 # Install npm dependencies
 npm install
 
-# Compile .zs files
-zsc build src/
+# Compile .fl files
+floe build src/
 
 # Or watch for changes
-zsc watch src/
+floe watch src/
 ```
 
 ## Editor Setup
 
 ### VS Code
 
-Install the **ZenScript** extension from the VS Code marketplace, or build from source:
+Install the **Floe** extension from the VS Code marketplace, or build from source:
 
 ```bash
 cd editors/vscode
@@ -53,16 +53,16 @@ npm run build
 ```
 
 The extension provides:
-- Syntax highlighting for `.zs` files
+- Syntax highlighting for `.fl` files
 - LSP integration (diagnostics, hover)
 - Code snippets
 
 ### Other Editors
 
-ZenScript includes an LSP server. Start it with:
+Floe includes an LSP server. Start it with:
 
 ```bash
-zsc lsp
+floe lsp
 ```
 
 Any editor with LSP support can connect to it.

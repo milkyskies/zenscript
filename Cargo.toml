@@ -1,18 +1,18 @@
 [workspace]
-members = [".", "crates/zenscript-wasm"]
+members = [".", "crates/floe-wasm"]
 resolver = "3"
 
 [package]
-name = "zenscript"
+name = "floe"
 version = "0.1.0"
 edition = "2024"
 
 [lib]
-name = "zenscript"
+name = "floe"
 path = "src/lib.rs"
 
 [[bin]]
-name = "zsc"
+name = "floe"
 path = "src/main.rs"
 
 [dependencies]

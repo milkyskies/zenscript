@@ -248,6 +248,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "floe"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ariadne",
+ "clap",
+ "insta",
+ "notify",
+ "rowan",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower-lsp",
+]
+
+[[package]]
+name = "floe-wasm"
+version = "0.1.0"
+dependencies = [
+ "floe",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "foldhash"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1579,33 +1606,6 @@ dependencies = [
  "quote",
  "syn",
  "synstructure",
-]
-
-[[package]]
-name = "zenscript"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "ariadne",
- "clap",
- "insta",
- "notify",
- "rowan",
- "serde",
- "serde_json",
- "tokio",
- "tower-lsp",
-]
-
-[[package]]
-name = "zenscript-wasm"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde-wasm-bindgen",
- "serde_json",
- "wasm-bindgen",
- "zenscript",
 ]
 
 [[package]]

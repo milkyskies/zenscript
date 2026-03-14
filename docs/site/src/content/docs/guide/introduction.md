@@ -2,13 +2,13 @@
 title: Introduction
 ---
 
-ZenScript is a programming language that compiles to TypeScript. It's designed for TypeScript and React developers who want stronger guarantees without leaving their ecosystem.
+Floe is a programming language that compiles to TypeScript. It's designed for TypeScript and React developers who want stronger guarantees without leaving their ecosystem.
 
-## Why ZenScript?
+## Why Floe?
 
 TypeScript is great, but it has escape hatches everywhere: `any`, `null`, `undefined`, type assertions. These lead to runtime errors that the type system was supposed to prevent.
 
-ZenScript removes the escape hatches and adds features that make correct code easy to write:
+Floe removes the escape hatches and adds features that make correct code easy to write:
 
 - **Pipes** (`|>`) for readable data transformations
 - **Pattern matching** (`match`) with exhaustiveness checking
@@ -19,7 +19,7 @@ ZenScript removes the escape hatches and adds features that make correct code ea
 
 ## What does it look like?
 
-```zenscript
+```floe
 import { useState } from "react"
 
 type Todo = {
@@ -65,7 +65,7 @@ export function App(): JSX.Element {
 
 ## Design Philosophy
 
-1. **Familiar syntax** — A React developer should understand ZenScript in 30 minutes
+1. **Familiar syntax** — A React developer should understand Floe in 30 minutes
 2. **No runtime** — The output is vanilla TypeScript with zero dependencies
-3. **Eject anytime** — If you stop using ZenScript, you have normal `.ts` files
+3. **Eject anytime** — If you stop using Floe, you have normal `.ts` files
 4. **Strictness is a feature** — Every restriction exists to prevent a category of bugs

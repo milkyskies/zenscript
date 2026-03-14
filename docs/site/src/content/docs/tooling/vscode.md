@@ -2,13 +2,13 @@
 title: VS Code Extension
 ---
 
-The ZenScript VS Code extension provides syntax highlighting, LSP integration, and code snippets.
+The Floe VS Code extension provides syntax highlighting, LSP integration, and code snippets.
 
 ## Installation
 
 ### From Marketplace
 
-Search for "ZenScript" in the VS Code extensions panel.
+Search for "Floe" in the VS Code extensions panel.
 
 ### From Source
 
@@ -23,7 +23,7 @@ npm run build
 
 ### Syntax Highlighting
 
-Full TextMate grammar for `.zs` files:
+Full TextMate grammar for `.fl` files:
 - Keywords (`const`, `function`, `match`, `type`, etc.)
 - Operators (`|>`, `->`, `=>`, `?`)
 - JSX elements and attributes
@@ -32,7 +32,7 @@ Full TextMate grammar for `.zs` files:
 
 ### Language Server
 
-Full IDE features powered by `zsc lsp`:
+Full IDE features powered by `floe lsp`:
 
 - **Diagnostics** - parse errors, type errors, unused variable/import warnings
 - **Hover** - type signatures and documentation
@@ -65,10 +65,10 @@ Full IDE features powered by `zsc lsp`:
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `zenscript.serverPath` | Path to the `zsc` binary | `"zsc"` |
+| `floe.serverPath` | Path to the `floe` binary | `"floe"` |
 
 ## Troubleshooting
 
-**Diagnostics not showing:** Make sure `zsc` is installed and in your PATH. Check `zenscript.serverPath` in settings.
+**Diagnostics not showing:** Make sure `floe` is installed and in your PATH. Check `floe.serverPath` in settings.
 
-**Extension not activating:** Ensure the file has a `.zs` extension. The extension activates on the `zenscript` language ID.
+**Extension not activating:** Ensure the file has a `.fl` extension. The extension activates on the `floe` language ID.

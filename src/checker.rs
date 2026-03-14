@@ -174,7 +174,7 @@ impl TypeEnv {
 
 // ── Checker ──────────────────────────────────────────────────────
 
-/// The ZenScript type checker.
+/// The Floe type checker.
 pub struct Checker {
     env: TypeEnv,
     diagnostics: Vec<Diagnostic>,

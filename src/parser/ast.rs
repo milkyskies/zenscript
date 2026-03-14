@@ -1,13 +1,13 @@
 use crate::lexer::span::Span;
 
-/// A complete ZenScript source file.
+/// A complete Floe source file.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
     pub items: Vec<Item>,
     pub span: Span,
 }
 
-/// Top-level items in a ZenScript file.
+/// Top-level items in a Floe file.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Item {
     pub kind: ItemKind,

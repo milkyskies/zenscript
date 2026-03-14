@@ -4,7 +4,7 @@ title: Configuration
 
 ## tsconfig.json
 
-ZenScript outputs TypeScript files, so your project needs a `tsconfig.json`. The `zsc init` command creates one for you:
+Floe outputs TypeScript files, so your project needs a `tsconfig.json`. The `floe init` command creates one for you:
 
 ```json
 {
@@ -21,8 +21,8 @@ ZenScript outputs TypeScript files, so your project needs a `tsconfig.json`. The
 ```
 
 Key settings:
-- `jsx: "react-jsx"` — required for `.tsx` output from ZenScript JSX
-- `strict: true` — matches ZenScript's strictness philosophy
+- `jsx: "react-jsx"` — required for `.tsx` output from Floe JSX
+- `strict: true` — matches Floe's strictness philosophy
 - `moduleResolution: "bundler"` — works with Vite and modern bundlers
 
 ## Project Structure
@@ -32,12 +32,12 @@ Recommended layout:
 ```
 my-app/
   src/
-    main.zs           # Entry point
+    main.fl           # Entry point
     components/
-      App.zs           # React components
-      Button.zs
+      App.fl           # React components
+      Button.fl
     utils/
-      math.zs          # Utility functions
+      math.fl          # Utility functions
   tsconfig.json
   package.json
   vite.config.ts       # If using Vite
@@ -45,22 +45,22 @@ my-app/
 
 ## Build Output
 
-By default, `zsc build` outputs files next to the source:
+By default, `floe build` outputs files next to the source:
 
 ```
-src/main.zs    -> src/main.ts
-src/App.zs     -> src/App.tsx    (if JSX detected)
+src/main.fl    -> src/main.ts
+src/App.fl     -> src/App.tsx    (if JSX detected)
 ```
 
 Use `--out-dir` to specify a separate output directory:
 
 ```bash
-zsc build src/ --out-dir dist/
+floe build src/ --out-dir dist/
 ```
 
 ## npm Interop
 
-ZenScript resolves npm modules using your project's `tsconfig.json` and `node_modules`. No additional configuration is needed.
+Floe resolves npm modules using your project's `tsconfig.json` and `node_modules`. No additional configuration is needed.
 
 When importing from npm packages:
 - `T | null` becomes `Option<T>`

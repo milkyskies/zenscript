@@ -4,17 +4,17 @@ title: Types
 
 ## Primitives
 
-```zenscript
+```floe
 const name: string = "Alice"
 const age: number = 30
 const active: bool = true
 ```
 
-Note: ZenScript uses `bool`, not `boolean`.
+Note: Floe uses `bool`, not `boolean`.
 
 ## Record Types
 
-```zenscript
+```floe
 type User = {
   name: string,
   email: string,
@@ -24,13 +24,13 @@ type User = {
 
 Construct records with the type name:
 
-```zenscript
+```floe
 const user = User(name: "Alice", email: "a@b.com", age: 30)
 ```
 
 Update with spread:
 
-```zenscript
+```floe
 const updated = User(..user, age: 31)
 ```
 
@@ -38,7 +38,7 @@ const updated = User(..user, age: 31)
 
 Discriminated unions with variants:
 
-```zenscript
+```floe
 type Color =
   | Red
   | Green
@@ -52,7 +52,7 @@ type Color =
 
 For operations that can fail:
 
-```zenscript
+```floe
 type Result<T, E> = Ok(T) | Err(E)
 
 const result = Ok(42)
@@ -63,7 +63,7 @@ const error = Err("something went wrong")
 
 For values that may be absent:
 
-```zenscript
+```floe
 type Option<T> = Some(T) | None
 
 const found = Some("hello")
@@ -74,7 +74,7 @@ const missing = None
 
 Propagate errors concisely:
 
-```zenscript
+```floe
 function getUsername(id: string): Result<string, Error> {
   const user = fetchUser(id)?   // returns Err early if it fails
   return Ok(user.name)
@@ -85,7 +85,7 @@ function getUsername(id: string): Result<string, Error> {
 
 Compile-time distinct types that erase at runtime:
 
-```zenscript
+```floe
 type UserId = Brand<string, "UserId">
 type PostId = Brand<string, "PostId">
 
@@ -97,7 +97,7 @@ type PostId = Brand<string, "PostId">
 
 Types where only the defining module can see the internal structure:
 
-```zenscript
+```floe
 opaque type Email = string
 
 // Only this module can construct/destructure Email values
@@ -105,7 +105,7 @@ opaque type Email = string
 
 ## Type Aliases
 
-```zenscript
+```floe
 type Name = string
 type Callback = (event: Event) => void
 ```

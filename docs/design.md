@@ -1,4 +1,4 @@
-# ZenScript — Compiler Architecture Blueprint v2
+# Floe — Compiler Architecture Blueprint v2
 
 ## Vision
 
@@ -9,10 +9,10 @@ A Gleam-inspired language that compiles to vanilla TypeScript + React. Familiar 
 ## Pipeline
 
 ```
-.zs source → Lexer → Parser → AST → Type Checker → Codegen → .tsx output → tsc/swc → JS
+.fl source → Lexer → Parser → AST → Type Checker → Codegen → .tsx output → tsc/swc → JS
 ```
 
-The compiler is a single Rust binary (`zsc`) that takes `.zs` files and emits `.tsx`. From there, the user's existing build toolchain (Vite, Next.js, etc.) picks it up like any other TypeScript file.
+The compiler is a single Rust binary (`floe`) that takes `.fl` files and emits `.tsx`. From there, the user's existing build toolchain (Vite, Next.js, etc.) picks it up like any other TypeScript file.
 
 ---
 
@@ -20,7 +20,7 @@ The compiler is a single Rust binary (`zsc`) that takes `.zs` files and emits `.
 
 ### Principle: "TypeScript, but stricter and with pipes"
 
-A React developer should read ZenScript and understand it in 30 minutes. We keep familiar syntax and add targeted upgrades.
+A React developer should read Floe and understand it in 30 minutes. We keep familiar syntax and add targeted upgrades.
 
 ### Three Operators, One Character Each
 
@@ -98,7 +98,7 @@ All four of TypeScript's `?` uses (`?.`, `??`, `?:`, `? :`) are removed. `?` now
 
 ### Pipe Operator
 
-```zenscript
+```floe
 // Default: piped value goes to first argument
 users
   |> filter(u => u.active)       // filter(users, fn)
@@ -132,7 +132,7 @@ Pipe rules:
 
 ### Match Expressions
 
-```zenscript
+```floe
 // Match on union types — exhaustive
 match route {
   Home          -> <HomePage />
@@ -176,7 +176,7 @@ Match uses `->` for arms (not `=>`), so it's visually distinct from arrow functi
 
 ### The `?` Operator (Result/Option Unwrap)
 
-```zenscript
+```floe
 // On Result<T, E> — gives you T, or returns Err(E) from function
 function loadProfile(id: UserId): Result<Profile, AppError> {
   const user  = fetchUser(id)?
@@ -212,7 +212,7 @@ const user = _r0.value
 
 ### Option<T> — No Null, No Undefined
 
-```zenscript
+```floe
 type User = {
   name: string                  // always present
   nickname: Option<string>      // might not exist
@@ -240,7 +240,7 @@ const avatar = user.nickname |> Option.flatMap(n => findAvatar(n))
 
 `type` does everything. No `|` = record. Has `|` = union. Unions nest infinitely.
 
-```zenscript
+```floe
 // Record type (no |)
 type User = {
   id: UserId
@@ -305,7 +305,7 @@ type AppError =
 
 Match at any depth in one expression. Mix shallow and deep arms freely.
 
-```zenscript
+```floe
 // Level 1 — broad categories
 match error {
   Network(_)        -> "Connection problem"
@@ -366,7 +366,7 @@ The compiler generates discrimination tags in the emitted TypeScript — you nev
 
 ### Branded Types
 
-```zenscript
+```floe
 type UserId = Brand<string, "UserId">
 type Email  = Brand<string, "Email">
 
@@ -376,8 +376,8 @@ sendEmail(id, "hello")  // COMPILE ERROR: UserId is not Email
 
 ### Opaque Types
 
-```zenscript
-// auth/password.zs
+```floe
+// auth/password.fl
 opaque type HashedPassword = string
 
 export function hash(raw: string): HashedPassword {
@@ -388,7 +388,7 @@ export function verify(raw: string, hashed: HashedPassword): bool {
   bcryptCompare(raw, hashed)  // only this module can read it
 }
 
-// other_file.zs
+// other_file.fl
 const pw: HashedPassword = hash("secret")
 // pw + "abc"   COMPILE ERROR — it's not a string to you
 
@@ -398,7 +398,7 @@ const pw: HashedPassword = hash("secret")
 
 Records and functions use the same call syntax: `Name(args)` with optional labels. No `new`, no `{ }` for construction.
 
-```zenscript
+```floe
 // --- Record Construction ---
 
 type User = {
@@ -487,7 +487,7 @@ export function Button(props: ButtonProps) {
   return <button>{props.label}</button>
 }
 
-// .zs — only specify what matters
+// .fl — only specify what matters
 <Button label="Save" onClick={handleSave} />
 <Button label="Delete" onClick={handleDelete} variant={Danger} icon={Some(TrashIcon)} />
 ```
@@ -501,7 +501,7 @@ Default value rules:
 
 ### Function Conventions
 
-```zenscript
+```floe
 // Named/exported functions use `function`
 export function TodoApp() { ... }
 export function fetchUser(id: UserId): Result<User, ApiError> { ... }
@@ -522,7 +522,7 @@ greet("Ryan", greeting: "Hey")  // "Hey, Ryan!"
 
 ### Full Component Example
 
-```zenscript
+```floe
 import { useState } from "react"
 
 type Todo = {
@@ -614,17 +614,17 @@ These are enforced at compile time with clear error messages.
 ### Crate Structure
 
 ```
-zenscript/
+floe/
 ├── crates/
 │   ├── zs_lexer/          # Tokenizer
 │   ├── zs_parser/         # Recursive descent parser → AST
 │   ├── zs_checker/        # Type checker, exhaustiveness, brands, opaques
 │   ├── zs_codegen/        # AST → .tsx emitter
 │   ├── zs_lsp/            # Language server (tower-lsp)
-│   └── zs_cli/            # CLI binary (zsc)
+│   └── zs_cli/            # CLI binary (floe)
 ├── runtime/                 # ZERO runtime — intentionally empty
 ├── tests/
-│   ├── fixtures/            # .zs input files
+│   ├── fixtures/            # .fl input files
 │   └── snapshots/           # expected .tsx outputs
 └── Cargo.toml
 ```
@@ -672,7 +672,7 @@ enum Expr {
     Arrow { params: Vec<Param>, body: Box<Expr> },
     Jsx(JsxElement),
 
-    // ZenScript additions
+    // Floe additions
     Pipe { left: Box<Expr>, right: Box<Expr> },
     Match { subject: Box<Expr>, arms: Vec<MatchArm> },
     Unwrap(Box<Expr>),         // the ? operator
@@ -743,10 +743,10 @@ Automatic conversions at import boundary:
 - External `any` → `unknown` (forces narrowing)
 - Functions that throw → compiler warns; can wrap with `boundary` block to get `Result`
 
-```zenscript
+```floe
 import { findElement } from "some-dom-lib"
 // .d.ts says: findElement(id: string): Element | null
-// ZenScript sees: findElement(id: string): Option<Element>
+// Floe sees: findElement(id: string): Option<Element>
 
 match findElement("app") {
   Some(el) -> render(el)
@@ -759,7 +759,7 @@ match findElement("app") {
 
 Emits clean, readable `.tsx`. Zero runtime imports.
 
-| ZenScript | Emitted TypeScript |
+| Floe | Emitted TypeScript |
 |------------|-------------------|
 | `a \|> f(b, c)` | `f(a, b, c)` |
 | `a \|> f(b, _, c)` | `f(b, a, c)` |
@@ -796,7 +796,7 @@ When the user types `|>` after an expression, the LSP:
 3. Ranks by relevance — functions from the matching module first (e.g. `Option.map`, `Option.unwrapOr`) then general functions that accept the type
 4. Presents completions with type signatures
 
-This gives `.method()` discoverability to a pipe-first language — the main DX complaint about Gleam, Elixir, and F# is that you have to KNOW which module has the function. ZenScript shows you.
+This gives `.method()` discoverability to a pipe-first language — the main DX complaint about Gleam, Elixir, and F# is that you have to KNOW which module has the function. Floe shows you.
 
 Example: user types `Option<string>` value then `|>`
 ```
@@ -816,10 +816,10 @@ Suggestions:
 - Red squiggles for banned keywords
 - Exhaustiveness warnings on incomplete match
 - Type errors from the checker
-- `?` .zs in non-Result/Option functions
+- `?` .fl in non-Result/Option functions
 
 ### Phase 2 — Navigation (weeks)
-- Go-to-definition (within .zs files)
+- Go-to-definition (within .fl files)
 - Hover for type info
 - Find references
 
@@ -841,12 +841,12 @@ Suggestions:
 ### Vite Plugin (primary target)
 
 ```typescript
-export default function zenscript(): Plugin {
+export default function floe(): Plugin {
   return {
-    name: "zenscript",
+    name: "floe",
     transform(code, id) {
-      if (!id.endsWith(".zs")) return
-      const tsx = compileZen(code)  // shell to zsc or WASM
+      if (!id.endsWith(".fl")) return
+      const tsx = compileZen(code)  // shell to floe or WASM
       return { code: tsx, map: null }
     }
   }
@@ -856,11 +856,11 @@ export default function zenscript(): Plugin {
 ### CLI
 
 ```bash
-zsc build src/           # compile all .zs → .tsx
-zsc check src/           # type-check only, no output
-zsc watch src/           # watch mode
-zsc init                 # scaffold new project
-zsc migrate file.tsx     # attempt to convert .tsx to .zs
+floe build src/           # compile all .fl → .tsx
+floe check src/           # type-check only, no output
+floe watch src/           # watch mode
+floe init                 # scaffold new project
+floe migrate file.tsx     # attempt to convert .tsx to .fl
 ```
 
 ---
@@ -877,8 +877,8 @@ zsc migrate file.tsx     # attempt to convert .tsx to .zs
 - [ ] Codegen: pipe lowering (`a |> f(b)` → `f(a, b)`)
 - [ ] Codegen: `_` placeholder lowering
 - [ ] Codegen: constructor → object literal, spread → `{ ...x }`
-- [ ] CLI: `zsc build` on a single file
-- [ ] One working example: `.zs` file → valid `.tsx`
+- [ ] CLI: `floe build` on a single file
+- [ ] One working example: `.fl` file → valid `.tsx`
 
 ### Phase 2: Match + Result + Option (2-3 weeks)
 
@@ -918,7 +918,7 @@ zsc migrate file.tsx     # attempt to convert .tsx to .zs
 - [ ] Pipe-aware autocomplete (the killer feature)
 - [ ] VSCode extension (syntax highlighting + LSP client)
 - [ ] Vite plugin
-- [ ] Source maps (.zs → .tsx)
+- [ ] Source maps (.fl → .tsx)
 
 ### Phase 6: Polish (ongoing)
 
@@ -926,34 +926,34 @@ zsc migrate file.tsx     # attempt to convert .tsx to .zs
 - [ ] LSP go-to-definition, hover, find references
 - [ ] Playground (WASM compiler in browser)
 - [ ] Documentation site
-- [ ] `zsc migrate` for converting .tsx → .zs
+- [ ] `floe migrate` for converting .tsx → .fl
 
 ---
 
 ## JS/TS Footgun Eliminations
 
-Beyond the banned keywords, ZenScript eliminates several categories of subtle runtime bugs that TypeScript allows.
+Beyond the banned keywords, Floe eliminates several categories of subtle runtime bugs that TypeScript allows.
 
 ### Structural Equality (`==` on objects)
 
-In JS, `{a: 1} === {a: 1}` is `false` because objects compare by reference. ZenScript uses structural (deep) equality by default.
+In JS, `{a: 1} === {a: 1}` is `false` because objects compare by reference. Floe uses structural (deep) equality by default.
 
-```zenscript
+```floe
 const a = User(name: "Ryan", email: Email("r@test.com"))
 const b = User(name: "Ryan", email: Email("r@test.com"))
 
 a == b  // true — compares fields, not references
 ```
 
-This is safe because ZenScript has no `class` (no identity semantics) and all bindings are `const` (immutable). Consistent with Gleam, OCaml, and Elixir.
+This is safe because Floe has no `class` (no identity semantics) and all bindings are `const` (immutable). Consistent with Gleam, OCaml, and Elixir.
 
 **Codegen:** `==` on objects compiles to a deep structural comparison in the emitted TypeScript.
 
 ### Unit Type `()` (replaces `void`)
 
-TypeScript's `void` is not a real type — you can't use it in generics like `Result<void, Error>`. ZenScript uses the unit type `()`, which is a real value.
+TypeScript's `void` is not a real type — you can't use it in generics like `Result<void, Error>`. Floe uses the unit type `()`, which is a real value.
 
-```zenscript
+```floe
 // Functions with no meaningful return value
 function log(msg: string): () {
   console.log(msg)
@@ -977,12 +977,12 @@ type ButtonProps = {
 
 JS `Array.sort()` mutates in place AND sorts lexicographically by default (`[10, 2, 1].sort()` gives `[1, 10, 2]`).
 
-ZenScript's sort:
+Floe's sort:
 - Returns a new sorted array (no mutation)
 - Sorts numerically by default for number arrays
 - Requires an explicit comparator for non-primitive types
 
-```zenscript
+```floe
 const nums = [10, 2, 1]
 const sorted = nums |> Array.sort              // [1, 2, 10] — new array, numeric default
 nums                                            // [10, 2, 1] — unchanged
@@ -994,9 +994,9 @@ const users = [u1, u2] |> Array.sortBy(u => u.name)  // explicit comparator
 
 ### No Implicit Return
 
-JS functions without a return statement silently return `undefined`. ZenScript requires all non-unit functions to have an explicit return. Functions declared as returning `()` don't need one.
+JS functions without a return statement silently return `undefined`. Floe requires all non-unit functions to have an explicit return. Functions declared as returning `()` don't need one.
 
-```zenscript
+```floe
 function getName(user: User): string {
   // COMPILE ERROR: missing return value
 }
@@ -1008,7 +1008,7 @@ function log(msg: string): () {
 
 ### Safe Iteration
 
-JS `for...in` iterates over inherited prototype keys. ZenScript loop constructs only iterate own values.
+JS `for...in` iterates over inherited prototype keys. Floe loop constructs only iterate own values.
 
 **Codegen:** compiles to `Object.entries()` or index-based iteration, never `for...in`.
 
@@ -1016,9 +1016,9 @@ JS `for...in` iterates over inherited prototype keys. ZenScript loop constructs 
 
 JS `parseInt("123abc")` silently returns `123`, `Number("")` returns `0`, and `parseInt("08")` has octal weirdness.
 
-ZenScript provides strict parse functions that return `Result`:
+Floe provides strict parse functions that return `Result`:
 
-```zenscript
+```floe
 const n = Number.parse("123")       // Ok(123)
 const n = Number.parse("123abc")    // Err(ParseError)
 const n = Number.parse("")          // Err(ParseError)
@@ -1026,9 +1026,9 @@ const n = Number.parse("")          // Err(ParseError)
 
 ### Overlapping Spread Warning
 
-`{...a, ...b}` silently overwrites keys from `a` when `b` has the same keys. ZenScript warns when spreading objects with statically-known overlapping keys.
+`{...a, ...b}` silently overwrites keys from `a` when `b` has the same keys. Floe warns when spreading objects with statically-known overlapping keys.
 
-```zenscript
+```floe
 const a = { x: 1, y: 2 }
 const b = { y: 3, z: 4 }
 const c = { ...a, ...b }    // WARNING: 'y' from 'a' is overwritten by 'b'
@@ -1071,4 +1071,4 @@ const c = { ...a, ...b }    // WARNING: 'y' from 'a' is overwritten by 'b'
 
 The entire value proposition is: **all the checking happens at compile time, and the output is the simplest possible TypeScript.** There is no runtime. There is no framework. There is no dependency. Just a compiler that turns nice syntax into boring, correct code.
 
-If you eject from ZenScript, you have normal TypeScript. That's the escape hatch, and it's the most reassuring one possible.
+If you eject from Floe, you have normal TypeScript. That's the escape hatch, and it's the most reassuring one possible.

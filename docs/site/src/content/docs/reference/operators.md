@@ -41,7 +41,7 @@ All comparisons compile to strict equality (`===`, `!==`).
 
 The pipe operator passes the left side as the first argument to the right side. Use `_` as a placeholder for non-first-argument positions.
 
-```zenscript
+```floe
 x |> f          // f(x)
 x |> f(a, _)    // f(a, x)
 x |> f |> g     // g(f(x))
@@ -57,7 +57,7 @@ The `?` operator unwraps `Ok(value)` or `Some(value)`, and returns early with `E
 
 ## Arrow Operators
 
-ZenScript has exactly three arrow-like operators:
+Floe has exactly three arrow-like operators:
 
 | Operator | Context | Meaning |
 |----------|---------|---------|

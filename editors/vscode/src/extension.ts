@@ -9,8 +9,8 @@ import {
 let client: LanguageClient | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
-  const config = vscode.workspace.getConfiguration("zenscript");
-  const serverPath = config.get<string>("serverPath", "zsc");
+  const config = vscode.workspace.getConfiguration("floe");
+  const serverPath = config.get<string>("serverPath", "floe");
 
   const serverOptions: ServerOptions = {
     run: { command: serverPath, args: ["lsp"] } as Executable,
@@ -18,15 +18,15 @@ export function activate(context: vscode.ExtensionContext) {
   };
 
   const clientOptions: LanguageClientOptions = {
-    documentSelector: [{ scheme: "file", language: "zenscript" }],
+    documentSelector: [{ scheme: "file", language: "floe" }],
     synchronize: {
-      fileEvents: vscode.workspace.createFileSystemWatcher("**/*.zs"),
+      fileEvents: vscode.workspace.createFileSystemWatcher("**/*.fl"),
     },
   };
 
   client = new LanguageClient(
-    "zenscript",
-    "ZenScript Language Server",
+    "floe",
+    "Floe Language Server",
     serverOptions,
     clientOptions
   );

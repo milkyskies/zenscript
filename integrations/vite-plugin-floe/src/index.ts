@@ -1,41 +1,41 @@
 import { execFileSync } from "node:child_process";
 import type { Plugin } from "vite";
 
-export interface ZenScriptOptions {
-  /** Path to the zsc binary. Defaults to "zsc". */
+export interface FloeOptions {
+  /** Path to the floe binary. Defaults to "floe". */
   compiler?: string;
 }
 
 /**
- * Vite plugin for ZenScript.
+ * Vite plugin for Floe.
  *
- * Transforms `.zs` files to TypeScript in the build pipeline.
- * Uses the `zsc` compiler binary for compilation.
+ * Transforms `.fl` files to TypeScript in the build pipeline.
+ * Uses the `floe` compiler binary for compilation.
  *
  * @example
  * ```ts
  * import { defineConfig } from "vite"
- * import zenscript from "vite-plugin-zenscript"
+ * import floe from "vite-plugin-floe"
  *
  * export default defineConfig({
- *   plugins: [zenscript()],
+ *   plugins: [floe()],
  * })
  * ```
  */
-export default function zenscript(options: ZenScriptOptions = {}): Plugin {
-  const compiler = options.compiler ?? "zsc";
+export default function floe(options: FloeOptions = {}): Plugin {
+  const compiler = options.compiler ?? "floe";
 
   return {
-    name: "vite-plugin-zenscript",
+    name: "vite-plugin-floe",
     enforce: "pre",
 
     transform(code, id) {
       // Strip query params for extension check (Vite adds ?import, ?t=xxx, etc.)
       const cleanId = id.split("?")[0];
-      if (!cleanId.endsWith(".zs")) return null;
+      if (!cleanId.endsWith(".fl")) return null;
 
       try {
-        const result = compileZenScript(compiler, code, id);
+        const result = compileFloe(compiler, code, id);
         return {
           code: result.code,
           map: result.map,
@@ -43,12 +43,12 @@ export default function zenscript(options: ZenScriptOptions = {}): Plugin {
       } catch (error) {
         const message =
           error instanceof Error ? error.message : String(error);
-        this.error(`ZenScript compilation failed for ${id}:\n${message}`);
+        this.error(`Floe compilation failed for ${id}:\n${message}`);
       }
     },
 
     handleHotUpdate({ file, server }) {
-      if (file.endsWith(".zs")) {
+      if (file.endsWith(".fl")) {
         const modules = server.moduleGraph.getModulesByFile(file);
         if (modules) {
           return [...modules];
@@ -63,7 +63,7 @@ interface CompileResult {
   map: string | null;
 }
 
-function compileZenScript(
+function compileFloe(
   compiler: string,
   source: string,
   filename: string,
@@ -75,7 +75,7 @@ function compileZenScript(
       timeout: 30_000,
       env: {
         ...process.env,
-        ZSC_FILENAME: filename,
+        FLOE_FILENAME: filename,
       },
     });
 

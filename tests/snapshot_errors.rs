@@ -1,11 +1,11 @@
-//! Snapshot tests for ZenScript error messages.
+//! Snapshot tests for Floe error messages.
 //!
 //! Tests that parse errors and type checker diagnostics produce the expected
 //! error output. Run `cargo insta review` to accept new snapshots.
 
-use zenscript::checker::Checker;
-use zenscript::diagnostic;
-use zenscript::parser::Parser;
+use floe::checker::Checker;
+use floe::diagnostic;
+use floe::parser::Parser;
 
 /// Compile a source string and return rendered diagnostics (parse errors or type errors).
 fn get_diagnostics(filename: &str, source: &str) -> String {
@@ -25,10 +25,10 @@ fn get_diagnostics(filename: &str, source: &str) -> String {
 }
 
 fn error_fixture(name: &str) -> String {
-    let path = format!("tests/fixtures/errors/{name}.zs");
+    let path = format!("tests/fixtures/errors/{name}.fl");
     let source =
         std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("failed to read fixture {path}"));
-    get_diagnostics(&format!("{name}.zs"), &source)
+    get_diagnostics(&format!("{name}.fl"), &source)
 }
 
 // ── Parse Error Snapshots ───────────────────────────────────────
@@ -55,32 +55,32 @@ fn snapshot_error_banned_null() {
 
 #[test]
 fn snapshot_error_unused_import() {
-    let output = get_diagnostics("test.zs", r#"import { useState } from "react""#);
+    let output = get_diagnostics("test.fl", r#"import { useState } from "react""#);
     insta::assert_snapshot!(output);
 }
 
 #[test]
 fn snapshot_error_unused_variable() {
-    let output = get_diagnostics("test.zs", "const x = 42");
+    let output = get_diagnostics("test.fl", "const x = 42");
     insta::assert_snapshot!(output);
 }
 
 #[test]
 fn snapshot_error_type_mismatch_comparison() {
-    let output = get_diagnostics("test.zs", r#"const _x = 1 == "hello""#);
+    let output = get_diagnostics("test.fl", r#"const _x = 1 == "hello""#);
     insta::assert_snapshot!(output);
 }
 
 #[test]
 fn snapshot_error_mixed_array() {
-    let output = get_diagnostics("test.zs", r#"const _x = [1, "two", 3]"#);
+    let output = get_diagnostics("test.fl", r#"const _x = [1, "two", 3]"#);
     insta::assert_snapshot!(output);
 }
 
 #[test]
 fn snapshot_error_exported_missing_return_type() {
     let output = get_diagnostics(
-        "test.zs",
+        "test.fl",
         "export function add(a: number, b: number) { return a }",
     );
     insta::assert_snapshot!(output);
@@ -88,13 +88,13 @@ fn snapshot_error_exported_missing_return_type() {
 
 #[test]
 fn snapshot_error_unhandled_result() {
-    let output = get_diagnostics("test.zs", "Ok(42)");
+    let output = get_diagnostics("test.fl", "Ok(42)");
     insta::assert_snapshot!(output);
 }
 
 #[test]
 fn snapshot_error_string_concat() {
-    let output = get_diagnostics("test.zs", r#"const _x = "a" + "b""#);
+    let output = get_diagnostics("test.fl", r#"const _x = "a" + "b""#);
     insta::assert_snapshot!(output);
 }
 
@@ -107,7 +107,7 @@ fn snapshot_error_banned_void() {
 #[test]
 fn snapshot_error_missing_return() {
     let output = get_diagnostics(
-        "test.zs",
+        "test.fl",
         "function getName(_id: string): string {\n  const _x = 42\n}",
     );
     insta::assert_snapshot!(output);

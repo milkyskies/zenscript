@@ -1,4 +1,4 @@
-# ZenScript for Neovim
+# Floe for Neovim
 
 ## Quick Setup
 
@@ -9,7 +9,7 @@ Add to your Neovim config (`init.lua` or a file in `after/ftdetect/`):
 ```lua
 vim.filetype.add({
   extension = {
-    zs = "zenscript",
+    zs = "floe",
   },
 })
 ```
@@ -22,31 +22,31 @@ Using **nvim-lspconfig** (recommended):
 local lspconfig = require("lspconfig")
 local configs = require("lspconfig.configs")
 
--- Register the ZenScript LSP if not already defined
-if not configs.zenscript then
-  configs.zenscript = {
+-- Register the Floe LSP if not already defined
+if not configs.floe then
+  configs.floe = {
     default_config = {
-      cmd = { "zsc", "lsp" },
-      filetypes = { "zenscript" },
-      root_dir = lspconfig.util.root_pattern("zenscript.toml", ".git"),
+      cmd = { "floe", "lsp" },
+      filetypes = { "floe" },
+      root_dir = lspconfig.util.root_pattern("floe.toml", ".git"),
       settings = {},
     },
   }
 end
 
-lspconfig.zenscript.setup({})
+lspconfig.floe.setup({})
 ```
 
 Without nvim-lspconfig (built-in `vim.lsp.start`):
 
 ```lua
 vim.api.nvim_create_autocmd("FileType", {
-  pattern = "zenscript",
+  pattern = "floe",
   callback = function()
     vim.lsp.start({
-      name = "zenscript",
-      cmd = { "zsc", "lsp" },
-      root_dir = vim.fs.dirname(vim.fs.find({ "zenscript.toml", ".git" }, { upward = true })[1]),
+      name = "floe",
+      cmd = { "floe", "lsp" },
+      root_dir = vim.fs.dirname(vim.fs.find({ "floe.toml", ".git" }, { upward = true })[1]),
     })
   end,
 })
@@ -54,8 +54,8 @@ vim.api.nvim_create_autocmd("FileType", {
 
 ### 3. Syntax highlighting (optional)
 
-For basic highlighting without Tree-sitter, copy `syntax/zenscript.vim` into
-`~/.config/nvim/syntax/zenscript.vim` (or the equivalent path for your setup).
+For basic highlighting without Tree-sitter, copy `syntax/floe.vim` into
+`~/.config/nvim/syntax/floe.vim` (or the equivalent path for your setup).
 
 For Tree-sitter support, a grammar will be provided in a future release.
 
@@ -72,5 +72,5 @@ Once configured, you get:
 
 ## Requirements
 
-- `zsc` must be in your `$PATH` (install via `cargo install zenscript` or build from source)
+- `floe` must be in your `$PATH` (install via `cargo install floe` or build from source)
 - Neovim 0.8+ (for native LSP support)

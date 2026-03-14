@@ -13,7 +13,7 @@ impl Token {
     }
 }
 
-/// All possible token types in ZenScript.
+/// All possible token types in Floe.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
     // -- Literals --
@@ -30,7 +30,7 @@ pub enum TokenKind {
     /// Any identifier: variable names, type names, etc.
     Identifier(String),
 
-    // ZenScript keywords
+    // Floe keywords
     Const,
     Function,
     Export,
@@ -176,7 +176,7 @@ impl BannedKeyword {
     /// and what to use instead.
     pub fn help_message(&self) -> &'static str {
         match self {
-            Self::Let => "Use `const` - all bindings are immutable in ZenScript",
+            Self::Let => "Use `const` - all bindings are immutable in Floe",
             Self::Class => "Use functions and types instead of classes",
             Self::Throw => "Return a `Result<T, E>` instead of throwing",
             Self::Null => "Use `Option<T>` with `Some`/`None` instead of null",
@@ -207,7 +207,7 @@ impl BannedKeyword {
 /// Maps a string to a keyword token kind, or returns None for identifiers.
 pub fn lookup_keyword(word: &str) -> Option<TokenKind> {
     match word {
-        // ZenScript keywords
+        // Floe keywords
         "const" => Some(TokenKind::Const),
         "function" => Some(TokenKind::Function),
         "export" => Some(TokenKind::Export),
@@ -250,7 +250,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lookup_zenscript_keywords() {
+    fn lookup_floe_keywords() {
         assert_eq!(lookup_keyword("const"), Some(TokenKind::Const));
         assert_eq!(lookup_keyword("function"), Some(TokenKind::Function));
         assert_eq!(lookup_keyword("match"), Some(TokenKind::Match));

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ZenScript Playground</title>
+  <title>Floe Playground</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -176,7 +176,7 @@
 </head>
 <body>
   <header>
-    <h1>ZenScript <span>Playground</span></h1>
+    <h1>Floe <span>Playground</span></h1>
     <div class="header-actions">
       <button id="share-btn">Share</button>
       <button id="format-btn">Format</button>
@@ -186,7 +186,7 @@
   <div class="editor-container">
     <div class="pane">
       <div class="pane-header">
-        <span>input.zs</span>
+        <span>input.fl</span>
       </div>
       <textarea id="input" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off">import { useState } from "react"
 
@@ -226,7 +226,7 @@ export function App(): JSX.Element {
   </div>
 
   <script type="module">
-    import init, { compile, version } from './pkg/zenscript_wasm.js';
+    import init, { compile, version } from './pkg/floe_wasm.js';
 
     let compileTimeout = null;
 
