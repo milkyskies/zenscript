@@ -449,6 +449,9 @@ impl Checker {
         match &decl.binding {
             ConstBinding::Name(name) => {
                 self.env.define(name, final_type);
+                if decl.exported {
+                    self.used_names.insert(name.clone());
+                }
                 self.defined_names.push((name.clone(), span));
             }
             ConstBinding::Array(names) => {
@@ -506,6 +509,10 @@ impl Checker {
             return_type: Box::new(return_type.clone()),
         };
         self.env.define(&decl.name, fn_type);
+        if decl.exported {
+            // Exported functions are used by definition (consumed externally)
+            self.used_names.insert(decl.name.clone());
+        }
         self.defined_names.push((decl.name.clone(), span));
 
         // Set up scope for function body
