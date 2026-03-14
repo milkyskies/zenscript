@@ -515,6 +515,49 @@ Default value rules:
 3. Required fields come first in the type definition — compiler error otherwise
 4. The type is always concrete — `variant` is `Variant`, not `Option<Variant>`. It's `Primary` if you don't specify it.
 
+### For Blocks — Grouping Functions Under a Type
+
+`for` blocks group functions under a type. `self` is an explicit first parameter whose type is inferred from the block. No magic, no implicit context — `self` is just a named parameter.
+
+```floe
+type User = { name: string, age: number, active: bool }
+
+for User {
+  fn display(self) -> string {
+    `${self.name} (${self.age})`
+  }
+
+  fn isAdult(self) -> bool {
+    self.age >= 18
+  }
+
+  fn greet(self, greeting: string) -> string {
+    `${greeting}, ${self.name}!`
+  }
+}
+
+// Works with generic types too
+for Array<User> {
+  fn adults(self) -> Array<User> {
+    self |> Array.filter(.age >= 18)
+  }
+}
+
+// Use in pipes — self is the first argument
+user |> display             // display(user)
+user |> greet("Hello")      // greet(user, "Hello")
+users |> adults             // adults(users)
+```
+
+For block rules:
+
+1. `self` is the explicit first parameter — type inferred from the `for` block
+2. No `this`, no implicit context
+3. Multiple `for` blocks per type allowed, even across files
+4. Importing a type imports same-file `for` blocks automatically
+5. Cross-file `for` blocks require their own import
+6. Compiles to standalone functions with `self` explicitly typed
+
 ### Function Conventions
 
 ```floe
@@ -671,6 +714,8 @@ Key tokens beyond standard TypeScript:
 | `Ok` | `Ok` keyword |
 | `Err` | `Err` keyword |
 | `Opaque` | `opaque` keyword |
+| `For` | `for` keyword (for blocks) |
+| `SelfKw` | `self` keyword (explicit receiver in for blocks) |
 
 Banned tokens (immediate compile errors with helpful messages):
 
@@ -715,6 +760,16 @@ enum Expr {
     Some(Box<Expr>),
     None,
     Placeholder,               // _ in partial application
+}
+
+// Top-level items include ForBlock
+enum ItemKind {
+    Import, Const, Function, TypeDecl,
+    ForBlock {                 // for Type { fn f(self) ... }
+        type_name: TypeExpr,
+        functions: Vec<FunctionDecl>,
+    },
+    Expr,
 }
 
 // Args can be positional, named, or placeholder
@@ -815,6 +870,7 @@ Emits clean, readable `.tsx`. Zero runtime imports.
 | `Number.parse("123")` | strict parse returning `Result` |
 | `Brand<string, "UserId">` | `string` (erased) |
 | `opaque type X = T` | `T` (erased, access controlled at compile time) |
+| `for User { fn display(self) -> string { ... } }` | `function display(self: User): string { ... }` |
 
 ---
 
@@ -1101,6 +1157,7 @@ const c = { ...a, ...b }    // WARNING: 'y' from 'a' is overwritten by 'b'
 | Implicit return | Non-unit functions must return explicitly | No silent `undefined` returns |
 | Spread overlap | Warning on statically-known key overlap | Catches silent overwrites at compile time |
 | Compiler language | Rust | Fast, WASM-ready for browser playground, good LSP story |
+| For blocks | `for Type { fn f(self) ... }` groups functions under a type | Rust/Swift-like method chaining DX without OOP. `self` is explicit, no `this` magic |
 
 ---
 
