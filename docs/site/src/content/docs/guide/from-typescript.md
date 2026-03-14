@@ -111,24 +111,34 @@ match action.type {
 
 ### `try` instead of try/catch
 
+```floe
+// JSON.parse is in the stdlib — it already returns Result, no try needed
+const result = JSON.parse(input)
+match result {
+  Ok(data) -> process(data),
+  Err(e) -> Console.error(e),
+}
+```
+
+For **external TypeScript imports**, the `try` keyword wraps any expression in a try/catch and returns a `Result<T, Error>`. All TypeScript imports are treated as potentially throwing by default — the compiler requires `try` when calling them. For TS functions you know won't throw, use `trusted`:
+
 ```typescript
 // TypeScript
 try {
-  const data = JSON.parse(input)
+  const data = parseYaml(input)
   return data
 } catch (e) {
   return null
 }
 
-// Floe — wrap throwing functions with `try`
-const result = try JSON.parse(input)
+// Floe — wrap throwing TS imports with `try`
+import { parseYaml } from "yaml-lib"
+const result = try parseYaml(input)
 match result {
   Ok(data) -> Some(data),
   Err(_) -> None,
 }
 ```
-
-The `try` keyword wraps any expression in a try/catch and returns a `Result<T, Error>`. All TypeScript imports are treated as potentially throwing by default — the compiler requires `try` when calling them. For TS functions you know won't throw, use `trusted`:
 
 ```floe
 import { trusted capitalize, fetchUser } from "some-lib"

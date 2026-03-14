@@ -860,10 +860,17 @@ capitalize("hello")          // string, no try needed
 `try` wraps a potentially throwing call in `Result<T, Error>`. Non-Error throws are coerced to `Error`:
 
 ```floe
-const result = try JSON.parse(input)
-// result: Result<unknown, Error>
+// JSON.parse is stdlib — already returns Result, no try needed
+const result = JSON.parse(input)
+// result: Result<T, ParseError>
+
+// try is for external TS imports that might throw:
+import { parseYaml } from "yaml-lib"
+const data = try parseYaml(input)
+// data: Result<unknown, Error>
 
 // Async: try await (left to right matches execution order)
+import { fetchUser } from "api-client"
 const user = try await fetchUser(id)
 
 // Compose with ? for concise error handling:
@@ -890,8 +897,8 @@ match try findElement("app") {
 #### Codegen
 
 ```typescript
-// try JSON.parse(input) →
-(() => { try { return { ok: true as const, value: JSON.parse(input) }; } catch (_e) { return { ok: false as const, error: _e instanceof Error ? _e : new Error(String(_e)) }; } })()
+// try parseYaml(input) →
+(() => { try { return { ok: true as const, value: parseYaml(input) }; } catch (_e) { return { ok: false as const, error: _e instanceof Error ? _e : new Error(String(_e)) }; } })()
 ```
 
 ### Code Generator (`zs_codegen`)
