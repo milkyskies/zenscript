@@ -1,15 +1,15 @@
-type Todo = {
+export type Todo = {
     id: string,
     text: string,
     done: boolean,
 }
 
-type Filter =
+export type Filter =
     | All
     | Active
     | Completed
 
-type Validation =
+export type Validation =
     | Valid(text: string)
     | TooShort
     | TooLong

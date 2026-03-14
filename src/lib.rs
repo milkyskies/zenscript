@@ -8,6 +8,7 @@ pub mod lexer;
 pub mod lower;
 pub mod lsp;
 pub mod parser;
+pub mod resolve;
 pub mod sourcemap;
 pub mod stdlib;
 pub mod syntax;

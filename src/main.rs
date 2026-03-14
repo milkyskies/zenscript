@@ -7,6 +7,7 @@ use floe::checker::Checker;
 use floe::codegen::Codegen;
 use floe::diagnostic;
 use floe::parser::Parser as ZsParser;
+use floe::resolve;
 
 #[derive(Parser)]
 #[command(name = "floe", version, about = "The Floe compiler")]
@@ -162,8 +163,11 @@ fn compile_file(file: &Path, out_dir: Option<&Path>) -> Result<PathBuf> {
         anyhow::anyhow!("{rendered}")
     })?;
 
+    // Resolve imports from other .fl files
+    let resolved = resolve::resolve_imports(file, &program);
+
     // Type check
-    let (check_diags, expr_types) = Checker::new().check_full(&program);
+    let (check_diags, expr_types) = Checker::with_imports(resolved).check_full(&program);
     let type_errors: Vec<_> = check_diags
         .iter()
         .filter(|d| d.severity == diagnostic::Severity::Error)
@@ -208,7 +212,8 @@ fn cmd_check(path: &Path) -> Result<()> {
         let filename = file.to_string_lossy();
         match ZsParser::new(&source).parse_program() {
             Ok(program) => {
-                let check_diags = Checker::new().check(&program);
+                let resolved = resolve::resolve_imports(file, &program);
+                let check_diags = Checker::with_imports(resolved).check(&program);
                 let type_errors: Vec<_> = check_diags
                     .iter()
                     .filter(|d| d.severity == diagnostic::Severity::Error)

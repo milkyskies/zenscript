@@ -706,7 +706,18 @@ impl Checker {
         }
 
         // Default: check normally
-        self.check_expr(right)
+        let right_ty = self.check_expr(right);
+
+        // If the right side is a bare function identifier (not a call),
+        // the pipe effectively calls it: `a |> f` means `f(a)`.
+        // Return the function's return type, not the function type itself.
+        if matches!(right.kind, ExprKind::Identifier(_))
+            && let Type::Function { return_type, .. } = right_ty
+        {
+            return *return_type;
+        }
+
+        right_ty
     }
 
     /// Check arguments in the right side of a pipe without checking the callee identifier.
