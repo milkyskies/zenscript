@@ -1912,3 +1912,23 @@ for User: Display {
         diags.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
 }
+
+// ── Bug: npm imports used as constructors ───────────────────
+// When an uppercase import (e.g. QueryClient) is called with named args,
+// the parser produces a Construct node. The checker should recognize it
+// as a known import and not emit "unknown type".
+
+#[test]
+fn npm_import_used_as_constructor_no_error() {
+    let diags = check(
+        r#"
+import trusted { QueryClient } from "@tanstack/react-query"
+const _qc = QueryClient(defaultOptions: {})
+"#,
+    );
+    assert!(
+        !has_error_containing(&diags, "unknown type"),
+        "npm import used as constructor should not error, but got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
