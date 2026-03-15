@@ -110,5 +110,14 @@
       "opaque type ${1:Name} = ${2:BaseType}"
     ],
     "description": "Opaque type"
+  },
+  "Test Block": {
+    "prefix": "test",
+    "body": [
+      "test \"${1:name}\" {",
+      "\tassert ${0:expression}",
+      "}"
+    ],
+    "description": "Inline test block"
   }
 }

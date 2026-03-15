@@ -15,6 +15,8 @@
 "trusted" @keyword
 "for" @keyword
 "opaque" @keyword
+"test" @keyword
+"assert" @keyword
 
 ; ── Self ────────────────────────────────────────────────
 (self) @variable.builtin

@@ -558,6 +558,47 @@ For block rules:
 5. Cross-file `for` blocks require their own import
 6. Compiles to standalone functions with `self` explicitly typed
 
+### Inline Test Blocks
+
+`test` blocks let you write tests co-located with the code they test. They are type-checked but stripped from production output.
+
+```floe
+fn add(a: number, b: number) -> number { a + b }
+
+test "addition" {
+  assert add(1, 2) == 3
+  assert add(-1, 1) == 0
+}
+
+test "edge cases" {
+  assert add(0, 0) == 0
+}
+```
+
+Test block rules:
+
+1. `test` is a contextual keyword - it starts a test block only when followed by a string literal
+2. `assert` is a keyword that is only valid inside test blocks
+3. `assert` expressions must evaluate to `boolean`
+4. `floe check` and `floe build` type-check test blocks but strip them from output
+5. `floe test` discovers and runs all test blocks, emitting pass/fail results
+6. Test blocks cannot be exported
+
+Compiles to (test mode only):
+
+```typescript
+// test: addition
+(function() {
+  const __testName = "addition";
+  let __passed = 0;
+  let __failed = 0;
+  try { if (!(add(1, 2) === 3)) { __failed++; } else { __passed++; } } catch (e) { __failed++; }
+  try { if (!(add(-1, 1) === 0)) { __failed++; } else { __passed++; } } catch (e) { __failed++; }
+  if (__failed > 0) { console.error(`FAIL ${__testName}: ${__passed} passed, ${__failed} failed`); process.exitCode = 1; }
+  else { console.log(`PASS ${__testName}: ${__passed} passed`); }
+})();
+```
+
 ### Function Conventions
 
 ```floe
@@ -716,6 +757,7 @@ Key tokens beyond standard TypeScript:
 | `Opaque` | `opaque` keyword |
 | `For` | `for` keyword (for blocks) |
 | `SelfKw` | `self` keyword (explicit receiver in for blocks) |
+| `Assert` | `assert` keyword (only valid inside test blocks) |
 
 Banned tokens (immediate compile errors with helpful messages):
 
@@ -762,12 +804,16 @@ enum Expr {
     Placeholder,               // _ in partial application
 }
 
-// Top-level items include ForBlock
+// Top-level items include ForBlock and TestBlock
 enum ItemKind {
     Import, Const, Function, TypeDecl,
     ForBlock {                 // for Type { fn f(self) ... }
         type_name: TypeExpr,
         functions: Vec<FunctionDecl>,
+    },
+    TestBlock {                // test "name" { assert expr ... }
+        name: String,
+        body: Vec<TestStatement>,
     },
     Expr,
 }
@@ -934,6 +980,7 @@ Emits clean, readable `.tsx`. Zero runtime imports.
 | `Brand<string, "UserId">` | `string` (erased) |
 | `opaque type X = T` | `T` (erased, access controlled at compile time) |
 | `for User { fn display(self) -> string { ... } }` | `function display(self: User): string { ... }` |
+| `test "name" { assert expr }` | stripped in build mode; self-executing test in test mode |
 
 ---
 
@@ -1011,6 +1058,7 @@ export default function floe(): Plugin {
 ```bash
 floe build src/           # compile all .fl → .tsx
 floe check src/           # type-check only, no output
+floe test src/            # run inline test blocks
 floe watch src/           # watch mode
 floe init                 # scaffold new project
 floe migrate file.tsx     # attempt to convert .tsx to .fl
@@ -1220,6 +1268,7 @@ const c = { ...a, ...b }    // WARNING: 'y' from 'a' is overwritten by 'b'
 | Implicit return | Non-unit functions must return explicitly | No silent `undefined` returns |
 | Spread overlap | Warning on statically-known key overlap | Catches silent overwrites at compile time |
 | Compiler language | Rust | Fast, WASM-ready for browser playground, good LSP story |
+| Inline tests | `test "name" { assert expr }` co-located with code | Gleam/Rust-inspired; type-checked always, stripped from production output |
 | For blocks | `for Type { fn f(self) ... }` groups functions under a type | Rust/Swift-like method chaining DX without OOP. `self` is explicit, no `this` magic |
 
 ---

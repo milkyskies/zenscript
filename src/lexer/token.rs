@@ -51,6 +51,8 @@ pub enum TokenKind {
     SelfKw,
     /// `try` — wrap throwing expression in Result
     Try,
+    /// `assert` — assertion (only valid inside test blocks)
+    Assert,
 
     // Built-in type constructors
     Ok,
@@ -236,6 +238,7 @@ pub fn lookup_keyword(word: &str) -> Option<TokenKind> {
         "for" => Some(TokenKind::For),
         "self" => Some(TokenKind::SelfKw),
         "try" => Some(TokenKind::Try),
+        "assert" => Some(TokenKind::Assert),
         "true" => Some(TokenKind::Bool(true)),
         "false" => Some(TokenKind::Bool(false)),
 

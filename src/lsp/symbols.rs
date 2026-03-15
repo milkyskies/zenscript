@@ -251,6 +251,9 @@ impl SymbolIndex {
                         Self::collect_expr(&func.body, symbols);
                     }
                 }
+                ItemKind::TestBlock(_) => {
+                    // Test blocks don't contribute symbols
+                }
                 ItemKind::Expr(expr) => {
                     Self::collect_expr(expr, symbols);
                 }

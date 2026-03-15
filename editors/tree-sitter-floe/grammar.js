@@ -51,6 +51,7 @@ module.exports = grammar({
         $.type_declaration,
         $.const_declaration,
         $.for_block,
+        $.test_block,
         $.expression_statement,
       ),
 
@@ -82,6 +83,20 @@ module.exports = grammar({
       ),
 
     self: (_$) => "self",
+
+    // ── Test Blocks ─────────────────────────────────────────
+
+    test_block: ($) =>
+      seq(
+        "test",
+        field("name", $.string),
+        "{",
+        repeat(choice($.assert_statement, $.expression_statement)),
+        "}",
+      ),
+
+    assert_statement: ($) =>
+      seq("assert", field("expression", $._expression)),
 
     // ── Exports ─────────────────────────────────────────────
 
