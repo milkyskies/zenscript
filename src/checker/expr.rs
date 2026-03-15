@@ -1285,35 +1285,7 @@ impl Checker {
 
     /// Resolve a type to its concrete definition, following Named type lookups.
     fn resolve_type_to_concrete(&mut self, ty: &Type) -> Type {
-        // We need to clone the env reference data to avoid borrow issues
-        let resolve_fn = |type_expr: &crate::parser::ast::TypeExpr| -> Type {
-            // Simple resolution without mutating self — just map named types
-            match &type_expr.kind {
-                crate::parser::ast::TypeExprKind::Named { name, .. } => match name.as_str() {
-                    "number" => Type::Number,
-                    "string" => Type::String,
-                    "boolean" => Type::Bool,
-                    "()" => Type::Unit,
-                    "undefined" => Type::Undefined,
-                    _ => Type::Named(name.to_string()),
-                },
-                crate::parser::ast::TypeExprKind::Array(inner) => {
-                    let inner_resolved = match &inner.kind {
-                        crate::parser::ast::TypeExprKind::Named { name, .. } => match name.as_str()
-                        {
-                            "number" => Type::Number,
-                            "string" => Type::String,
-                            "boolean" => Type::Bool,
-                            _ => Type::Named(name.to_string()),
-                        },
-                        _ => Type::Unknown,
-                    };
-                    Type::Array(Box::new(inner_resolved))
-                }
-                _ => Type::Unknown,
-            }
-        };
-        let resolved = self.env.resolve_to_concrete(ty, &resolve_fn);
+        let resolved = self.env.resolve_to_concrete(ty, &simple_resolve_type_expr);
         // If still Named after type_defs resolution, check if it's a known
         // value (e.g. built-in Response, Error) that has a concrete type
         if let Type::Named(name) = &resolved
@@ -1323,5 +1295,44 @@ impl Checker {
             return val_ty;
         }
         resolved
+    }
+}
+
+/// Simple type expression resolver for concrete type resolution.
+/// Handles Named, Array, Record, and Function type expressions without
+/// needing mutable access to the checker (no self parameter).
+fn simple_resolve_type_expr(type_expr: &crate::parser::ast::TypeExpr) -> Type {
+    use crate::parser::ast::TypeExprKind;
+    match &type_expr.kind {
+        TypeExprKind::Named { name, .. } => match name.as_str() {
+            "number" => Type::Number,
+            "string" => Type::String,
+            "boolean" => Type::Bool,
+            "()" => Type::Unit,
+            "undefined" => Type::Undefined,
+            _ => Type::Named(name.to_string()),
+        },
+        TypeExprKind::Array(inner) => Type::Array(Box::new(simple_resolve_type_expr(inner))),
+        TypeExprKind::Record(fields) => {
+            let field_types: Vec<_> = fields
+                .iter()
+                .map(|f| (f.name.clone(), simple_resolve_type_expr(&f.type_ann)))
+                .collect();
+            Type::Record(field_types)
+        }
+        TypeExprKind::Function {
+            params,
+            return_type,
+        } => {
+            let param_types: Vec<_> = params.iter().map(simple_resolve_type_expr).collect();
+            let ret = simple_resolve_type_expr(return_type);
+            Type::Function {
+                params: param_types,
+                return_type: Box::new(ret),
+            }
+        }
+        TypeExprKind::Tuple(types) => {
+            Type::Tuple(types.iter().map(simple_resolve_type_expr).collect())
+        }
     }
 }

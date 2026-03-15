@@ -36,6 +36,10 @@ pub fn wrap_boundary_type(ts_type: &TsType) -> Type {
                     "Promise<{}>",
                     wrap_boundary_type(&args[0]).display_name()
                 )),
+                // FloeOption<T> → Option<T> (our probe wrapper for Option)
+                "FloeOption" if args.len() == 1 => {
+                    Type::Option(Box::new(wrap_boundary_type(&args[0])))
+                }
                 // React's Dispatch<SetStateAction<T>> is a function: (T) -> ()
                 "Dispatch" if args.len() == 1 => {
                     let inner = unwrap_set_state_action(&args[0]);

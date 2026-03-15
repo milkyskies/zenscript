@@ -194,6 +194,9 @@ fn generate_probe(
         ));
     }
 
+    // Emit Floe runtime type aliases so tsgo preserves them through inference
+    lines.push("type FloeOption<T> = T | null | undefined;".to_string());
+
     // Emit type declarations from the program so tsgo can resolve them
     for item in &program.items {
         if let ItemKind::TypeDecl(decl) = &item.kind {
@@ -660,7 +663,7 @@ fn type_expr_to_ts(ty: &TypeExpr) -> String {
                 "bool" => "boolean",
                 "Option" if type_args.len() == 1 => {
                     let inner = type_expr_to_ts(&type_args[0]);
-                    return format!("{inner} | null | undefined");
+                    return format!("FloeOption<{inner}>");
                 }
                 "Result" if type_args.len() == 2 => {
                     // Result<T, E> → discriminated union matching Floe's codegen
@@ -1287,7 +1290,7 @@ const [filter, setFilter] = useState<Filter>(Filter.All)
         let program = Parser::new(source).parse_program().unwrap();
         if let ItemKind::TypeDecl(decl) = &program.items[0].kind {
             let ts = type_decl_to_ts(decl);
-            assert!(ts.contains("string | null | undefined"));
+            assert!(ts.contains("FloeOption<string>"));
         } else {
             panic!("expected type decl");
         }
