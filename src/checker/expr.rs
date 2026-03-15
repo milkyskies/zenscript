@@ -531,6 +531,29 @@ impl Checker {
                     return Type::Unknown;
                 }
 
+                // Error on member access on `unknown` — must narrow first
+                if matches!(obj_ty, Type::Unknown) {
+                    // Allow stdlib module access (e.g. JSON.parse) — those are handled elsewhere
+                    if let ExprKind::Identifier(name) = &object.kind
+                        && self.stdlib.is_module(name)
+                        && let Some(stdlib_fn) = self.stdlib.lookup(name, field)
+                    {
+                        return stdlib_fn.return_type.clone();
+                    }
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            format!(
+                                "cannot access `.{field}` on `unknown` — narrow the type first"
+                            ),
+                            expr.span,
+                        )
+                        .with_label("`unknown` must be narrowed before member access")
+                        .with_help("use `match`, type validation (e.g. Zod), or pattern matching")
+                        .with_code("E020"),
+                    );
+                    return Type::Unknown;
+                }
+
                 // Resolve Named types to their concrete definition
                 let concrete = self.resolve_type_to_concrete(&obj_ty);
 

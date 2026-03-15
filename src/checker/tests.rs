@@ -2059,3 +2059,46 @@ fn fetch_with_try_is_ok() {
         "calling fetch with try should be fine"
     );
 }
+
+// ── Member access on unknown ────────────────────────────────
+
+#[test]
+fn member_access_on_unknown_is_error() {
+    let diags = check(
+        r#"
+import trusted { getData } from "some-lib"
+const data = getData()
+const x = data.name
+"#,
+    );
+    assert!(
+        has_error(&diags, "E020"),
+        "member access on unknown should error, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn method_call_on_unknown_is_error() {
+    let diags = check(
+        r#"
+import trusted { getData } from "some-lib"
+const data = getData()
+const x = data.toJSON()
+"#,
+    );
+    assert!(
+        has_error(&diags, "E020"),
+        "method call on unknown should error, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn stdlib_member_access_still_works() {
+    let diags = check(r#"const x = "hello" |> String.length"#);
+    assert!(
+        !has_error(&diags, "E020"),
+        "stdlib member access should not error"
+    );
+}
