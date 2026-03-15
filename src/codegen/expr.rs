@@ -472,7 +472,11 @@ impl Codegen {
                 .get(&(left.span.start, left.span.end))
                 .and_then(|ty| Self::type_to_stdlib_module(ty))
             {
-                Some(module) => self.stdlib.lookup(module, name),
+                Some(module) => self
+                    .stdlib
+                    .lookup(module, name)
+                    // Fallback: name might be in a different module (e.g. tap is in Pipe, not Array)
+                    .or_else(|| self.stdlib.lookup_by_name(name).into_iter().next()),
                 None => self.stdlib.lookup_by_name(name).into_iter().next(),
             }?;
 
