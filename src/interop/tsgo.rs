@@ -224,12 +224,33 @@ fn generate_probe(
     // Collect all const declarations from all scopes (top-level + function bodies)
     let all_consts = collect_all_consts(program);
 
-    // Scan const declarations for calls to imported functions
+    // Build a map of local const names -> their expression (for inlining in probes)
+    let mut local_const_exprs: HashMap<String, String> = HashMap::new();
     for decl in &all_consts {
+        if let ConstBinding::Name(name) = &decl.binding {
+            let inner = unwrap_try_await_expr(&decl.value);
+            // Only track consts whose value involves an import (directly or via member)
+            if let ExprKind::Call { callee, .. } = &inner.kind {
+                let callee_name = expr_to_callee_name(callee);
+                if let Some(cn) = &callee_name {
+                    let root = cn.split('.').next().unwrap_or("");
+                    if imported_names.contains_key(cn) || imported_names.contains_key(root) {
+                        local_const_exprs.insert(name.clone(), expr_to_ts_approx(inner));
+                    }
+                }
+            }
+        }
+    }
+
+    // Scan const declarations for calls to imported functions.
+    // Unwrap Try/Unwrap/Await wrappers to find the underlying call.
+    for decl in &all_consts {
+        let inner_value = unwrap_try_await_expr(&decl.value);
+
         // Handle Construct nodes (uppercase calls like QueryClient({...}))
         if let ExprKind::Construct {
             type_name, args, ..
-        } = &decl.value.kind
+        } = &inner_value.kind
             && imported_names.contains_key(type_name)
         {
             let ts_args: Vec<String> = args.iter().map(arg_to_ts_approx).collect();
@@ -247,7 +268,7 @@ fn generate_probe(
             callee,
             type_args,
             args,
-        } = &decl.value.kind
+        } = &inner_value.kind
         {
             let callee_name = expr_to_callee_name(callee);
             if let Some(name) = &callee_name {
@@ -269,6 +290,24 @@ fn generate_probe(
                     });
                     probe_index += 1;
                     continue;
+                }
+
+                // Member call on a local const that was assigned from an import call:
+                // e.g. `UserSchema.parse(json)` where `UserSchema = z.object({...})`
+                // Inline the const's expression to let tsgo resolve the full chain
+                if name.contains('.') {
+                    let obj_name = name.split('.').next().unwrap_or("");
+                    let method = name.rsplit('.').next().unwrap_or("");
+                    if let Some(obj_expr) = local_const_exprs.get(obj_name) {
+                        let ts_args: Vec<String> = args.iter().map(arg_to_ts_approx).collect();
+                        let binding_name = const_binding_name(&decl.binding);
+                        lines.push(format!(
+                            "export const __probe_{binding_name}_{probe_index} = {obj_expr}.{method}({});",
+                            ts_args.join(", "),
+                        ));
+                        probe_index += 1;
+                        continue;
+                    }
                 }
             }
         }
@@ -915,8 +954,10 @@ fn build_specifier_map(
 
     // Map call probe results (including Construct nodes)
     for decl in &all_consts {
+        let inner_value = unwrap_try_await_expr(&decl.value);
+
         // Handle Construct nodes (uppercase calls like QueryClient({...}))
-        if let ExprKind::Construct { type_name, .. } = &decl.value.kind
+        if let ExprKind::Construct { type_name, .. } = &inner_value.kind
             && imported_names.contains_key(type_name)
         {
             let specifier = &imported_names[type_name];
@@ -935,7 +976,7 @@ fn build_specifier_map(
             continue;
         }
 
-        if let ExprKind::Call { callee, .. } = &decl.value.kind {
+        if let ExprKind::Call { callee, .. } = &inner_value.kind {
             let callee_name = expr_to_callee_name(callee);
             if let Some(name) = &callee_name {
                 let is_imported = imported_names.contains_key(name);
@@ -1038,6 +1079,7 @@ fn build_specifier_map(
     }
 
     // Map member access probe results (__member_X_field exports)
+    // and inlined const call probe results (__probe_X_N exports)
     for export in probe_exports {
         if let Some(rest) = export.name.strip_prefix("__member_") {
             // Find which specifier this belongs to
@@ -1051,6 +1093,19 @@ fn build_specifier_map(
                 }
             }
         }
+        // Inlined const call probes (__probe_user_5, __probe_posts_7, etc.)
+        // These are generated for calls like UserSchema.parse(json) where
+        // UserSchema is a local const assigned from an import call.
+        // Add to any available specifier so the checker can find them.
+        if export.name.starts_with("__probe_")
+            && !result.values().flatten().any(|e| e.name == export.name)
+            && let Some(first_specifier) = result.keys().next().cloned()
+        {
+            result
+                .entry(first_specifier)
+                .or_default()
+                .push(export.clone());
+        }
     }
 
     result
@@ -1063,6 +1118,17 @@ fn const_binding_name(binding: &ConstBinding) -> String {
         ConstBinding::Array(names) => names.join("_"),
         ConstBinding::Object(names) => names.join("_"),
         ConstBinding::Tuple(names) => names.join("_"),
+    }
+}
+
+/// Unwrap Try, Unwrap, and Await wrappers to find the inner expression.
+/// e.g. `try await fetch(url)?` → `fetch(url)`
+fn unwrap_try_await_expr(expr: &Expr) -> &Expr {
+    match &expr.kind {
+        ExprKind::Try(inner) | ExprKind::Unwrap(inner) | ExprKind::Await(inner) => {
+            unwrap_try_await_expr(inner)
+        }
+        _ => expr,
     }
 }
 
