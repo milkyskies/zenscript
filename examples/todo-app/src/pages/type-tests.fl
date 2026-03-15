@@ -1,0 +1,61 @@
+// Type system test page — open this in VSCode to verify type checking.
+// Lines marked ✓ should have NO errors. Lines marked ✗ SHOULD error.
+
+import { Todo, Filter } from "../types"
+
+// ── Member access ────────────────────────────────────────
+// Hover over .text, .done — should show string, boolean
+
+const todo = Todo(id: "1", text: "Buy milk", done: false)
+const _name = todo.text       // ✓ hover: string
+const _done = todo.done       // ✓ hover: boolean
+// const _bad = todo.nonexistent // ✗ uncomment → "type `Todo` has no field `nonexistent`"
+
+// ── Constructor validation ───────────────────────────────
+// Wrong field types should error
+
+const _good = Todo(id: "1", text: "hi", done: false)  // ✓
+// const _bad1 = Todo(id: 42, text: "hi", done: false)   // ✗ uncomment → field `id`: expected `string`, found `number`
+// const _bad2 = Todo(id: "1", text: "hi", done: "yes")  // ✗ uncomment → field `done`: expected `boolean`, found `string`
+
+// ── Match arm consistency ────────────────────────────────
+// All arms must return the same type
+
+fn describeFilter(f: Filter) -> string {
+    match f {
+        All -> "all",
+        Active -> "active",
+        Completed -> "completed",
+    }
+}
+
+// Uncomment to see error: match arms have incompatible types
+// fn badMatch(f: Filter) -> string {
+//     match f {
+//         All -> "all",
+//         Active -> 42,
+//         Completed -> "completed",
+//     }
+// }
+
+// ── If/else branch consistency ───────────────────────────
+
+fn abs(x: number) -> number {
+    if x > 0 { x } else { 0 - x }  // ✓ both branches are number
+}
+
+// Uncomment to see error: incompatible types in if/else
+// fn badIfElse(x: number) -> number {
+//     if x > 0 { x } else { "negative" }
+// }
+
+// ── Pipe type checking ──────────────────────────────────
+
+fn double(x: number) -> number { x * 2 }
+const _piped = 5 |> double          // ✓
+// const _badPipe = "hi" |> double  // ✗ uncomment → expected `number`, found `string`
+
+// ── Shadowing ────────────────────────────────────────────
+
+const myVal = 5
+// const myVal = 10  // ✗ uncomment → already defined and cannot be shadowed
