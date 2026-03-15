@@ -126,5 +126,19 @@
       "}"
     ],
     "description": "Inline test block"
+  },
+  "Todo Placeholder": {
+    "prefix": "todo",
+    "body": [
+      "todo"
+    ],
+    "description": "Placeholder that panics at runtime (type never)"
+  },
+  "Unreachable": {
+    "prefix": "unreachable",
+    "body": [
+      "unreachable"
+    ],
+    "description": "Assert unreachable code path (type never)"
   }
 }
