@@ -151,6 +151,15 @@ impl TypeEnv {
         }
     }
 
+    /// Define a name in the parent scope (second-to-last), used to update
+    /// function types after inferring the return type from the body.
+    pub(crate) fn define_in_parent_scope(&mut self, name: &str, ty: Type) {
+        let len = self.scopes.len();
+        if len >= 2 {
+            self.scopes[len - 2].insert(name.to_string(), ty);
+        }
+    }
+
     /// Check if a name is already defined in any scope.
     pub(crate) fn is_defined_in_any_scope(&self, name: &str) -> bool {
         self.scopes.iter().any(|scope| scope.contains_key(name))

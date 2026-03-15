@@ -766,6 +766,19 @@ impl Checker {
         // Check body
         let body_type = self.check_expr(&decl.body);
 
+        // When no return type annotation, infer from body and update the function type
+        if decl.return_type.is_none() && !matches!(body_type, Type::Var(_) | Type::Unknown) {
+            let fn_type = Type::Function {
+                params: param_types.clone(),
+                return_type: Box::new(body_type.clone()),
+            };
+            // Update in the name_types map for hover display
+            self.name_types
+                .insert(decl.name.clone(), fn_type.display_name());
+            // Mark for updating in outer scope after pop
+            self.env.define_in_parent_scope(&decl.name, fn_type);
+        }
+
         // Check return type compatibility
         if let Some(ref declared_return) = decl.return_type {
             let resolved = self.resolve_type(declared_return);
