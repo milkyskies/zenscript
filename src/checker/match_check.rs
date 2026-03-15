@@ -181,12 +181,14 @@ impl Checker {
         match &pattern.kind {
             PatternKind::Literal(_) | PatternKind::Range { .. } | PatternKind::Wildcard => {}
             PatternKind::Variant { name, fields } => {
+                let mut handled = false;
                 if let Type::Union { variants, .. } = subject_ty
                     && let Some((_, field_types)) = variants.iter().find(|(n, _)| n == name)
                 {
                     for (pat, ty) in fields.iter().zip(field_types.iter()) {
                         self.check_pattern(pat, ty);
                     }
+                    handled = true;
                 }
                 if let Type::Result { ok, err } = subject_ty {
                     match name.as_str() {
@@ -194,11 +196,13 @@ impl Checker {
                             if let Some(pat) = fields.first() {
                                 self.check_pattern(pat, ok);
                             }
+                            handled = true;
                         }
                         "Err" => {
                             if let Some(pat) = fields.first() {
                                 self.check_pattern(pat, err);
                             }
+                            handled = true;
                         }
                         _ => {}
                     }
@@ -208,6 +212,14 @@ impl Checker {
                     && let Some(pat) = fields.first()
                 {
                     self.check_pattern(pat, inner);
+                    handled = true;
+                }
+                // Fallback: when subject type is Unknown (e.g. from npm imports),
+                // still register bindings so they're available in the arm body
+                if !handled {
+                    for pat in fields {
+                        self.check_pattern(pat, &Type::Unknown);
+                    }
                 }
             }
             PatternKind::Record { fields } => {
@@ -234,11 +246,14 @@ impl Checker {
                 for segment in segments {
                     if let StringPatternSegment::Capture(name) = segment {
                         self.env.define(name, Type::String);
+                        self.name_types.insert(name.clone(), "string".to_string());
                     }
                 }
             }
             PatternKind::Binding(name) => {
                 self.env.define(name, subject_ty.clone());
+                self.name_types
+                    .insert(name.clone(), subject_ty.display_name());
             }
             PatternKind::Tuple(patterns) => {
                 if let Type::Tuple(types) = subject_ty {

@@ -92,6 +92,18 @@ impl LanguageServer for FloeLsp {
             return Ok(None);
         }
 
+        // Compute word start position and whether this is member access (X.word)
+        let word_start = {
+            let mut s = offset;
+            let bytes = doc.content.as_bytes();
+            while s > 0 && (bytes[s - 1].is_ascii_alphanumeric() || bytes[s - 1] == b'_') {
+                s -= 1;
+            }
+            s
+        };
+        let is_member_access =
+            word_start > 0 && doc.content.as_bytes().get(word_start - 1) == Some(&b'.');
+
         // Check symbol index first
         let symbols = doc.index.find_by_name(word);
         if let Some(sym) = symbols.first() {
@@ -105,6 +117,43 @@ impl LanguageServer for FloeLsp {
             }));
         }
 
+        // Check for member access (e.g. z.object, UserSchema.parse)
+        if is_member_access {
+            let bytes = doc.content.as_bytes();
+            let dot_pos = word_start - 1;
+            let mut obj_start = dot_pos;
+            while obj_start > 0
+                && (bytes[obj_start - 1].is_ascii_alphanumeric() || bytes[obj_start - 1] == b'_')
+            {
+                obj_start -= 1;
+            }
+            let obj_name = &doc.content[obj_start..dot_pos];
+
+            // Check tsgo member probes (npm imports like z.object)
+            if let Some(ty) = doc.type_map.get(&format!("__member_{obj_name}_{word}")) {
+                return Ok(Some(Hover {
+                    contents: HoverContents::Markup(MarkupContent {
+                        kind: MarkupKind::Markdown,
+                        value: format!("```floe\n(property) {obj_name}.{word}: {ty}\n```"),
+                    }),
+                    range: None,
+                }));
+            }
+
+            // Show object type + member for any other member access
+            if let Some(obj_ty) = doc.type_map.get(obj_name) {
+                return Ok(Some(Hover {
+                    contents: HoverContents::Markup(MarkupContent {
+                        kind: MarkupKind::Markdown,
+                        value: format!(
+                            "```floe\n(property) {obj_name}.{word}\n```\n`{obj_name}: {obj_ty}`"
+                        ),
+                    }),
+                    range: None,
+                }));
+            }
+        }
+
         // Check stdlib module names (Array, String, Option, etc.)
         if let Some(hover_text) = stdlib_hover::hover_stdlib_module(word) {
             return Ok(Some(Hover {
@@ -116,8 +165,8 @@ impl LanguageServer for FloeLsp {
             }));
         }
 
-        // Check bare stdlib function names (for pipe context)
-        if let Some(hover_text) = stdlib_hover::hover_stdlib_function(word) {
+        // Check bare stdlib function names (for pipe context only, not member access)
+        if !is_member_access && let Some(hover_text) = stdlib_hover::hover_stdlib_function(word) {
             return Ok(Some(Hover {
                 contents: HoverContents::Markup(MarkupContent {
                     kind: MarkupKind::Markdown,
@@ -633,20 +682,33 @@ use super::symbols::Symbol;
 pub(super) fn enrich_hover_detail(sym: &Symbol, type_map: &HashMap<String, String>) -> String {
     let detail = &sym.detail;
 
-    // For consts/variables without explicit type annotations (no `:` in the detail),
-    // append the inferred type from the checker if available.
-    if (sym.kind == SymbolKind::CONSTANT || sym.kind == SymbolKind::VARIABLE)
-        && !detail.contains(':')
-        && sym.import_source.is_none()
-        && let Some(inferred) = type_map.get(&sym.name)
-        && !inferred.contains("?T")
-    {
-        return format!("{detail}: {inferred}");
+    // For imports, show the resolved type if available (TS-like hover)
+    if sym.import_source.is_some() {
+        if let Some(inferred) = type_map.get(&sym.name)
+            && !inferred.contains("?T")
+            && inferred != "unknown"
+        {
+            let source = sym.import_source.as_deref().unwrap_or("unknown");
+            return format!("(import) {}: {inferred}\nfrom \"{source}\"", sym.name);
+        }
+        return detail.clone();
     }
 
-    // For functions without return type annotation, try to show the inferred return type
+    // For consts/variables, always show the resolved type
+    if sym.kind == SymbolKind::CONSTANT || sym.kind == SymbolKind::VARIABLE {
+        if let Some(inferred) = type_map.get(&sym.name)
+            && !inferred.contains("?T")
+        {
+            if detail.contains(':') {
+                return detail.clone();
+            }
+            return format!("{detail}: {inferred}");
+        }
+        return detail.clone();
+    }
+
+    // For functions without return type annotation, show the inferred return type
     if sym.kind == SymbolKind::FUNCTION
-        && sym.import_source.is_none()
         && !detail.contains("->")
         && let Some(inferred) = type_map.get(&sym.name)
         && let Some((_, ret)) = inferred.rsplit_once(" -> ")

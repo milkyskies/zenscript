@@ -5,7 +5,7 @@
 //! type arguments, run tsgo (TypeScript's Go-based compiler) to emit a
 //! `.d.ts`, and parse the fully-resolved types from the output.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -76,7 +76,6 @@ impl TsgoResolver {
             }
         };
 
-        // Parse the output .d.ts
         let exports = match parse_dts_exports_from_str(&dts_content) {
             Ok(exports) => exports,
             Err(e) => {
@@ -195,6 +194,9 @@ fn generate_probe(
         ));
     }
 
+    // Emit Floe runtime type aliases so tsgo preserves them through inference
+    lines.push("type FloeOption<T> = T | null | undefined;".to_string());
+
     // Emit type declarations from the program so tsgo can resolve them
     for item in &program.items {
         if let ItemKind::TypeDecl(decl) = &item.kind {
@@ -222,41 +224,193 @@ fn generate_probe(
     // Collect all const declarations from all scopes (top-level + function bodies)
     let all_consts = collect_all_consts(program);
 
-    // Scan const declarations for calls to imported functions
+    // Build a map of local const names -> their expression (for inlining in probes)
+    let mut local_const_exprs: HashMap<String, String> = HashMap::new();
     for decl in &all_consts {
+        if let ConstBinding::Name(name) = &decl.binding {
+            let inner = unwrap_try_await_expr(&decl.value);
+            // Only track consts whose value involves an import (directly or via member)
+            if let ExprKind::Call { callee, .. } = &inner.kind {
+                let callee_name = expr_to_callee_name(callee);
+                if let Some(cn) = &callee_name {
+                    let root = cn.split('.').next().unwrap_or("");
+                    if imported_names.contains_key(cn) || imported_names.contains_key(root) {
+                        let mut ts_expr = expr_to_ts_approx(inner);
+                        // Substitute any local const references in the expression
+                        // e.g. z.array(PostSchema) → z.array(z.object({...}))
+                        for (const_name, const_expr) in &local_const_exprs {
+                            if ts_expr.contains(const_name.as_str()) {
+                                ts_expr = ts_expr.replace(const_name.as_str(), const_expr);
+                            }
+                        }
+                        local_const_exprs.insert(name.clone(), ts_expr);
+                    }
+                }
+            }
+        }
+    }
+
+    // Scan const declarations for calls to imported functions.
+    // Unwrap Try/Unwrap/Await wrappers to find the underlying call.
+    for decl in &all_consts {
+        let inner_value = unwrap_try_await_expr(&decl.value);
+
+        // Handle Construct nodes (uppercase calls like QueryClient({...}))
+        if let ExprKind::Construct {
+            type_name, args, ..
+        } = &inner_value.kind
+            && imported_names.contains_key(type_name)
+        {
+            let ts_args: Vec<String> = args.iter().map(arg_to_ts_approx).collect();
+            lines.push(format!(
+                "export const _r{} = new {}({});",
+                probe_index,
+                type_name,
+                ts_args.join(", "),
+            ));
+            probe_index += 1;
+            continue;
+        }
+
         if let ExprKind::Call {
             callee,
             type_args,
             args,
-        } = &decl.value.kind
+        } = &inner_value.kind
         {
             let callee_name = expr_to_callee_name(callee);
-            if let Some(name) = &callee_name
-                && imported_names.contains_key(name)
-            {
-                let ts_type_args: Vec<String> = type_args.iter().map(type_expr_to_ts).collect();
-                let ts_args: Vec<String> = args.iter().map(arg_to_ts_approx).collect();
-                probe_calls.push(ProbeCall {
-                    index: probe_index,
-                    callee: name.clone(),
-                    type_args: ts_type_args,
-                    args: ts_args,
-                    binding: decl.binding.clone(),
-                });
-                probe_index += 1;
-                continue;
+            if let Some(name) = &callee_name {
+                // Direct import call: useState(...), useSuspenseQuery(...)
+                let is_imported = imported_names.contains_key(name);
+                // Member call on import: z.object(...), z.array(...)
+                let is_member_of_import = name.contains('.')
+                    && imported_names.contains_key(name.split('.').next().unwrap_or(""));
+
+                if is_imported || is_member_of_import {
+                    let ts_type_args: Vec<String> = type_args.iter().map(type_expr_to_ts).collect();
+                    let ts_args: Vec<String> = args.iter().map(arg_to_ts_approx).collect();
+                    probe_calls.push(ProbeCall {
+                        index: probe_index,
+                        callee: name.clone(),
+                        type_args: ts_type_args,
+                        args: ts_args,
+                        binding: decl.binding.clone(),
+                    });
+                    probe_index += 1;
+                    continue;
+                }
+
+                // Member call on a local const that was assigned from an import call:
+                // e.g. `UserSchema.parse(json)` where `UserSchema = z.object({...})`
+                // Inline the const's expression to let tsgo resolve the full chain
+                if name.contains('.') {
+                    let obj_name = name.split('.').next().unwrap_or("");
+                    let method = name.rsplit('.').next().unwrap_or("");
+                    if let Some(obj_expr) = local_const_exprs.get(obj_name) {
+                        let ts_args: Vec<String> = args.iter().map(arg_to_ts_approx).collect();
+                        let binding_name = const_binding_name(&decl.binding);
+                        // Use a separate counter to avoid conflicting with _rN indices
+                        let inlined_id = format!("inlined_{}", lines.len());
+                        lines.push(format!(
+                            "export const __probe_{binding_name}_{inlined_id} = {obj_expr}.{method}({});",
+                            ts_args.join(", "),
+                        ));
+                        // Don't increment probe_index — these don't use _rN naming
+                        continue;
+                    }
+                }
             }
         }
     }
 
     // Re-export ALL imported names so we get their types
     // (even if they were also used in calls above)
-    for name in imported_names.keys() {
+    // Sort keys for deterministic probe/map ordering
+    let mut sorted_import_names: Vec<_> = imported_names.keys().cloned().collect();
+    sorted_import_names.sort();
+    for name in &sorted_import_names {
         probe_reexports.push(ProbeReexport {
             index: probe_index,
             name: name.clone(),
         });
         probe_index += 1;
+    }
+
+    // Collect free variables referenced in probe call args and declare them
+    // so tsgo doesn't error on undefined identifiers
+    let mut declared_names: HashSet<String> = imported_names.keys().cloned().collect();
+    // Also include type names and function names
+    let mut local_functions: HashMap<String, &FunctionDecl> = HashMap::new();
+    for item in &program.items {
+        match &item.kind {
+            ItemKind::TypeDecl(decl) => {
+                declared_names.insert(decl.name.clone());
+            }
+            ItemKind::Function(decl) => {
+                declared_names.insert(decl.name.clone());
+                local_functions.insert(decl.name.clone(), decl);
+            }
+            _ => {}
+        }
+    }
+    // Also collect functions defined inside other functions (nested)
+    for item in &program.items {
+        if let ItemKind::Function(func) = &item.kind {
+            collect_nested_functions(&func.body, &mut declared_names, &mut local_functions);
+        }
+    }
+
+    // Collect ALL referenced identifiers (even declared ones) to find local function refs
+    let mut all_referenced: HashSet<String> = HashSet::new();
+    let empty_set: HashSet<String> = HashSet::new();
+    for call in &probe_calls {
+        for arg_str in &call.args {
+            collect_free_vars_from_ts(arg_str, &empty_set, &mut all_referenced);
+        }
+    }
+
+    // Emit local function declarations with proper TS signatures
+    for (name, func) in &local_functions {
+        if all_referenced.contains(name.as_str()) {
+            let params: Vec<String> = func
+                .params
+                .iter()
+                .map(|p| {
+                    let ty = p
+                        .type_ann
+                        .as_ref()
+                        .map(type_expr_to_ts)
+                        .unwrap_or_else(|| "any".to_string());
+                    format!("{}: {}", p.name, ty)
+                })
+                .collect();
+            let ret = func
+                .return_type
+                .as_ref()
+                .map(type_expr_to_ts)
+                .unwrap_or_else(|| "any".to_string());
+            // Wrap return type in Promise<> for async functions
+            // (can't use `async` in ambient declarations)
+            let ret = if func.async_fn {
+                format!("Promise<{ret}>")
+            } else {
+                ret
+            };
+            lines.push(format!(
+                "declare function {name}({}): {ret};",
+                params.join(", ")
+            ));
+        }
+    }
+    // Collect free vars (excluding declared names) and emit as `any`
+    let mut free_vars: HashSet<String> = HashSet::new();
+    for call in &probe_calls {
+        for arg_str in &call.args {
+            collect_free_vars_from_ts(arg_str, &declared_names, &mut free_vars);
+        }
+    }
+    for var in &free_vars {
+        lines.push(format!("declare const {var}: any;"));
     }
 
     // Emit probe const declarations
@@ -285,6 +439,22 @@ fn generate_probe(
                 "export const [{}] = {tmp};",
                 destructured.join(", "),
             ));
+        } else if let ConstBinding::Object(names) = &call.binding {
+            // For object destructuring: const { data } = useSuspenseQuery(...)
+            let tmp = format!("_tmp{}", call.index);
+            lines.push(format!(
+                "const {tmp} = {}{type_args_str}({args_str});",
+                call.callee,
+            ));
+            lines.push(format!(
+                "export const {{ {} }} = {tmp};",
+                names
+                    .iter()
+                    .enumerate()
+                    .map(|(i, n)| format!("{n}: _r{}_{i}", call.index))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            ));
         } else {
             lines.push(format!(
                 "export const _r{} = {}{type_args_str}({args_str});",
@@ -301,11 +471,197 @@ fn generate_probe(
         ));
     }
 
-    if probe_index == 0 {
+    // Scan the source for member accesses on imported names (e.g. z.object, z.string)
+    // and generate probes so tsgo resolves their types
+    let mut member_accesses: Vec<(String, String)> = Vec::new(); // (object_name, field)
+    collect_member_accesses_on_imports(program, &imported_names, &mut member_accesses);
+    member_accesses.sort();
+    member_accesses.dedup();
+
+    for (obj, field) in &member_accesses {
+        lines.push(format!(
+            "export const __member_{obj}_{field} = {obj}.{field};",
+        ));
+    }
+
+    if probe_index == 0 && member_accesses.is_empty() {
         return String::new();
     }
 
     lines.join("\n") + "\n"
+}
+
+/// Recursively collect all `X.field` member accesses where X is an imported name.
+fn collect_member_accesses_on_imports(
+    program: &Program,
+    imported_names: &HashMap<String, String>,
+    accesses: &mut Vec<(String, String)>,
+) {
+    for item in &program.items {
+        match &item.kind {
+            ItemKind::Const(decl) => {
+                collect_member_accesses_expr(&decl.value, imported_names, accesses)
+            }
+            ItemKind::Function(func) => {
+                collect_member_accesses_expr(&func.body, imported_names, accesses)
+            }
+            ItemKind::ForBlock(block) => {
+                for func in &block.functions {
+                    collect_member_accesses_expr(&func.body, imported_names, accesses);
+                }
+            }
+            ItemKind::Expr(expr) => collect_member_accesses_expr(expr, imported_names, accesses),
+            _ => {}
+        }
+    }
+}
+
+/// Recursively collect member accesses from an expression.
+fn collect_member_accesses_expr(
+    expr: &Expr,
+    imported_names: &HashMap<String, String>,
+    accesses: &mut Vec<(String, String)>,
+) {
+    match &expr.kind {
+        ExprKind::Member { object, field } => {
+            if let ExprKind::Identifier(name) = &object.kind
+                && imported_names.contains_key(name)
+            {
+                accesses.push((name.clone(), field.clone()));
+            }
+            collect_member_accesses_expr(object, imported_names, accesses);
+        }
+        ExprKind::Call { callee, args, .. } => {
+            collect_member_accesses_expr(callee, imported_names, accesses);
+            for arg in args {
+                match arg {
+                    Arg::Positional(e) | Arg::Named { value: e, .. } => {
+                        collect_member_accesses_expr(e, imported_names, accesses);
+                    }
+                }
+            }
+        }
+        ExprKind::Binary { left, right, .. } => {
+            collect_member_accesses_expr(left, imported_names, accesses);
+            collect_member_accesses_expr(right, imported_names, accesses);
+        }
+        ExprKind::Pipe { left, right } => {
+            collect_member_accesses_expr(left, imported_names, accesses);
+            collect_member_accesses_expr(right, imported_names, accesses);
+        }
+        ExprKind::Block(items) => {
+            for item in items {
+                match &item.kind {
+                    ItemKind::Const(decl) => {
+                        collect_member_accesses_expr(&decl.value, imported_names, accesses)
+                    }
+                    ItemKind::Function(func) => {
+                        collect_member_accesses_expr(&func.body, imported_names, accesses)
+                    }
+                    ItemKind::Expr(e) => collect_member_accesses_expr(e, imported_names, accesses),
+                    _ => {}
+                }
+            }
+        }
+        ExprKind::Arrow { body, .. } => {
+            collect_member_accesses_expr(body, imported_names, accesses);
+        }
+        ExprKind::Match { subject, arms } => {
+            collect_member_accesses_expr(subject, imported_names, accesses);
+            for arm in arms {
+                collect_member_accesses_expr(&arm.body, imported_names, accesses);
+            }
+        }
+        ExprKind::Construct { args, .. } => {
+            for arg in args {
+                match arg {
+                    Arg::Positional(e) | Arg::Named { value: e, .. } => {
+                        collect_member_accesses_expr(e, imported_names, accesses);
+                    }
+                }
+            }
+        }
+        ExprKind::Object(fields) => {
+            for (_, value) in fields {
+                collect_member_accesses_expr(value, imported_names, accesses);
+            }
+        }
+        ExprKind::Array(elems) => {
+            for e in elems {
+                collect_member_accesses_expr(e, imported_names, accesses);
+            }
+        }
+        ExprKind::Grouped(inner)
+        | ExprKind::Unary { operand: inner, .. }
+        | ExprKind::Unwrap(inner)
+        | ExprKind::Await(inner)
+        | ExprKind::Try(inner)
+        | ExprKind::Return(Some(inner))
+        | ExprKind::Ok(inner)
+        | ExprKind::Err(inner)
+        | ExprKind::Some(inner)
+        | ExprKind::Spread(inner) => {
+            collect_member_accesses_expr(inner, imported_names, accesses);
+        }
+        ExprKind::TemplateLiteral(parts) => {
+            for part in parts {
+                if let TemplatePart::Expr(e) = part {
+                    collect_member_accesses_expr(e, imported_names, accesses);
+                }
+            }
+        }
+        ExprKind::Index { object, index } => {
+            collect_member_accesses_expr(object, imported_names, accesses);
+            collect_member_accesses_expr(index, imported_names, accesses);
+        }
+        ExprKind::Jsx(jsx) => {
+            collect_member_accesses_jsx(jsx, imported_names, accesses);
+        }
+        ExprKind::Tuple(elems) => {
+            for e in elems {
+                collect_member_accesses_expr(e, imported_names, accesses);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_member_accesses_jsx(
+    jsx: &JsxElement,
+    imported_names: &HashMap<String, String>,
+    accesses: &mut Vec<(String, String)>,
+) {
+    match &jsx.kind {
+        JsxElementKind::Element {
+            props, children, ..
+        } => {
+            for prop in props {
+                if let Some(value) = &prop.value {
+                    collect_member_accesses_expr(value, imported_names, accesses);
+                }
+            }
+            for child in children {
+                match child {
+                    JsxChild::Expr(e) => collect_member_accesses_expr(e, imported_names, accesses),
+                    JsxChild::Element(el) => {
+                        collect_member_accesses_jsx(el, imported_names, accesses)
+                    }
+                    _ => {}
+                }
+            }
+        }
+        JsxElementKind::Fragment { children } => {
+            for child in children {
+                match child {
+                    JsxChild::Expr(e) => collect_member_accesses_expr(e, imported_names, accesses),
+                    JsxChild::Element(el) => {
+                        collect_member_accesses_jsx(el, imported_names, accesses)
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
 }
 
 /// Convert a Floe TypeDecl to a TypeScript type declaration string.
@@ -356,11 +712,13 @@ fn type_expr_to_ts(ty: &TypeExpr) -> String {
                 "bool" => "boolean",
                 "Option" if type_args.len() == 1 => {
                     let inner = type_expr_to_ts(&type_args[0]);
-                    return format!("{inner} | null | undefined");
+                    return format!("FloeOption<{inner}>");
                 }
                 "Result" if type_args.len() == 2 => {
-                    // Result<T, E> doesn't have a TS equivalent; use T
-                    return type_expr_to_ts(&type_args[0]);
+                    // Result<T, E> → discriminated union matching Floe's codegen
+                    let ok = type_expr_to_ts(&type_args[0]);
+                    let err = type_expr_to_ts(&type_args[1]);
+                    return format!("{{ ok: true, value: {ok} }} | {{ ok: false, error: {err} }}");
                 }
                 other => other,
             };
@@ -477,6 +835,13 @@ fn expr_to_ts_approx(expr: &Expr) -> String {
                 .collect();
             format!("({}) => {}", ps.join(", "), expr_to_ts_approx(body))
         }
+        ExprKind::Object(fields) => {
+            let fs: Vec<String> = fields
+                .iter()
+                .map(|(key, value)| format!("{key}: {}", expr_to_ts_approx(value)))
+                .collect();
+            format!("{{ {} }}", fs.join(", "))
+        }
         ExprKind::Grouped(inner) => format!("({})", expr_to_ts_approx(inner)),
         ExprKind::Unit => "undefined".to_string(),
         ExprKind::None => "null".to_string(),
@@ -498,7 +863,8 @@ fn create_probe_dir(project_dir: &Path, probe_content: &str) -> Result<tempfile:
     let tsconfig = r#"{
   "compilerOptions": {
     "moduleResolution": "bundler",
-    "strict": true,
+    "strict": false,
+    "noImplicitAny": false,
     "jsx": "react-jsx",
     "declaration": true,
     "emitDeclarationOnly": true,
@@ -596,14 +962,47 @@ fn build_specifier_map(
     // Use the same recursive const collection as generate_probe
     let all_consts = collect_all_consts(program);
 
-    // Map call probe results
+    // Map call probe results (including Construct nodes)
     for decl in &all_consts {
-        if let ExprKind::Call { callee, .. } = &decl.value.kind {
+        let inner_value = unwrap_try_await_expr(&decl.value);
+
+        // Handle Construct nodes (uppercase calls like QueryClient({...}))
+        if let ExprKind::Construct { type_name, .. } = &inner_value.kind
+            && imported_names.contains_key(type_name)
+        {
+            let specifier = &imported_names[type_name];
+            let binding_name = const_binding_name(&decl.binding);
+            let probe_name = format!("_r{probe_index}");
+            if let Some(export) = probe_exports.iter().find(|e| e.name == probe_name) {
+                result
+                    .entry(specifier.clone())
+                    .or_default()
+                    .push(DtsExport {
+                        name: format!("__probe_{}", binding_name),
+                        ts_type: export.ts_type.clone(),
+                    });
+            }
+            probe_index += 1;
+            continue;
+        }
+
+        if let ExprKind::Call { callee, .. } = &inner_value.kind {
             let callee_name = expr_to_callee_name(callee);
-            if let Some(name) = &callee_name
-                && imported_names.contains_key(name)
-            {
-                let specifier = &imported_names[name];
+            if let Some(name) = &callee_name {
+                let is_imported = imported_names.contains_key(name);
+                let root_name = name.split('.').next().unwrap_or("");
+                let is_member_of_import =
+                    name.contains('.') && imported_names.contains_key(root_name);
+
+                if !is_imported && !is_member_of_import {
+                    continue;
+                }
+
+                let specifier = if is_imported {
+                    &imported_names[name]
+                } else {
+                    &imported_names[root_name]
+                };
                 let binding_name = const_binding_name(&decl.binding);
 
                 // For array bindings, collect individual element types
@@ -627,6 +1026,33 @@ fn build_specifier_map(
                             name: format!("__probe_{}", binding_name),
                             ts_type: TsType::Tuple(elem_types),
                         });
+                } else if let ConstBinding::Object(names) = &decl.binding {
+                    // For object destructuring: const { data } = f(...)
+                    let elem_types: Vec<TsType> = names
+                        .iter()
+                        .enumerate()
+                        .map(|(i, _)| {
+                            let elem_name = format!("_r{}_{i}", probe_index);
+                            probe_exports
+                                .iter()
+                                .find(|e| e.name == elem_name)
+                                .map(|e| e.ts_type.clone())
+                                .unwrap_or(TsType::Unknown)
+                        })
+                        .collect();
+                    // Create individual probes for each destructured field
+                    // Use probe_index to disambiguate when same field name appears multiple times
+                    for (i, name) in names.iter().enumerate() {
+                        if i < elem_types.len() {
+                            result
+                                .entry(specifier.clone())
+                                .or_default()
+                                .push(DtsExport {
+                                    name: format!("__probe_{name}_{probe_index}"),
+                                    ts_type: elem_types[i].clone(),
+                                });
+                        }
+                    }
                 } else {
                     let probe_name = format!("_r{probe_index}");
                     if let Some(export) = probe_exports.iter().find(|e| e.name == probe_name) {
@@ -645,8 +1071,10 @@ fn build_specifier_map(
         }
     }
 
-    // Map re-export probe results — ALL imported names
-    for (name, specifier) in &imported_names {
+    // Map re-export probe results — ALL imported names (sorted for deterministic order)
+    let mut sorted_import_names: Vec<_> = imported_names.iter().collect();
+    sorted_import_names.sort_by_key(|(name, _)| (*name).clone());
+    for (name, specifier) in sorted_import_names {
         let probe_name = format!("_r{probe_index}");
         if let Some(export) = probe_exports.iter().find(|e| e.name == probe_name) {
             result
@@ -660,6 +1088,36 @@ fn build_specifier_map(
         probe_index += 1;
     }
 
+    // Map member access probe results (__member_X_field exports)
+    // and inlined const call probe results (__probe_X_N exports)
+    for export in probe_exports {
+        if let Some(rest) = export.name.strip_prefix("__member_") {
+            // Find which specifier this belongs to
+            if let Some(underscore_pos) = rest.find('_') {
+                let obj_name = &rest[..underscore_pos];
+                if let Some(specifier) = imported_names.get(obj_name) {
+                    result
+                        .entry(specifier.clone())
+                        .or_default()
+                        .push(export.clone());
+                }
+            }
+        }
+        // Inlined const call probes (__probe_user_5, __probe_posts_7, etc.)
+        // These are generated for calls like UserSchema.parse(json) where
+        // UserSchema is a local const assigned from an import call.
+        // Add to any available specifier so the checker can find them.
+        if export.name.starts_with("__probe_")
+            && !result.values().flatten().any(|e| e.name == export.name)
+            && let Some(first_specifier) = result.keys().next().cloned()
+        {
+            result
+                .entry(first_specifier)
+                .or_default()
+                .push(export.clone());
+        }
+    }
+
     result
 }
 
@@ -670,6 +1128,78 @@ fn const_binding_name(binding: &ConstBinding) -> String {
         ConstBinding::Array(names) => names.join("_"),
         ConstBinding::Object(names) => names.join("_"),
         ConstBinding::Tuple(names) => names.join("_"),
+    }
+}
+
+/// Unwrap Try, Unwrap, and Await wrappers to find the inner expression.
+/// e.g. `try await fetch(url)?` → `fetch(url)`
+fn unwrap_try_await_expr(expr: &Expr) -> &Expr {
+    match &expr.kind {
+        ExprKind::Try(inner) | ExprKind::Unwrap(inner) | ExprKind::Await(inner) => {
+            unwrap_try_await_expr(inner)
+        }
+        _ => expr,
+    }
+}
+
+/// Collect function declarations nested inside expression bodies.
+fn collect_nested_functions<'a>(
+    expr: &'a Expr,
+    declared: &mut HashSet<String>,
+    functions: &mut HashMap<String, &'a FunctionDecl>,
+) {
+    if let ExprKind::Block(items) = &expr.kind {
+        for item in items {
+            if let ItemKind::Function(decl) = &item.kind {
+                declared.insert(decl.name.clone());
+                functions.insert(decl.name.clone(), decl);
+                collect_nested_functions(&decl.body, declared, functions);
+            }
+        }
+    }
+}
+
+/// Extract identifier-like tokens from a TypeScript expression string
+/// and collect any that aren't in `declared`. This is a rough heuristic
+/// to find free variables that need `declare const` in the probe.
+fn collect_free_vars_from_ts(ts: &str, declared: &HashSet<String>, free: &mut HashSet<String>) {
+    for token in ts.split(|c: char| !c.is_alphanumeric() && c != '_') {
+        if token.is_empty() || token.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+            continue;
+        }
+        // Skip TS keywords and common literals
+        if matches!(
+            token,
+            "const"
+                | "let"
+                | "var"
+                | "function"
+                | "return"
+                | "new"
+                | "true"
+                | "false"
+                | "null"
+                | "undefined"
+                | "as"
+                | "any"
+                | "void"
+                | "number"
+                | "string"
+                | "boolean"
+                | "object"
+                | "export"
+                | "import"
+                | "from"
+                | "type"
+                | "async"
+                | "await"
+                | "readonly"
+        ) {
+            continue;
+        }
+        if !declared.contains(token) {
+            free.insert(token.to_string());
+        }
     }
 }
 
@@ -836,7 +1366,7 @@ const [filter, setFilter] = useState<Filter>(Filter.All)
         let program = Parser::new(source).parse_program().unwrap();
         if let ItemKind::TypeDecl(decl) = &program.items[0].kind {
             let ts = type_decl_to_ts(decl);
-            assert!(ts.contains("string | null | undefined"));
+            assert!(ts.contains("FloeOption<string>"));
         } else {
             panic!("expected type decl");
         }

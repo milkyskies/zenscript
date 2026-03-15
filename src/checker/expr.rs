@@ -70,8 +70,6 @@ impl Checker {
 
             ExprKind::Pipe { left, right } => {
                 let left_ty = self.check_expr(left);
-                // Type-directed resolution: for bare function names in pipes,
-                // check stdlib before reporting "not defined"
                 self.check_pipe_right(&left_ty, right)
             }
 
@@ -166,6 +164,14 @@ impl Checker {
                 // Save pipe context before checking callee (which would consume it)
                 let piped_ty = self.pipe_input_type.take();
 
+                // Infer lambda param type from piped array element type
+                // e.g. [1,2,3] |> Array.map(|x| ...) → x: number
+                if let Some(ref piped) = piped_ty
+                    && let Type::Array(elem_ty) = piped
+                {
+                    self.lambda_param_hint = Some((**elem_ty).clone());
+                }
+
                 let callee_ty = self.check_expr(callee);
                 let mut arg_types: Vec<Type> = args
                     .iter()
@@ -173,6 +179,8 @@ impl Checker {
                         Arg::Positional(e) | Arg::Named { value: e, .. } => self.check_expr(e),
                     })
                     .collect();
+                // Clear any unconsumed hint
+                self.lambda_param_hint = None;
 
                 // In a pipe like `x |> f(y)`, the piped value is the implicit first arg
                 if let Some(piped_ty) = piped_ty {
@@ -271,7 +279,12 @@ impl Checker {
                         .env
                         .lookup(type_name)
                         .is_some_and(|ty| matches!(ty, Type::Union { .. }));
-                    if !is_variant {
+                    // Also accept known imported symbols (e.g. npm imports) used as constructors.
+                    // When an uppercase import like `QueryClient` is called with named args,
+                    // the parser produces a Construct node. If the name exists in the value
+                    // environment, treat it as a function call rather than erroring.
+                    let is_known_value = self.env.lookup(type_name).is_some();
+                    if !is_variant && !is_known_value {
                         self.diagnostics.push(
                             Diagnostic::error(format!("unknown type `{type_name}`"), expr.span)
                                 .with_label("not defined")
@@ -526,6 +539,54 @@ impl Checker {
                     return Type::Unknown;
                 }
 
+                // Check for npm member access via tsgo probes (e.g. z.object, z.string)
+                if let ExprKind::Identifier(name) = &object.kind {
+                    let member_key = format!("__member_{name}_{field}");
+                    for exports in self.dts_imports.values() {
+                        if let Some(export) = exports.iter().find(|e| e.name == member_key) {
+                            let ty = crate::interop::wrap_boundary_type(&export.ts_type);
+                            self.name_types.insert(member_key, ty.display_name());
+                            return ty;
+                        }
+                    }
+                }
+
+                // Error on member access on Promise — must await first
+                if let Type::Named(name) = &obj_ty
+                    && name.starts_with("Promise<")
+                {
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            format!("cannot access `.{field}` on `{name}` — use `await` first"),
+                            expr.span,
+                        )
+                        .with_label("must `await` the Promise before accessing members")
+                        .with_code("E021"),
+                    );
+                    return Type::Unknown;
+                }
+
+                // Error on member access on `unknown` — must narrow first
+                if matches!(obj_ty, Type::Unknown) {
+                    // Allow stdlib module access (e.g. JSON.parse) — those are handled elsewhere
+                    if let ExprKind::Identifier(name) = &object.kind
+                        && self.stdlib.is_module(name)
+                        && let Some(stdlib_fn) = self.stdlib.lookup(name, field)
+                    {
+                        return stdlib_fn.return_type.clone();
+                    }
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            format!("cannot access `.{field}` on `unknown`"),
+                            expr.span,
+                        )
+                        .with_label("`unknown` must be narrowed before member access")
+                        .with_help("use `match`, type validation (e.g. Zod), or pattern matching")
+                        .with_code("E020"),
+                    );
+                    return Type::Unknown;
+                }
+
                 // Resolve Named types to their concrete definition
                 let concrete = self.resolve_type_to_concrete(&obj_ty);
 
@@ -590,7 +651,7 @@ impl Checker {
                 }
             }
 
-            ExprKind::Arrow { params, body } => {
+            ExprKind::Arrow { params, body, .. } => {
                 self.env.push_scope();
                 let param_types: Vec<_> = params
                     .iter()
@@ -599,8 +660,35 @@ impl Checker {
                             .type_ann
                             .as_ref()
                             .map(|t| self.resolve_type(t))
-                            .unwrap_or_else(|| self.fresh_type_var());
+                            .unwrap_or_else(|| {
+                                // Use lambda param hint from calling context if available
+                                if let Some(hint) = self.lambda_param_hint.take() {
+                                    return hint;
+                                }
+                                // In event handler context, infer Event type for the parameter
+                                if self.event_handler_context && p.destructure.is_none() {
+                                    Type::Named("Event".to_string())
+                                } else {
+                                    self.fresh_type_var()
+                                }
+                            });
                         self.env.define(&p.name, ty.clone());
+                        // For destructured params, also define the field names
+                        if let Some(ref destructure) = p.destructure {
+                            match destructure {
+                                ParamDestructure::Object(fields)
+                                | ParamDestructure::Array(fields) => {
+                                    for field in fields {
+                                        // Infer type for well-known field names
+                                        let field_ty = match field.as_str() {
+                                            "error" => Type::Named("Error".to_string()),
+                                            _ => Type::Unknown,
+                                        };
+                                        self.env.define(field, field_ty);
+                                    }
+                                }
+                            }
+                        }
                         ty
                     })
                     .collect();
@@ -660,7 +748,19 @@ impl Checker {
                 }
             }
 
-            ExprKind::Await(inner) => self.check_expr(inner),
+            ExprKind::Await(inner) => {
+                let ty = self.check_expr(inner);
+                // Unwrap Promise<T> to T
+                if let Type::Named(name) = &ty
+                    && let Some(inner_name) = name
+                        .strip_prefix("Promise<")
+                        .and_then(|s| s.strip_suffix('>'))
+                {
+                    return self.resolve_named_type(inner_name, &[], expr.span);
+                }
+                // If not a Promise, pass through (e.g. await on a non-async value)
+                ty
+            }
 
             ExprKind::Try(inner) => {
                 let prev_inside_try = self.inside_try;
@@ -675,16 +775,26 @@ impl Checker {
 
             ExprKind::Ok(inner) => {
                 let inner_ty = self.check_expr(inner);
+                // Infer error type from enclosing function's return type if available
+                let err_ty = match &self.current_return_type {
+                    Some(Type::Result { err, .. }) => (**err).clone(),
+                    _ => Type::Unknown,
+                };
                 Type::Result {
                     ok: Box::new(inner_ty),
-                    err: Box::new(Type::Unknown),
+                    err: Box::new(err_ty),
                 }
             }
 
             ExprKind::Err(inner) => {
                 let err_ty = self.check_expr(inner);
+                // Infer ok type from enclosing function's return type if available
+                let ok_ty = match &self.current_return_type {
+                    Some(Type::Result { ok, .. }) => (**ok).clone(),
+                    _ => Type::Unknown,
+                };
                 Type::Result {
-                    ok: Box::new(Type::Unknown),
+                    ok: Box::new(ok_ty),
                     err: Box::new(err_ty),
                 }
             }
@@ -761,6 +871,7 @@ impl Checker {
 
             ExprKind::Array(elements) => {
                 let mut elem_type: Option<Type> = None;
+                let mut mixed = false;
                 for el in elements {
                     let ty = self.check_expr(el);
                     if let Some(ref prev) = elem_type {
@@ -768,21 +879,17 @@ impl Checker {
                             && !matches!(ty, Type::Unknown | Type::Var(_))
                             && !matches!(prev, Type::Unknown | Type::Var(_))
                         {
-                            self.diagnostics.push(
-                                Diagnostic::error(
-                                    "array elements have mixed types, add an explicit type annotation",
-                                    el.span,
-                                )
-                                .with_label("mismatched element type")
-                                .with_help("add an explicit type annotation to the array")
-                                .with_code("E004"),
-                            );
+                            mixed = true;
                         }
                     } else {
                         elem_type = Some(ty);
                     }
                 }
-                Type::Array(Box::new(elem_type.unwrap_or(Type::Unknown)))
+                if mixed {
+                    Type::Array(Box::new(Type::Unknown))
+                } else {
+                    Type::Array(Box::new(elem_type.unwrap_or(Type::Unknown)))
+                }
             }
 
             ExprKind::Tuple(elements) => {
@@ -791,6 +898,13 @@ impl Checker {
             }
 
             ExprKind::Spread(inner) => self.check_expr(inner),
+
+            ExprKind::Object(fields) => {
+                for (_key, value) in fields {
+                    self.check_expr(value);
+                }
+                Type::Unknown
+            }
 
             ExprKind::DotShorthand { predicate, .. } => {
                 // Check the predicate RHS expression if present
@@ -882,6 +996,63 @@ impl Checker {
     /// When the right side uses a bare function name (not locally defined),
     /// resolve it against stdlib using the left side's type.
     fn check_pipe_right(&mut self, left_ty: &Type, right: &Expr) -> Type {
+        // Handle `x |> Module.func` or `x |> Module.func(args)` — stdlib member access
+        let member_info = match &right.kind {
+            ExprKind::Member { object, field } => {
+                if let ExprKind::Identifier(module) = &object.kind {
+                    Some((module.as_str(), field.as_str()))
+                } else {
+                    None
+                }
+            }
+            ExprKind::Call { callee, .. } => {
+                if let ExprKind::Member { object, field } = &callee.kind {
+                    if let ExprKind::Identifier(module) = &object.kind {
+                        Some((module.as_str(), field.as_str()))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+
+        if let Some((module, func_name)) = member_info
+            && let Some(stdlib_fn) = self.stdlib.lookup(module, func_name)
+        {
+            self.used_names.insert(module.to_string());
+            // Resolve generic return type from piped value
+            // e.g. Array.append returns Array<T> → resolve T from left_ty's element
+            let ret = match (&stdlib_fn.return_type, left_ty) {
+                (Type::Array(_), Type::Array(elem)) => Type::Array(elem.clone()),
+                _ => stdlib_fn.return_type.clone(),
+            };
+            if let Some(first_param) = stdlib_fn.params.first()
+                && !self.types_compatible(first_param, left_ty)
+            {
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        format!(
+                            "argument 1 to `{module}.{func_name}`: expected `{}`, found `{}`",
+                            first_param.display_name(),
+                            left_ty.display_name()
+                        ),
+                        right.span,
+                    )
+                    .with_label(format!("expected `{}`", first_param.display_name()))
+                    .with_code("E001"),
+                );
+            }
+            if let Type::Array(elem) = left_ty {
+                self.lambda_param_hint = Some((**elem).clone());
+            }
+            self.check_pipe_right_args(right);
+            self.lambda_param_hint = None;
+            return ret;
+        }
+
         // Extract the bare function name from the right side
         let bare_name = match &right.kind {
             ExprKind::Identifier(name) => Some(name.as_str()),
@@ -892,10 +1063,11 @@ impl Checker {
             _ => None,
         };
 
-        // If it's a bare name not in scope, try stdlib resolution
+        // If it's a bare name not locally defined (or is a known stdlib function),
+        // try stdlib resolution
         if let Some(name) = bare_name
-            && self.env.lookup(name).is_none()
             && !self.stdlib.is_module(name)
+            && (self.env.lookup(name).is_none() || !self.stdlib.lookup_by_name(name).is_empty())
         {
             let module = Self::type_to_stdlib_module(left_ty);
             let fallback_matches = self.stdlib.lookup_by_name(name);
@@ -906,7 +1078,10 @@ impl Checker {
                 // Found via type-directed resolution — mark as used, check args
                 self.used_names.insert(name.to_string());
                 let stdlib_fn = self.stdlib.lookup(m, name).unwrap();
-                let ret = stdlib_fn.return_type.clone();
+                let ret = match (&stdlib_fn.return_type, left_ty) {
+                    (Type::Array(_), Type::Array(elem)) => Type::Array(elem.clone()),
+                    _ => stdlib_fn.return_type.clone(),
+                };
                 // Validate piped value against first parameter
                 if let Some(first_param) = stdlib_fn.params.first()
                     && !self.types_compatible(first_param, left_ty)
@@ -924,7 +1099,12 @@ impl Checker {
                         .with_code("E001"),
                     );
                 }
+                // Set lambda param hint from array element type
+                if let Type::Array(elem) = left_ty {
+                    self.lambda_param_hint = Some((**elem).clone());
+                }
                 self.check_pipe_right_args(right);
+                self.lambda_param_hint = None;
                 return ret;
             } else if !fallback_matches.is_empty() {
                 let stdlib_fn = fallback_matches[0];
@@ -945,10 +1125,17 @@ impl Checker {
                         .with_code("E001"),
                     );
                 }
-                // Found via name-based fallback (unknown left type)
+                // Found via name-based fallback
                 self.used_names.insert(name.to_string());
-                let ret = stdlib_fn.return_type.clone();
+                let ret = match (&stdlib_fn.return_type, left_ty) {
+                    (Type::Array(_), Type::Array(elem)) => Type::Array(elem.clone()),
+                    _ => stdlib_fn.return_type.clone(),
+                };
+                if let Type::Array(elem) = left_ty {
+                    self.lambda_param_hint = Some((**elem).clone());
+                }
                 self.check_pipe_right_args(right);
+                self.lambda_param_hint = None;
                 return ret;
             }
         }
@@ -1158,34 +1345,54 @@ impl Checker {
 
     /// Resolve a type to its concrete definition, following Named type lookups.
     fn resolve_type_to_concrete(&mut self, ty: &Type) -> Type {
-        // We need to clone the env reference data to avoid borrow issues
-        let resolve_fn = |type_expr: &crate::parser::ast::TypeExpr| -> Type {
-            // Simple resolution without mutating self — just map named types
-            match &type_expr.kind {
-                crate::parser::ast::TypeExprKind::Named { name, .. } => match name.as_str() {
-                    "number" => Type::Number,
-                    "string" => Type::String,
-                    "boolean" => Type::Bool,
-                    "()" => Type::Unit,
-                    "undefined" => Type::Undefined,
-                    _ => Type::Named(name.to_string()),
-                },
-                crate::parser::ast::TypeExprKind::Array(inner) => {
-                    let inner_resolved = match &inner.kind {
-                        crate::parser::ast::TypeExprKind::Named { name, .. } => match name.as_str()
-                        {
-                            "number" => Type::Number,
-                            "string" => Type::String,
-                            "boolean" => Type::Bool,
-                            _ => Type::Named(name.to_string()),
-                        },
-                        _ => Type::Unknown,
-                    };
-                    Type::Array(Box::new(inner_resolved))
-                }
-                _ => Type::Unknown,
+        let resolved = self.env.resolve_to_concrete(ty, &simple_resolve_type_expr);
+        // If still Named after type_defs resolution, check if it's a known
+        // value (e.g. built-in Response, Error) that has a concrete type
+        if let Type::Named(name) = &resolved
+            && let Some(val_ty) = self.env.lookup(name).cloned()
+            && matches!(val_ty, Type::Record(_))
+        {
+            return val_ty;
+        }
+        resolved
+    }
+}
+
+/// Simple type expression resolver for concrete type resolution.
+/// Handles Named, Array, Record, and Function type expressions without
+/// needing mutable access to the checker (no self parameter).
+pub(crate) fn simple_resolve_type_expr(type_expr: &crate::parser::ast::TypeExpr) -> Type {
+    use crate::parser::ast::TypeExprKind;
+    match &type_expr.kind {
+        TypeExprKind::Named { name, .. } => match name.as_str() {
+            "number" => Type::Number,
+            "string" => Type::String,
+            "boolean" => Type::Bool,
+            "()" => Type::Unit,
+            "undefined" => Type::Undefined,
+            _ => Type::Named(name.to_string()),
+        },
+        TypeExprKind::Array(inner) => Type::Array(Box::new(simple_resolve_type_expr(inner))),
+        TypeExprKind::Record(fields) => {
+            let field_types: Vec<_> = fields
+                .iter()
+                .map(|f| (f.name.clone(), simple_resolve_type_expr(&f.type_ann)))
+                .collect();
+            Type::Record(field_types)
+        }
+        TypeExprKind::Function {
+            params,
+            return_type,
+        } => {
+            let param_types: Vec<_> = params.iter().map(simple_resolve_type_expr).collect();
+            let ret = simple_resolve_type_expr(return_type);
+            Type::Function {
+                params: param_types,
+                return_type: Box::new(ret),
             }
-        };
-        self.env.resolve_to_concrete(ty, &resolve_fn)
+        }
+        TypeExprKind::Tuple(types) => {
+            Type::Tuple(types.iter().map(simple_resolve_type_expr).collect())
+        }
     }
 }

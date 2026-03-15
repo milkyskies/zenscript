@@ -12,7 +12,7 @@ type User = { tag: "Adult"; age: number } | { tag: "Child"; age: number };
 
 const user = { tag: "Adult", age: 25 };
 
-const _label = user.tag === "Adult" ? (() => { const age = user.age; if (age >= 65) { return "senior"; } return user.tag === "Adult" ? (() => { const age = user.age; return "adult"; })() : user.tag === "Child" ? (() => { const age = user.age; if (age < 5) { return "toddler"; } return user.tag === "Child" ? (() => { const age = user.age; return "child"; })() : (() => { throw new Error("non-exhaustive match"); })(); })(); })();
+const _label = user.tag === "Adult" ? (() => { const age = user.age; if (age >= 65) { return "senior"; } return user.tag === "Adult" ? (() => { const age = user.age; return "adult"; })() : user.tag === "Child" ? (() => { const age = user.age; if (age < 5) { return "toddler"; } return user.tag === "Child" ? (() => { const age = user.age; return "child"; })() : (() => { throw new Error("non-exhaustive match"); })(); })() : user.tag === "Child" ? (() => { const age = user.age; return "child"; })() : (() => { throw new Error("non-exhaustive match"); })(); })() : user.tag === "Adult" ? (() => { const age = user.age; return "adult"; })() : user.tag === "Child" ? (() => { const age = user.age; if (age < 5) { return "toddler"; } return user.tag === "Child" ? (() => { const age = user.age; return "child"; })() : (() => { throw new Error("non-exhaustive match"); })(); })() : user.tag === "Child" ? (() => { const age = user.age; return "child"; })() : (() => { throw new Error("non-exhaustive match"); })();
 
 const n = 42;
 

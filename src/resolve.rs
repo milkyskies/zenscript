@@ -20,6 +20,8 @@ pub struct ResolvedImports {
     pub for_blocks: Vec<ForBlock>,
     /// Exported const names (we just need to know they exist, typed as Unknown)
     pub const_names: Vec<String>,
+    /// Exported trait declarations
+    pub trait_decls: Vec<TraitDecl>,
 }
 
 /// Resolve all relative imports for a given file.
@@ -88,7 +90,7 @@ fn resolve_single_import(
     let transitive_dir = resolved_path.parent().unwrap_or(Path::new("."));
     let transitive = resolve_imports_inner(transitive_dir, &program, visited);
 
-    // Collect transitive type decls and for-blocks so the checker can register them
+    // Collect transitive type decls, for-blocks, and trait decls so the checker can register them
     for resolved in transitive.values() {
         imports
             .type_decls
@@ -99,6 +101,9 @@ fn resolve_single_import(
         imports
             .function_decls
             .extend(resolved.function_decls.iter().cloned());
+        imports
+            .trait_decls
+            .extend(resolved.trait_decls.iter().cloned());
     }
 
     for item in &program.items {
@@ -116,6 +121,9 @@ fn resolve_single_import(
                 if !exported_block.functions.is_empty() {
                     imports.for_blocks.push(exported_block);
                 }
+            }
+            ItemKind::TraitDecl(decl) if decl.exported => {
+                imports.trait_decls.push(decl.clone());
             }
             ItemKind::Const(decl) if decl.exported => {
                 if let ConstBinding::Name(name) = &decl.binding {

@@ -43,12 +43,20 @@ pub struct Checker {
     untrusted_imports: HashSet<String>,
     /// Whether we are currently inside a `try` expression.
     inside_try: bool,
+    /// Whether we are checking an event handler prop value (onChange, onClick, etc.)
+    event_handler_context: bool,
+    /// Hint for lambda parameter type inference from calling context.
+    /// When set, Arrow expressions use this as the first param type.
+    lambda_param_hint: Option<Type>,
     /// Whether we are in the type registration pass (suppress unknown type errors).
     registering_types: bool,
     /// Pre-resolved imports from other .fl files, keyed by import source string.
     resolved_imports: HashMap<String, ResolvedImports>,
     /// Pre-resolved .d.ts exports for npm imports, keyed by specifier (e.g. "react").
     dts_imports: HashMap<String, Vec<DtsExport>>,
+    /// Counter for disambiguating probe lookups when the same binding name appears
+    /// multiple times (e.g. two `const { data } = ...` destructures).
+    probe_counters: HashMap<String, usize>,
     /// When inside a pipe, holds the type of the piped (left) value.
     /// The Call handler uses this to account for the implicit first argument.
     pipe_input_type: Option<Type>,
@@ -80,8 +88,140 @@ impl Default for Checker {
 
 impl Checker {
     pub fn new() -> Self {
+        let mut env = TypeEnv::new();
+
+        // ── Built-in runtime types ──────────────────────────────────
+        //
+        // These are web/JS standard types that Floe code can use without
+        // importing. Defined as Records so member access works through
+        // the normal type-checking path.
+
+        let response_record = Type::Record(vec![
+            (
+                "json".to_string(),
+                Type::Function {
+                    params: vec![],
+                    return_type: Box::new(Type::Unknown),
+                },
+            ),
+            (
+                "text".to_string(),
+                Type::Function {
+                    params: vec![],
+                    return_type: Box::new(Type::String),
+                },
+            ),
+            ("ok".to_string(), Type::Bool),
+            ("status".to_string(), Type::Number),
+            ("statusText".to_string(), Type::String),
+            ("headers".to_string(), Type::Named("Headers".to_string())),
+            ("url".to_string(), Type::String),
+        ]);
+
+        let error_record = Type::Record(vec![
+            ("message".to_string(), Type::String),
+            ("name".to_string(), Type::String),
+            ("stack".to_string(), Type::Option(Box::new(Type::String))),
+        ]);
+
+        let event_record = Type::Record(vec![
+            (
+                "target".to_string(),
+                Type::Record(vec![
+                    ("value".to_string(), Type::String),
+                    ("checked".to_string(), Type::Bool),
+                ]),
+            ),
+            ("key".to_string(), Type::String),
+            ("code".to_string(), Type::String),
+            (
+                "preventDefault".to_string(),
+                Type::Function {
+                    params: vec![],
+                    return_type: Box::new(Type::Unit),
+                },
+            ),
+            (
+                "stopPropagation".to_string(),
+                Type::Function {
+                    params: vec![],
+                    return_type: Box::new(Type::Unit),
+                },
+            ),
+        ]);
+
+        // Register as named types that display nicely and resolve to
+        // records for member access via resolve_type_to_concrete
+        env.define("Response", response_record);
+        env.define("Error", error_record);
+        env.define("Event", event_record);
+
+        // ── Browser/runtime globals ─────────────────────────────────
+
+        let browser_globals: &[(&str, Type)] = &[
+            (
+                "fetch",
+                Type::Function {
+                    params: vec![Type::String],
+                    return_type: Box::new(Type::Named("Promise<Response>".to_string())),
+                },
+            ),
+            ("window", Type::Unknown),
+            ("document", Type::Unknown),
+            (
+                "setTimeout",
+                Type::Function {
+                    params: vec![
+                        Type::Function {
+                            params: vec![],
+                            return_type: Box::new(Type::Unit),
+                        },
+                        Type::Number,
+                    ],
+                    return_type: Box::new(Type::Number),
+                },
+            ),
+            (
+                "setInterval",
+                Type::Function {
+                    params: vec![
+                        Type::Function {
+                            params: vec![],
+                            return_type: Box::new(Type::Unit),
+                        },
+                        Type::Number,
+                    ],
+                    return_type: Box::new(Type::Number),
+                },
+            ),
+            (
+                "clearTimeout",
+                Type::Function {
+                    params: vec![Type::Number],
+                    return_type: Box::new(Type::Unit),
+                },
+            ),
+            (
+                "clearInterval",
+                Type::Function {
+                    params: vec![Type::Number],
+                    return_type: Box::new(Type::Unit),
+                },
+            ),
+            ("Promise", Type::Unknown),
+            ("JSON", Type::Unknown),
+        ];
+
+        for (name, ty) in browser_globals {
+            env.define(name, ty.clone());
+        }
+
+        // Browser globals that can throw and require `try`
+        let mut untrusted_globals = HashSet::new();
+        untrusted_globals.insert("fetch".to_string());
+
         Self {
-            env: TypeEnv::new(),
+            env,
             diagnostics: Vec::new(),
             next_var: 0,
             current_return_type: None,
@@ -90,11 +230,14 @@ impl Checker {
             imported_names: Vec::new(),
             stdlib: StdlibRegistry::new(),
             expr_types: HashMap::new(),
-            untrusted_imports: HashSet::new(),
+            untrusted_imports: untrusted_globals,
             inside_try: false,
+            event_handler_context: false,
+            lambda_param_hint: None,
             registering_types: false,
             resolved_imports: HashMap::new(),
             dts_imports: HashMap::new(),
+            probe_counters: HashMap::new(),
             pipe_input_type: None,
             name_types: HashMap::new(),
             defined_sources: HashMap::new(),
@@ -148,11 +291,14 @@ impl Checker {
         mut self,
         program: &Program,
     ) -> (Vec<Diagnostic>, HashMap<String, String>, ExprTypeMap) {
-        // Pre-register types and functions from resolved imports
+        // Pre-register types, traits, and functions from resolved imports
         self.registering_types = true;
         for resolved in self.resolved_imports.values().cloned().collect::<Vec<_>>() {
             for decl in &resolved.type_decls {
                 self.register_type_decl(decl);
+            }
+            for decl in &resolved.trait_decls {
+                self.register_trait_decl(decl);
             }
         }
         self.registering_types = false;
@@ -253,6 +399,50 @@ impl Checker {
     }
 
     /// Emit an error if `name` is already defined in any scope (no shadowing allowed).
+    /// When tsgo loses Option<T> through useState type inference (because TS
+    /// collapses FloeOption<T> to T), reconstruct the correct types from the
+    /// original call's type arguments.
+    fn correct_usestate_option_type(&mut self, tsgo_type: &Type, value: &Expr) -> Option<Type> {
+        // Only applies to Tuple types from array destructuring
+        let Type::Tuple(tsgo_elems) = tsgo_type else {
+            return None;
+        };
+        if tsgo_elems.len() != 2 {
+            return None;
+        }
+
+        // Check if the value is a call with Option<T> type arg
+        let ExprKind::Call { type_args, .. } = &value.kind else {
+            return None;
+        };
+        if type_args.len() != 1 {
+            return None;
+        }
+
+        // Check if the type arg is Option<T>
+        let type_arg = &type_args[0];
+        if let TypeExprKind::Named {
+            name,
+            type_args: inner_args,
+            ..
+        } = &type_arg.kind
+            && name == "Option"
+            && inner_args.len() == 1
+        {
+            let option_type = self.resolve_type(type_arg);
+            // Replace: [T, (T) -> ()] → [Option<T>, (Option<T>) -> ()]
+            return Some(Type::Tuple(vec![
+                option_type.clone(),
+                Type::Function {
+                    params: vec![option_type],
+                    return_type: Box::new(Type::Unit),
+                },
+            ]));
+        }
+
+        None
+    }
+
     fn check_no_redefinition(&mut self, name: &str, span: Span) {
         if self.env.is_defined_in_any_scope(name) {
             let msg = if let Some(source) = self.defined_sources.get(name) {
@@ -384,6 +574,7 @@ impl Checker {
             "()" => Type::Unit,
             "undefined" => Type::Undefined,
             "unknown" => Type::Unknown,
+            "Error" | "Response" => Type::Named(name.to_string()),
             "Result" => {
                 let ok = type_args
                     .first()
@@ -645,19 +836,57 @@ impl Checker {
                 ConstBinding::Object(names) => names.join("_"),
                 ConstBinding::Tuple(names) => names.join("_"),
             };
+            // Try exact match first (__probe_name), then any indexed match (__probe_name_N)
+            // using consumed set to avoid reusing the same probe
             let probe_key = format!("__probe_{binding_name}");
-            self.dts_imports
-                .values()
-                .flatten()
-                .find(|e| e.name == probe_key)
-                .map(|e| interop::wrap_boundary_type(&e.ts_type))
+            let probe_prefix = format!("__probe_{binding_name}_");
+            // Search for probe results, preferring inlined probes (more precise)
+            // over direct probes (which may have unresolved generics)
+            let mut found_export = None;
+            let mut found_inlined = None;
+            for exports in self.dts_imports.values() {
+                for export in exports {
+                    if !self.probe_counters.contains_key(&export.name)
+                        && (export.name == probe_key || export.name.starts_with(&probe_prefix))
+                    {
+                        if export.name.contains("inlined") {
+                            if found_inlined.is_none() {
+                                found_inlined = Some(export.clone());
+                            }
+                        } else if found_export.is_none() {
+                            found_export = Some(export.clone());
+                        }
+                    }
+                }
+            }
+            // Prefer inlined probe (from const expression inlining) over direct probe
+            let found_export = found_inlined.or(found_export);
+            if let Some(ref export) = found_export {
+                self.probe_counters.insert(export.name.clone(), 0); // mark as consumed
+            }
+            found_export.map(|e| interop::wrap_boundary_type(&e.ts_type))
         };
 
-        let final_type = if let Some(tsgo_ty) = tsgo_type {
-            // tsgo gave us a fully-resolved type — use it
-            tsgo_ty
+        let final_type = if let Some(ref tsgo_ty) = tsgo_type {
+            tsgo_ty.clone()
         } else if let Some(ref declared) = declared_type {
-            if !self.types_compatible(declared, &value_type) {
+            // Reject narrowing from `unknown` to a concrete type — this is an unsafe cast.
+            // `const x: User = data` where data is unknown is not allowed.
+            // Use runtime validation (e.g. Zod) instead.
+            if matches!(value_type, Type::Unknown) && !matches!(declared, Type::Unknown) {
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        format!(
+                            "cannot narrow `unknown` to `{}` — use runtime validation instead",
+                            declared.display_name()
+                        ),
+                        span,
+                    )
+                    .with_label("unsafe narrowing from `unknown`")
+                    .with_help("use a validation library like Zod, or match on the value")
+                    .with_code("E019"),
+                );
+            } else if !self.types_compatible(declared, &value_type) {
                 self.diagnostics.push(
                     Diagnostic::error(
                         format!(
@@ -690,9 +919,14 @@ impl Checker {
                 self.defined_names.push((name.clone(), span));
             }
             ConstBinding::Array(names) => {
+                // Check if the call has explicit type args (e.g. useState<Option<number>>)
+                // that tsgo may have lost through type alias resolution
+                let corrected_type = self.correct_usestate_option_type(&final_type, &decl.value);
+                let effective_type = corrected_type.as_ref().unwrap_or(&final_type);
+
                 // Infer element types from the value type
                 for (i, name) in names.iter().enumerate() {
-                    let elem_ty = match &final_type {
+                    let elem_ty = match effective_type {
                         // Tuple destructuring: each name gets its positional type
                         Type::Tuple(types) => types.get(i).cloned().unwrap_or(Type::Unknown),
                         // Unknown: no info
@@ -727,6 +961,20 @@ impl Checker {
                 }
             }
             ConstBinding::Object(names) => {
+                // If tsgo resolved this as a single-field destructure, assign directly
+                // (tsgo probes individual fields, so __probe_data gives data's type directly)
+                if tsgo_type.is_some() && names.len() == 1 {
+                    let name = &names[0];
+                    self.check_no_redefinition(name, span);
+                    self.name_types
+                        .insert(name.clone(), final_type.display_name());
+                    self.env.define(name, final_type.clone());
+                    self.defined_sources
+                        .insert(name.clone(), "const".to_string());
+                    self.defined_names.push((name.clone(), span));
+                    return;
+                }
+
                 // Resolve the value type to find field types for destructuring
                 let concrete = {
                     let resolve_fn = |type_expr: &crate::parser::ast::TypeExpr| -> Type {
@@ -914,6 +1162,7 @@ impl Checker {
 
         // If this is a trait impl block, validate the trait contract
         if let Some(ref trait_name) = block.trait_name {
+            self.used_names.insert(trait_name.clone());
             let type_display = for_type.display_name();
             self.check_trait_impl(&type_display, trait_name, &block.functions, block.span);
         }
@@ -1153,7 +1402,15 @@ impl Checker {
                 }
                 for prop in props {
                     if let Some(ref value) = prop.value {
-                        self.check_expr(value);
+                        // For event handler props, set context so lambda params get event type
+                        if prop.name.starts_with("on") && prop.name.len() > 2 {
+                            let prev = self.event_handler_context;
+                            self.event_handler_context = true;
+                            self.check_expr(value);
+                            self.event_handler_context = prev;
+                        } else {
+                            self.check_expr(value);
+                        }
                     }
                 }
                 self.check_jsx_children(children);
@@ -1181,15 +1438,85 @@ impl Checker {
     // ── Type Compatibility ───────────────────────────────────────
 
     fn types_compatible(&self, expected: &Type, actual: &Type) -> bool {
-        if matches!(expected, Type::Unknown | Type::Var(_))
-            || matches!(actual, Type::Unknown | Type::Var(_))
-        {
+        // Unknown/Var as EXPECTED: anything can be assigned to unknown (widening)
+        if matches!(expected, Type::Unknown | Type::Var(_)) {
             return true;
         }
+        // Var as ACTUAL: type variables are still being inferred, allow them
+        if matches!(actual, Type::Var(_)) {
+            return true;
+        }
+        // Unknown as ACTUAL with concrete expected: NOT compatible.
+        // Must narrow unknown before assigning to a concrete type.
+        // (This is the key strictness rule — same as TypeScript's unknown.)
 
         // `never` is compatible with any type (it means "this code never returns")
         if matches!(actual, Type::Never) || matches!(expected, Type::Never) {
             return true;
+        }
+
+        // Generic type parameters (single uppercase letter like T, U, E, S)
+        // are wildcards that match any type — used in stdlib function signatures
+        if let Type::Named(n) = expected
+            && n.len() == 1
+            && n.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+        {
+            return true;
+        }
+        if let Type::Named(n) = actual
+            && n.len() == 1
+            && n.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+        {
+            return true;
+        }
+
+        // Resolve Named types to concrete for structural comparison
+        // Uses env.resolve_to_concrete (immutable) to avoid borrow conflicts
+        let expected_concrete = if let Type::Named(name) = expected {
+            let resolved = self
+                .env
+                .resolve_to_concrete(expected, &expr::simple_resolve_type_expr);
+            if &resolved != expected {
+                Some(resolved)
+            } else {
+                self.env.lookup(name).cloned()
+            }
+        } else {
+            None
+        };
+        let actual_concrete = if let Type::Named(name) = actual {
+            let resolved = self
+                .env
+                .resolve_to_concrete(actual, &expr::simple_resolve_type_expr);
+            if &resolved != actual {
+                Some(resolved)
+            } else {
+                self.env.lookup(name).cloned()
+            }
+        } else {
+            None
+        };
+
+        // Named<->Record structural comparison
+        if let Some(Type::Record(ref exp_fields)) = expected_concrete
+            && let Type::Record(act_fields) = actual
+        {
+            return exp_fields.len() == act_fields.len()
+                && exp_fields.iter().all(|(name, ty)| {
+                    act_fields
+                        .iter()
+                        .any(|(n, t)| n == name && self.types_compatible(ty, t))
+                });
+        }
+        if let Some(Type::Record(ref act_fields)) = actual_concrete
+            && let Type::Record(exp_fields) = expected
+        {
+            return exp_fields.len() == act_fields.len()
+                && exp_fields.iter().all(|(name, ty)| {
+                    act_fields
+                        .iter()
+                        .any(|(n, t)| n == name && self.types_compatible(ty, t))
+                });
         }
 
         match (expected, actual) {
@@ -1206,7 +1533,13 @@ impl Checker {
             (Type::Result { ok: o1, err: e1 }, Type::Result { ok: o2, err: e2 }) => {
                 self.types_compatible(o1, o2) && self.types_compatible(e1, e2)
             }
+            (Type::Option(_), Type::Option(b)) if matches!(**b, Type::Unknown) => {
+                true // None (Option<Unknown>) is compatible with any Option<T>
+            }
             (Type::Option(a), Type::Option(b)) => self.types_compatible(a, b),
+            (Type::Array(_), Type::Array(b)) if matches!(**b, Type::Unknown) => {
+                true // empty array [] is compatible with any Array<T>
+            }
             (Type::Array(a), Type::Array(b)) => self.types_compatible(a, b),
             (Type::Tuple(a), Type::Tuple(b)) => {
                 a.len() == b.len()
@@ -1230,6 +1563,15 @@ impl Checker {
                         .zip(p2.iter())
                         .all(|(x, y)| self.types_compatible(x, y))
                     && self.types_compatible(r1, r2)
+            }
+            // Structural record compatibility: { a: T, b: U } matches { a: T, b: U }
+            (Type::Record(fields_a), Type::Record(fields_b)) => {
+                fields_a.len() == fields_b.len()
+                    && fields_a.iter().all(|(name_a, ty_a)| {
+                        fields_b.iter().any(|(name_b, ty_b)| {
+                            name_a == name_b && self.types_compatible(ty_a, ty_b)
+                        })
+                    })
             }
             _ => false,
         }

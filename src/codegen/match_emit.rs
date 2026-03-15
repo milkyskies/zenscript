@@ -58,10 +58,13 @@ impl Codegen {
                 self.push(") { return ");
                 self.emit_expr(&arm.body);
                 self.push("; } ");
-                // Fall through to next arm
+                // Fall through to next arm (guard didn't match)
                 self.push("return ");
                 self.emit_match_arms(subject, arms, index + 1);
                 self.push("; })()");
+                // Ternary else: pattern didn't match at all
+                self.push(" : ");
+                self.emit_match_arms(subject, arms, index + 1);
             } else {
                 // No bindings needed for guard - simpler inline condition
                 let is_trivial_pattern = matches!(

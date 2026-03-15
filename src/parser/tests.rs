@@ -1354,3 +1354,189 @@ fn tuple_return_type() {
         other => panic!("expected function, got {other:?}"),
     }
 }
+
+// ── Bug: Pipe precedence vs equality ────────────────────────
+// `x |> f == y` should parse as `(x |> f) == y`, not `x |> (f == y)`
+
+#[test]
+fn pipe_binds_tighter_than_equality() {
+    let expr = first_expr(r#""" |> validate == Empty"#);
+    // Should be: Binary { left: Pipe { ... }, op: Eq, right: Identifier("Empty") }
+    match expr {
+        ExprKind::Binary {
+            op: BinOp::Eq,
+            left,
+            right,
+            ..
+        } => {
+            assert!(
+                matches!(left.kind, ExprKind::Pipe { .. }),
+                "left side of == should be a pipe, got {:?}",
+                left.kind
+            );
+            assert!(
+                matches!(right.kind, ExprKind::Identifier(ref name) if name == "Empty"),
+                "right side of == should be Empty, got {:?}",
+                right.kind
+            );
+        }
+        other => panic!("expected binary ==, got {other:?}"),
+    }
+}
+
+#[test]
+fn pipe_binds_tighter_than_not_equal() {
+    let expr = first_expr("x |> f != y");
+    match expr {
+        ExprKind::Binary {
+            op: BinOp::NotEq,
+            left,
+            ..
+        } => {
+            assert!(matches!(left.kind, ExprKind::Pipe { .. }));
+        }
+        other => panic!("expected binary !=, got {other:?}"),
+    }
+}
+
+#[test]
+fn pipe_binds_tighter_than_logical_and() {
+    let expr = first_expr("x |> f && y |> g");
+    match expr {
+        ExprKind::Binary {
+            op: BinOp::And,
+            left,
+            right,
+            ..
+        } => {
+            assert!(matches!(left.kind, ExprKind::Pipe { .. }));
+            assert!(matches!(right.kind, ExprKind::Pipe { .. }));
+        }
+        other => panic!("expected binary &&, got {other:?}"),
+    }
+}
+
+// ── Bug: Object literal syntax ──────────────────────────────
+// `{ key: value, key2: value2 }` should parse as an object literal
+
+#[test]
+fn object_literal_basic() {
+    let expr = first_expr(r#"{ name: "Alice", age: 30 }"#);
+    match expr {
+        ExprKind::Object(fields) => {
+            assert_eq!(fields.len(), 2);
+            assert_eq!(fields[0].0, "name");
+            assert_eq!(fields[1].0, "age");
+        }
+        other => panic!("expected object literal, got {other:?}"),
+    }
+}
+
+#[test]
+fn object_literal_nested() {
+    let expr = first_expr(r#"{ queries: { staleTime: 60000 } }"#);
+    match expr {
+        ExprKind::Object(fields) => {
+            assert_eq!(fields.len(), 1);
+            assert_eq!(fields[0].0, "queries");
+            assert!(matches!(fields[0].1.kind, ExprKind::Object(_)));
+        }
+        other => panic!("expected object literal, got {other:?}"),
+    }
+}
+
+#[test]
+fn object_literal_in_call() {
+    let expr = first_expr(r#"f({ key: "value" })"#);
+    match expr {
+        ExprKind::Call { args, .. } => {
+            assert_eq!(args.len(), 1);
+            match &args[0] {
+                Arg::Positional(e) => {
+                    assert!(
+                        matches!(e.kind, ExprKind::Object(_)),
+                        "expected object literal in call arg, got {:?}",
+                        e.kind
+                    );
+                }
+                other => panic!("expected positional arg, got {other:?}"),
+            }
+        }
+        other => panic!("expected call, got {other:?}"),
+    }
+}
+
+#[test]
+fn object_literal_shorthand() {
+    // { name } should be shorthand for { name: name }
+    let expr = first_expr("{ name, age }");
+    match expr {
+        ExprKind::Object(fields) => {
+            assert_eq!(fields.len(), 2);
+            assert_eq!(fields[0].0, "name");
+            assert!(matches!(fields[0].1.kind, ExprKind::Identifier(ref n) if n == "name"));
+            assert_eq!(fields[1].0, "age");
+            assert!(matches!(fields[1].1.kind, ExprKind::Identifier(ref n) if n == "age"));
+        }
+        other => panic!("expected object literal, got {other:?}"),
+    }
+}
+
+// ── Bug: Lambda parameter destructuring ─────────────────────
+// `|{ x, y }| expr` should parse with destructured params
+
+#[test]
+fn async_zero_arg_lambda() {
+    let expr = first_expr("async || fetchData()");
+    match expr {
+        ExprKind::Arrow {
+            async_fn, params, ..
+        } => {
+            assert!(async_fn, "expected async lambda");
+            assert_eq!(params.len(), 0);
+        }
+        other => panic!("expected arrow, got {other:?}"),
+    }
+}
+
+#[test]
+fn async_lambda_with_params() {
+    let expr = first_expr("async |url| fetch(url)");
+    match expr {
+        ExprKind::Arrow {
+            async_fn, params, ..
+        } => {
+            assert!(async_fn, "expected async lambda");
+            assert_eq!(params.len(), 1);
+            assert_eq!(params[0].name, "url");
+        }
+        other => panic!("expected arrow, got {other:?}"),
+    }
+}
+
+#[test]
+fn non_async_lambda_is_not_async() {
+    let expr = first_expr("|| 42");
+    match expr {
+        ExprKind::Arrow { async_fn, .. } => {
+            assert!(!async_fn, "expected non-async lambda");
+        }
+        other => panic!("expected arrow, got {other:?}"),
+    }
+}
+
+#[test]
+fn lambda_destructured_param() {
+    let expr = first_expr("|{ name, age }| name");
+    match expr {
+        ExprKind::Arrow { params, .. } => {
+            assert_eq!(params.len(), 1);
+            assert!(
+                params[0].destructure.is_some(),
+                "expected destructured param, got plain param: {:?}",
+                params[0]
+            );
+        }
+        other => panic!("expected arrow, got {other:?}"),
+    }
+}

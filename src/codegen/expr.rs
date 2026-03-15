@@ -96,6 +96,7 @@ impl Codegen {
 
             // Constructor: `User(name: "Ry", email: e)` → `{ name: "Ry", email: e }`
             // Union variant: `Valid(text)` → `{ tag: "Valid", text: text }`
+            // npm constructor: `QueryClient({...})` → `new QueryClient({...})`
             ExprKind::Construct {
                 type_name,
                 spread,
@@ -106,6 +107,27 @@ impl Codegen {
                     .get(type_name.as_str())
                     .map(|(_, fields)| fields.clone());
                 let is_variant = variant_field_names.is_some();
+
+                // Floe constructors use named args: User(name: "x", age: 30)
+                // npm constructor calls use positional args: QueryClient({...})
+                // If all args are positional (no named args), emit as `new Name(args)`
+                let has_named_args = args.iter().any(|a| matches!(a, Arg::Named { .. }));
+                if !is_variant && !has_named_args && spread.is_none() {
+                    self.push("new ");
+                    self.push(type_name);
+                    self.push("(");
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 {
+                            self.push(", ");
+                        }
+                        if let Arg::Positional(e) = arg {
+                            self.emit_expr(e);
+                        }
+                    }
+                    self.push(")");
+                    return;
+                }
+
                 self.push("{ ");
                 if is_variant {
                     self.push("tag: \"");
@@ -156,7 +178,14 @@ impl Codegen {
                 self.push("]");
             }
 
-            ExprKind::Arrow { params, body } => {
+            ExprKind::Arrow {
+                async_fn,
+                params,
+                body,
+            } => {
+                if *async_fn {
+                    self.push("async ");
+                }
                 if params.len() == 1 && params[0].type_ann.is_none() {
                     self.push("(");
                     self.push(&params[0].name);
@@ -167,7 +196,17 @@ impl Codegen {
                     self.push(")");
                 }
                 self.push(" => ");
+                // Wrap object-like bodies in parens to avoid block statement ambiguity
+                // e.g. (p) => ({ id: p.id }) not (p) => { id: p.id }
+                let needs_parens =
+                    matches!(body.kind, ExprKind::Construct { .. } | ExprKind::Object(_));
+                if needs_parens {
+                    self.push("(");
+                }
                 self.emit_expr(body);
+                if needs_parens {
+                    self.push(")");
+                }
             }
 
             // Match: `match x { A -> ..., B -> ... }` → ternary chain
@@ -191,7 +230,12 @@ impl Codegen {
             // Try: `try expr` → IIFE with try/catch wrapping in Result
             // Non-Error throws are coerced to Error for consistent typing
             ExprKind::Try(inner) => {
-                self.push("(() => { try { return { ok: true as const, value: ");
+                let has_await = expr_contains_await(inner);
+                if has_await {
+                    self.push("await (async () => { try { return { ok: true as const, value: ");
+                } else {
+                    self.push("(() => { try { return { ok: true as const, value: ");
+                }
                 self.emit_expr(inner);
                 self.push(" }; } catch (_e) { return { ok: false as const, error: _e instanceof Error ? _e : new Error(String(_e)) }; } })()");
             }
@@ -275,6 +319,19 @@ impl Codegen {
             ExprKind::Spread(inner) => {
                 self.push("...");
                 self.emit_expr(inner);
+            }
+
+            ExprKind::Object(fields) => {
+                self.push("{ ");
+                for (i, (key, value)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        self.push(", ");
+                    }
+                    self.push(key);
+                    self.push(": ");
+                    self.emit_expr(value);
+                }
+                self.push(" }");
             }
 
             ExprKind::DotShorthand { field, predicate } => {
@@ -399,8 +456,11 @@ impl Codegen {
         extra_args: &[Arg],
     ) -> Option<String> {
         if let ExprKind::Identifier(name) = &callee.kind {
-            // Don't shadow locally defined functions
-            if self.local_names.contains(name.as_str()) {
+            // Don't shadow locally defined functions, unless the name
+            // is also a stdlib function (stdlib takes priority in pipes)
+            if self.local_names.contains(name.as_str())
+                && self.stdlib.lookup_by_name(name).is_empty()
+            {
                 return None;
             }
 
@@ -412,7 +472,11 @@ impl Codegen {
                 .get(&(left.span.start, left.span.end))
                 .and_then(|ty| Self::type_to_stdlib_module(ty))
             {
-                Some(module) => self.stdlib.lookup(module, name),
+                Some(module) => self
+                    .stdlib
+                    .lookup(module, name)
+                    // Fallback: name might be in a different module (e.g. tap is in Pipe, not Array)
+                    .or_else(|| self.stdlib.lookup_by_name(name).into_iter().next()),
                 None => self.stdlib.lookup_by_name(name).into_iter().next(),
             }?;
 
@@ -731,5 +795,29 @@ impl Codegen {
         self.indent -= 1;
         self.emit_indent();
         self.push("}");
+    }
+}
+
+/// Check if an expression tree contains an Await node.
+fn expr_contains_await(expr: &Expr) -> bool {
+    match &expr.kind {
+        ExprKind::Await(_) => true,
+        ExprKind::Call { callee, args, .. } => {
+            expr_contains_await(callee)
+                || args.iter().any(|a| match a {
+                    Arg::Positional(e) | Arg::Named { value: e, .. } => expr_contains_await(e),
+                })
+        }
+        ExprKind::Member { object, .. } => expr_contains_await(object),
+        ExprKind::Pipe { left, right } => expr_contains_await(left) || expr_contains_await(right),
+        ExprKind::Binary { left, right, .. } => {
+            expr_contains_await(left) || expr_contains_await(right)
+        }
+        ExprKind::Unary { operand, .. }
+        | ExprKind::Grouped(operand)
+        | ExprKind::Unwrap(operand)
+        | ExprKind::Try(operand)
+        | ExprKind::Spread(operand) => expr_contains_await(operand),
+        _ => false,
     }
 }

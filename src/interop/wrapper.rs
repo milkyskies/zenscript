@@ -36,6 +36,10 @@ pub fn wrap_boundary_type(ts_type: &TsType) -> Type {
                     "Promise<{}>",
                     wrap_boundary_type(&args[0]).display_name()
                 )),
+                // FloeOption<T> → Option<T> (our probe wrapper for Option)
+                "FloeOption" if args.len() == 1 => {
+                    Type::Option(Box::new(wrap_boundary_type(&args[0])))
+                }
                 // React's Dispatch<SetStateAction<T>> is a function: (T) -> ()
                 "Dispatch" if args.len() == 1 => {
                     let inner = unwrap_set_state_action(&args[0]);
@@ -95,6 +99,17 @@ fn wrap_union_boundary(parts: &[TsType]) -> Type {
         .filter(|p| !matches!(p, TsType::Null | TsType::Undefined))
         .collect();
 
+    // Check for Result pattern: { ok: true, value: T } | { ok: false, error: E }
+    if non_null_parts.len() == 2
+        && let Some(result_type) = try_parse_result_union(&non_null_parts)
+    {
+        return if nullable {
+            Type::Option(Box::new(result_type))
+        } else {
+            result_type
+        };
+    }
+
     let inner_type = if non_null_parts.len() == 1 {
         wrap_boundary_type(non_null_parts[0])
     } else if non_null_parts.is_empty() {
@@ -110,6 +125,40 @@ fn wrap_union_boundary(parts: &[TsType]) -> Type {
         Type::Option(Box::new(inner_type))
     } else {
         inner_type
+    }
+}
+
+/// Try to detect the Result discriminated union pattern:
+/// `{ ok: true, value: T } | { ok: false, error: E }` → `Result<T, E>`
+fn try_parse_result_union(parts: &[&TsType]) -> Option<Type> {
+    if parts.len() != 2 {
+        return None;
+    }
+
+    let mut ok_type = None;
+    let mut err_type = None;
+
+    for part in parts {
+        if let TsType::Object(fields) = part {
+            let ok_field = fields.iter().find(|(n, _)| n == "ok");
+            let value_field = fields.iter().find(|(n, _)| n == "value");
+            let error_field = fields.iter().find(|(n, _)| n == "error");
+
+            if value_field.is_some() && ok_field.is_some() {
+                ok_type = value_field.map(|(_, ty)| wrap_boundary_type(ty));
+            } else if error_field.is_some() && ok_field.is_some() {
+                err_type = error_field.map(|(_, ty)| wrap_boundary_type(ty));
+            }
+        }
+    }
+
+    if let (Some(ok), Some(err)) = (ok_type, err_type) {
+        Some(Type::Result {
+            ok: Box::new(ok),
+            err: Box::new(err),
+        })
+    } else {
+        None
     }
 }
 

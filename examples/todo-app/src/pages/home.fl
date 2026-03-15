@@ -18,7 +18,7 @@ export fn HomePage() -> JSX.Element {
             TooShort -> setError("Todo must be at least 2 characters"),
             TooLong -> setError("Todo must be under 100 characters"),
             Valid(text) -> {
-                setTodos(todos |> append(Todo(id: v4(), text: text, done: false)))
+                setTodos(todos |> Array.append(Todo(id: v4(), text: text, done: false)))
                 setInput("")
                 setError("")
             },

@@ -273,9 +273,18 @@ fn homogeneous_array() {
 }
 
 #[test]
-fn mixed_array_error() {
+fn mixed_array_inferred_as_unknown() {
+    // Mixed-type arrays should be allowed and inferred as Array<unknown>
     let diags = check(r#"const _x = [1, "two", 3]"#);
-    assert!(has_error_containing(&diags, "mixed types"));
+    assert!(!has_error(&diags, "E004"));
+    assert!(!has_error_containing(&diags, "mixed types"));
+}
+
+#[test]
+fn mixed_array_string_and_number() {
+    // e.g. TanStack Query's queryKey: ["user", props.userId]
+    let diags = check(r#"const _x = ["user", 42]"#);
+    assert!(!has_error(&diags, "E004"));
 }
 
 // ── Dead code detection ─────────────────────────────────────
@@ -1878,4 +1887,345 @@ for User: Printable {
         "should error on missing prettyPrint"
     );
     assert!(has_error_containing(&diags, "prettyPrint"));
+}
+
+// ── Bug: Cross-file trait resolution ────────────────────────
+// Traits imported from another file should be recognized by the checker
+
+#[test]
+fn cross_file_trait_resolution() {
+    use crate::lexer::span::Span;
+    use crate::parser::ast::*;
+    use crate::resolve::ResolvedImports;
+    use std::collections::HashMap;
+
+    let dummy_span = Span::new(0, 0, 0, 0);
+
+    // Simulate a resolved import that exports a trait `Display`
+    let mut imports = HashMap::new();
+    let mut resolved = ResolvedImports::default();
+    resolved.trait_decls.push(TraitDecl {
+        exported: true,
+        name: "Display".to_string(),
+        methods: vec![TraitMethod {
+            name: "display".to_string(),
+            params: vec![Param {
+                name: "self".to_string(),
+                type_ann: None,
+                default: None,
+                destructure: None,
+                span: dummy_span,
+            }],
+            return_type: Some(TypeExpr {
+                kind: TypeExprKind::Named {
+                    name: "string".to_string(),
+                    type_args: vec![],
+                    bounds: vec![],
+                },
+                span: dummy_span,
+            }),
+            body: None,
+            span: dummy_span,
+        }],
+        span: dummy_span,
+    });
+    // Also need to export the type
+    resolved.type_decls.push(TypeDecl {
+        exported: true,
+        opaque: false,
+        name: "User".to_string(),
+        type_params: vec![],
+        def: TypeDef::Record(vec![RecordField {
+            name: "name".to_string(),
+            type_ann: TypeExpr {
+                kind: TypeExprKind::Named {
+                    name: "string".to_string(),
+                    type_args: vec![],
+                    bounds: vec![],
+                },
+                span: dummy_span,
+            },
+            default: None,
+            span: dummy_span,
+        }]),
+    });
+    imports.insert("./types".to_string(), resolved);
+
+    let source = r#"
+import { User, Display } from "./types"
+
+for User: Display {
+    fn display(self) -> string {
+        self.name
+    }
+}
+"#;
+
+    let program = Parser::new(source)
+        .parse_program()
+        .expect("parse should succeed");
+    let diags = Checker::with_imports(imports).check(&program);
+    assert!(
+        !has_error_containing(&diags, "unknown trait"),
+        "imported trait Display should be recognized, but got errors: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+// ── Bug: Pipe with stdlib member access returns Unknown ─────
+// `x |> String.length` should infer as number, not unknown
+
+#[test]
+fn pipe_stdlib_member_returns_correct_type() {
+    let source = r#"
+const len = "hello" |> String.length
+const doubled = len + 1
+"#;
+    let diags = check(source);
+    assert!(
+        diags.iter().all(|d| d.severity != Severity::Error),
+        "pipe with String.length should infer number, got errors: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+// ── Bug: npm imports used as constructors ───────────────────
+// When an uppercase import (e.g. QueryClient) is called with named args,
+// the parser produces a Construct node. The checker should recognize it
+// as a known import and not emit "unknown type".
+
+#[test]
+fn npm_import_used_as_constructor_no_error() {
+    let diags = check(
+        r#"
+import trusted { QueryClient } from "@tanstack/react-query"
+const _qc = QueryClient(defaultOptions: {})
+"#,
+    );
+    assert!(
+        !has_error_containing(&diags, "unknown type"),
+        "npm import used as constructor should not error, but got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+// ── Browser globals ────────────────────────────────────────
+
+#[test]
+fn fetch_is_recognized_as_global() {
+    let diags = check("const result = fetch(\"https://example.com\")");
+    assert!(
+        !has_error_containing(&diags, "is not defined"),
+        "fetch should be a recognized browser global, but got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn browser_globals_are_recognized() {
+    let globals = vec![
+        "const w = window",
+        "const d = document",
+        "const j = JSON.parse(\"{}\")",
+    ];
+    for src in globals {
+        let diags = check(src);
+        assert!(
+            !has_error_containing(&diags, "is not defined"),
+            "{src} should not produce 'not defined' error, but got: {:?}",
+            diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn timer_globals_are_recognized() {
+    let globals = vec![
+        "const a = setTimeout",
+        "const b = setInterval",
+        "const c = clearTimeout",
+        "const d = clearInterval",
+    ];
+    for src in globals {
+        let diags = check(src);
+        assert!(
+            !has_error_containing(&diags, "is not defined"),
+            "{src} should not produce 'not defined' error, but got: {:?}",
+            diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+        );
+    }
+}
+
+// ── Unsafe narrowing from unknown ───────────────────────────
+
+#[test]
+fn narrowing_unknown_to_concrete_type_is_error() {
+    let diags = check(
+        r#"
+import trusted { getData } from "some-lib"
+const data = getData()
+const x: number = data
+"#,
+    );
+    assert!(
+        has_error(&diags, "E019"),
+        "narrowing unknown to a concrete type should be an error, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn unknown_to_unknown_annotation_is_ok() {
+    let diags = check(
+        r#"
+import trusted { getData } from "some-lib"
+const data = getData()
+const x: unknown = data
+"#,
+    );
+    assert!(
+        !has_error(&diags, "E019"),
+        "annotating unknown as unknown should be fine"
+    );
+}
+
+// ── fetch requires try ──────────────────────────────────────
+
+#[test]
+fn fetch_requires_try() {
+    let diags = check(r#"const res = fetch("https://example.com")"#);
+    assert!(
+        has_error(&diags, "E014"),
+        "calling fetch without try should error, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn fetch_with_try_is_ok() {
+    let diags = check(r#"const res = try fetch("https://example.com")"#);
+    assert!(
+        !has_error(&diags, "E014"),
+        "calling fetch with try should be fine"
+    );
+}
+
+// ── Member access on unknown ────────────────────────────────
+
+#[test]
+fn member_access_on_unknown_is_error() {
+    let diags = check(
+        r#"
+import trusted { getData } from "some-lib"
+const data = getData()
+const x = data.name
+"#,
+    );
+    assert!(
+        has_error(&diags, "E020"),
+        "member access on unknown should error, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn method_call_on_unknown_is_error() {
+    let diags = check(
+        r#"
+import trusted { getData } from "some-lib"
+const data = getData()
+const x = data.toJSON()
+"#,
+    );
+    assert!(
+        has_error(&diags, "E020"),
+        "method call on unknown should error, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn stdlib_member_access_still_works() {
+    let diags = check(r#"const x = "hello" |> String.length"#);
+    assert!(
+        !has_error(&diags, "E020"),
+        "stdlib member access should not error"
+    );
+}
+
+// ── Promise / await ─────────────────────────────────────────
+
+#[test]
+fn fetch_returns_promise_response() {
+    // fetch returns Promise<Response>, not Response directly
+    // So without await, you can't access .json()
+    let diags = check(
+        r#"
+fn test() -> Result<string, Error> {
+    const res = try fetch("url")?
+    const j = res.json()
+    return Ok("done")
+}
+"#,
+    );
+    // res should be Promise<Response>, so .json() should error
+    // (need await to unwrap Promise first)
+    assert!(
+        has_error_containing(&diags, "Promise"),
+        "fetch without await should give Promise<Response>, accessing .json() should error about Promise, got: {:?}",
+        diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .map(|d| &d.message)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn await_unwraps_promise() {
+    // await fetch() should give Response, so .json() works
+    let diags = check(
+        r#"
+fn test() -> Result<string, Error> {
+    const res = try await fetch("url")?
+    const j = res.json()
+    return Ok("done")
+}
+"#,
+    );
+    assert!(
+        !has_error(&diags, "E020"),
+        "await should unwrap Promise, allowing .json() access, got: {:?}",
+        diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .map(|d| &d.message)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn try_without_unwrap_gives_result() {
+    // try fetch() without ? should give Result<Promise<Response>, Error>
+    let diags = check(
+        r#"
+fn test() -> Result<string, Error> {
+    const res = try fetch("url")
+    const val = match res {
+        Ok(promise) -> "got promise",
+        Err(e) -> e.message,
+    }
+    return Ok(val)
+}
+"#,
+    );
+    assert!(
+        !has_error_containing(&diags, "not defined"),
+        "try without ? should give Result, matching on it should work, got: {:?}",
+        diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .map(|d| &d.message)
+            .collect::<Vec<_>>()
+    );
 }
