@@ -207,6 +207,7 @@ impl Parser {
             TokenKind::For => Some("for".into()),
             TokenKind::SelfKw => Some("self".into()),
             TokenKind::Try => Some("try".into()),
+            TokenKind::Trait => Some("trait".into()),
             TokenKind::Ok => Some("Ok".into()),
             TokenKind::Err => Some("Err".into()),
             TokenKind::Some => Some("Some".into()),

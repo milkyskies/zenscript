@@ -51,6 +51,8 @@ pub enum TokenKind {
     SelfKw,
     /// `try` — wrap throwing expression in Result
     Try,
+    /// `trait` — trait declaration keyword
+    Trait,
 
     // Built-in type constructors
     Ok,
@@ -236,6 +238,7 @@ pub fn lookup_keyword(word: &str) -> Option<TokenKind> {
         "for" => Some(TokenKind::For),
         "self" => Some(TokenKind::SelfKw),
         "try" => Some(TokenKind::Try),
+        "trait" => Some(TokenKind::Trait),
         "true" => Some(TokenKind::Bool(true)),
         "false" => Some(TokenKind::Bool(false)),
 
@@ -272,6 +275,7 @@ mod tests {
         assert_eq!(lookup_keyword("match"), Some(TokenKind::Match));
         assert_eq!(lookup_keyword("opaque"), Some(TokenKind::Opaque));
         assert_eq!(lookup_keyword("try"), Some(TokenKind::Try));
+        assert_eq!(lookup_keyword("trait"), Some(TokenKind::Trait));
         assert_eq!(lookup_keyword("Ok"), Some(TokenKind::Ok));
         assert_eq!(lookup_keyword("Err"), Some(TokenKind::Err));
         assert_eq!(lookup_keyword("Some"), Some(TokenKind::Some));

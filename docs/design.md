@@ -558,6 +558,49 @@ For block rules:
 5. Cross-file `for` blocks require their own import
 6. Compiles to standalone functions with `self` explicitly typed
 
+### Traits — Type-Directed Behavioral Contracts
+
+Traits define behavioral contracts that types can implement via `for` blocks. They are compile-time only — erased entirely in codegen.
+
+```floe
+// Define a trait with required method signatures
+trait Display {
+  fn display(self) -> string
+}
+
+// Traits can have default implementations
+trait Eq {
+  fn eq(self, other: Self) -> boolean
+  fn neq(self, other: Self) -> boolean {
+    !(self |> eq(other))
+  }
+}
+
+// Implement a trait for a type using `for Type: Trait`
+for User: Display {
+  fn display(self) -> string {
+    `${self.name} (${self.age})`
+  }
+}
+
+for User: Eq {
+  fn eq(self, other: User) -> boolean {
+    self.id == other.id
+  }
+  // neq is inherited from the default implementation
+}
+```
+
+Trait rules:
+
+1. Traits contain method signatures with optional default bodies
+2. `for Type: Trait { ... }` implements a trait — all required methods must be provided
+3. Methods with default bodies are optional — implementors inherit them unless overridden
+4. Traits are erased at compile time — `for Type: Trait` emits the same code as `for Type`
+5. No orphan rules — scoping via imports handles conflicts
+6. No associated types — generics + structural typing cover those cases
+7. No trait objects / dynamic dispatch — traits are a static checking tool
+
 ### Function Conventions
 
 ```floe
@@ -716,6 +759,7 @@ Key tokens beyond standard TypeScript:
 | `Opaque` | `opaque` keyword |
 | `For` | `for` keyword (for blocks) |
 | `SelfKw` | `self` keyword (explicit receiver in for blocks) |
+| `Trait` | `trait` keyword (trait declarations) |
 
 Banned tokens (immediate compile errors with helpful messages):
 
@@ -762,12 +806,17 @@ enum Expr {
     Placeholder,               // _ in partial application
 }
 
-// Top-level items include ForBlock
+// Top-level items include ForBlock and TraitDecl
 enum ItemKind {
     Import, Const, Function, TypeDecl,
     ForBlock {                 // for Type { fn f(self) ... }
         type_name: TypeExpr,
+        trait_name: Option<String>,  // for Type: Trait { ... }
         functions: Vec<FunctionDecl>,
+    },
+    TraitDecl {                // trait Name { fn method(self) ... }
+        name: String,
+        methods: Vec<TraitMethod>,
     },
     Expr,
 }
@@ -934,6 +983,8 @@ Emits clean, readable `.tsx`. Zero runtime imports.
 | `Brand<string, "UserId">` | `string` (erased) |
 | `opaque type X = T` | `T` (erased, access controlled at compile time) |
 | `for User { fn display(self) -> string { ... } }` | `function display(self: User): string { ... }` |
+| `trait Display { fn display(self) -> string }` | *(erased — no output)* |
+| `for User: Display { fn display(self) -> string { ... } }` | `function display(self: User): string { ... }` (same as plain for block) |
 
 ---
 
