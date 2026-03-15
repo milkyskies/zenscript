@@ -29,14 +29,14 @@ type Todo = {
 }
 
 export fn App() -> JSX.Element {
-  const [todos, setTodos] = useState([])
+  const [todos, setTodos] = useState<Array<Todo>>([])
 
-  const completed = todos
+  const completedCount = todos
     |> filter(.done)
     |> length
 
   return <div>
-    <h1>Todos ({completed} done)</h1>
+    <h1>Todos ({completedCount} done)</h1>
   </div>
 }
 ```
@@ -53,9 +53,9 @@ type Todo = {
 };
 
 export function App(): JSX.Element {
-  const [todos, setTodos] = useState([]);
+  const [todos, setTodos] = useState<Todo[]>([]);
 
-  const completed = length(filter(todos, (t) => t.done));
+  const completedCount = length(filter(todos, (t) => t.done));
 
   return <div>
     <h1>Todos ({completed} done)</h1>
