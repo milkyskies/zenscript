@@ -188,9 +188,6 @@ impl Checker {
                 self.defined_sources
                     .insert(func.name.clone(), format!("function from \"{}\"", source));
             }
-            for block in &resolved.for_blocks {
-                self.check_for_block_imported_with_source(block, &source);
-            }
         }
 
         // First pass: register all type declarations and traits
@@ -516,6 +513,48 @@ impl Checker {
             // Track untrusted imports (not trusted at module or specifier level)
             if !decl.trusted && !spec.trusted {
                 self.untrusted_imports.insert(effective_name.to_string());
+            }
+        }
+
+        // Auto-import for-blocks when importing a type from the same file
+        // (importing a type brings its for-block functions from that file)
+        if let Some(ref resolved) = resolved {
+            for spec in &decl.specifiers {
+                // Check if this specifier is a type in the resolved module
+                let is_type = resolved.type_decls.iter().any(|d| d.name == spec.name);
+                if is_type {
+                    for block in &resolved.for_blocks {
+                        let base_type_name = match &block.type_name.kind {
+                            TypeExprKind::Named { name, .. } => name.clone(),
+                            _ => continue,
+                        };
+                        if base_type_name == spec.name {
+                            self.check_for_block_imported_with_source(block, &decl.source);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Handle `for Type` import specifiers (cross-file for-blocks)
+        if !decl.for_specifiers.is_empty()
+            && let Some(ref resolved) = resolved
+        {
+            for for_spec in &decl.for_specifiers {
+                // Find all for-blocks in the resolved module that match this type
+                for block in &resolved.for_blocks {
+                    let base_type_name = match &block.type_name.kind {
+                        TypeExprKind::Named { name, .. } => name.clone(),
+                        _ => continue,
+                    };
+                    if base_type_name == for_spec.type_name {
+                        self.check_for_block_imported_with_source(block, &decl.source);
+                        // Mark the for-import functions as used (suppress unused import)
+                        for func in &block.functions {
+                            self.used_names.insert(func.name.clone());
+                        }
+                    }
+                }
             }
         }
     }
