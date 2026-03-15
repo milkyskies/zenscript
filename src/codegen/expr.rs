@@ -456,8 +456,11 @@ impl Codegen {
         extra_args: &[Arg],
     ) -> Option<String> {
         if let ExprKind::Identifier(name) = &callee.kind {
-            // Don't shadow locally defined functions
-            if self.local_names.contains(name.as_str()) {
+            // Don't shadow locally defined functions, unless the name
+            // is also a stdlib function (stdlib takes priority in pipes)
+            if self.local_names.contains(name.as_str())
+                && self.stdlib.lookup_by_name(name).is_empty()
+            {
                 return None;
             }
 
