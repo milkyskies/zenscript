@@ -113,8 +113,23 @@ fn cmd_build_stdin() -> Result<()> {
     let file_path = Path::new(&filename);
     let resolved = resolve::resolve_imports(file_path, &program);
 
+    // Resolve npm import types via tsgo
+    let source_dir = file_path
+        .parent()
+        .unwrap_or(Path::new("."))
+        .canonicalize()
+        .unwrap_or_else(|_| file_path.parent().unwrap_or(Path::new(".")).to_path_buf());
+    let project_dir = find_project_dir(&source_dir);
+    let mut tsgo_resolver = floe::interop::TsgoResolver::new(&project_dir);
+    let dts_map = tsgo_resolver.resolve_imports(&program, &resolved);
+
     // Type check
-    let (check_diags, expr_types) = Checker::with_imports(resolved.clone()).check_full(&program);
+    let checker = if dts_map.is_empty() {
+        Checker::with_imports(resolved.clone())
+    } else {
+        Checker::with_all_imports(resolved.clone(), dts_map)
+    };
+    let (check_diags, expr_types) = checker.check_full(&program);
     let type_errors: Vec<_> = check_diags
         .iter()
         .filter(|d| d.severity == diagnostic::Severity::Error)
@@ -176,8 +191,23 @@ fn compile_file(file: &Path, out_dir: Option<&Path>) -> Result<PathBuf> {
     // Resolve imports from other .fl files
     let resolved = resolve::resolve_imports(file, &program);
 
+    // Resolve npm import types via tsgo
+    let source_dir = file
+        .parent()
+        .unwrap_or(Path::new("."))
+        .canonicalize()
+        .unwrap_or_else(|_| file.parent().unwrap_or(Path::new(".")).to_path_buf());
+    let project_dir = find_project_dir(&source_dir);
+    let mut tsgo_resolver = floe::interop::TsgoResolver::new(&project_dir);
+    let dts_map = tsgo_resolver.resolve_imports(&program, &resolved);
+
     // Type check
-    let (check_diags, expr_types) = Checker::with_imports(resolved.clone()).check_full(&program);
+    let checker = if dts_map.is_empty() {
+        Checker::with_imports(resolved.clone())
+    } else {
+        Checker::with_all_imports(resolved.clone(), dts_map)
+    };
+    let (check_diags, expr_types) = checker.check_full(&program);
     let type_errors: Vec<_> = check_diags
         .iter()
         .filter(|d| d.severity == diagnostic::Severity::Error)
