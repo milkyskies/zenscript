@@ -542,6 +542,21 @@ impl Checker {
                     }
                 }
 
+                // Error on member access on Promise — must await first
+                if let Type::Named(name) = &obj_ty
+                    && name.starts_with("Promise<")
+                {
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            format!("cannot access `.{field}` on `{name}` — use `await` first"),
+                            expr.span,
+                        )
+                        .with_label("must `await` the Promise before accessing members")
+                        .with_code("E021"),
+                    );
+                    return Type::Unknown;
+                }
+
                 // Error on member access on `unknown` — must narrow first
                 if matches!(obj_ty, Type::Unknown) {
                     // Allow stdlib module access (e.g. JSON.parse) — those are handled elsewhere
@@ -708,7 +723,19 @@ impl Checker {
                 }
             }
 
-            ExprKind::Await(inner) => self.check_expr(inner),
+            ExprKind::Await(inner) => {
+                let ty = self.check_expr(inner);
+                // Unwrap Promise<T> to T
+                if let Type::Named(name) = &ty
+                    && let Some(inner_name) = name
+                        .strip_prefix("Promise<")
+                        .and_then(|s| s.strip_suffix('>'))
+                {
+                    return self.resolve_named_type(inner_name, &[], expr.span);
+                }
+                // If not a Promise, pass through (e.g. await on a non-async value)
+                ty
+            }
 
             ExprKind::Try(inner) => {
                 let prev_inside_try = self.inside_try;

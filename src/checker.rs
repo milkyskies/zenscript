@@ -128,7 +128,7 @@ impl Checker {
                 "fetch",
                 Type::Function {
                     params: vec![Type::String],
-                    return_type: Box::new(Type::Named("Response".to_string())),
+                    return_type: Box::new(Type::Named("Promise<Response>".to_string())),
                 },
             ),
             ("window", Type::Unknown),
