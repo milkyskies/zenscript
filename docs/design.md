@@ -77,6 +77,7 @@ All four of TypeScript's `?` uses (`?.`, `??`, `?:`, `? :`) are removed. `?` now
 | Default values | `fn f(x: number = 10)` | caller can omit, compiler fills in |
 | Structural equality | `==` on objects compares by value | deep equality check |
 | Unit type | `()` as return type, usable in generics | `undefined` / `void` in TS |
+| tap | `x \|> tap(Console.log)` | IIFE: calls fn, returns value unchanged |
 | Immutable sort | `Array.sort` returns new array | sorted copy, no mutation |
 | Strict parse | `Number.parse("123")` returns `Result` | no silent `NaN` or partial parse |
 
@@ -100,6 +101,7 @@ All four of TypeScript's `?` uses (`?.`, `??`, `?:`, `? :`) are removed. `?` now
 | `void` | Not a real type, can't use in generics | Unit type `()` — a real value |
 | `=>` | Two syntaxes for functions is one too many | `\|x\| expr` for anonymous functions |
 | `function` | Verbose keyword | `fn` |
+| `if`/`else` | Redundant control flow | `match` expression |
 
 ---
 
@@ -129,6 +131,12 @@ todos |> Array.map(.text)              // map(todos, x => x.text)
 // Pipe lambdas — |x| for when you need a named param
 todos |> Array.map(|t| Todo(..t, done: true))
 items |> Array.reduce(|acc, x| acc + x.price, 0)
+
+// tap — call a function for side effects, pass value through
+orders
+  |> Array.filter(.active)
+  |> tap(Console.log)              // logs filtered orders, passes through
+  |> Array.map(.total)
 
 // Pipes in JSX
 <ul>

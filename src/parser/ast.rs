@@ -239,12 +239,6 @@ pub enum ExprKind {
         subject: Box<Expr>,
         arms: Vec<MatchArm>,
     },
-    /// If-else expression (only for JSX conditional blocks)
-    If {
-        condition: Box<Expr>,
-        then_branch: Box<Expr>,
-        else_branch: Option<Box<Expr>>,
-    },
     /// Return: `return expr`
     Return(Option<Box<Expr>>),
     /// Await: `await expr`

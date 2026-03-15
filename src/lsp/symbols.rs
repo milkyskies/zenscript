@@ -267,16 +267,6 @@ impl SymbolIndex {
             ExprKind::Arrow { body, .. } => {
                 Self::collect_expr(body, symbols);
             }
-            ExprKind::If {
-                then_branch,
-                else_branch,
-                ..
-            } => {
-                Self::collect_expr(then_branch, symbols);
-                if let Some(eb) = else_branch {
-                    Self::collect_expr(eb, symbols);
-                }
-            }
             ExprKind::Match { arms, .. } => {
                 for arm in arms {
                     Self::collect_expr(&arm.body, symbols);

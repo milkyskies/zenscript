@@ -110,5 +110,12 @@
       "opaque type ${1:Name} = ${2:BaseType}"
     ],
     "description": "Opaque type"
+  },
+  "Tap Debug": {
+    "prefix": "tap",
+    "body": [
+      "tap(${1:Console.log})"
+    ],
+    "description": "Tap for pipeline debugging"
   }
 }

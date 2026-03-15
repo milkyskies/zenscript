@@ -1191,33 +1191,20 @@ const _y = match x {
     );
 }
 
-// ── 5. If-else branch consistency ──────────────────────────
+// ── 5. If/else is banned (parse-level) ────────────────────
 
 #[test]
-fn if_else_incompatible_types_errors() {
-    let diags = check(
-        r#"
-const _x = if true { 1 } else { "hi" }
-"#,
-    );
+fn if_else_is_banned() {
+    let result = Parser::new("const _x = if true { 1 } else { 2 }").parse_program();
     assert!(
-        has_error_containing(&diags, "incompatible types"),
-        "should error on incompatible if-else branches, got: {:?}",
-        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+        result.is_err(),
+        "if/else should be banned at the parse level"
     );
-}
-
-#[test]
-fn if_else_compatible_ok() {
-    let diags = check(
-        r#"
-const _x = if true { 1 } else { 2 }
-"#,
-    );
+    let errors = result.unwrap_err();
     assert!(
-        !has_error_containing(&diags, "incompatible types"),
-        "compatible if-else branches should not error, got: {:?}",
-        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+        errors.iter().any(|e| e.message.contains("banned keyword")),
+        "expected banned keyword error for `if`, got: {:?}",
+        errors.iter().map(|e| &e.message).collect::<Vec<_>>()
     );
 }
 
@@ -1255,4 +1242,36 @@ const _y = age
     if let Some(age_ty) = types.get("age") {
         assert_eq!(age_ty, "number", "age should be number, got: {age_ty}");
     }
+}
+
+// ── Pipe: tap ───────────────────────────────────────────────
+
+#[test]
+fn pipe_tap_no_errors() {
+    // tap with a function should type-check without errors
+    let diags = check(
+        r#"
+const _x = [1, 2, 3] |> tap(Console.log)
+"#,
+    );
+    let errors: Vec<_> = diags
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(errors.is_empty(), "expected no errors, got: {errors:?}");
+}
+
+#[test]
+fn pipe_tap_qualified_no_errors() {
+    // Pipe.tap should also work when fully qualified
+    let diags = check(
+        r#"
+const _x = [1, 2, 3] |> Pipe.tap(Console.log)
+"#,
+    );
+    let errors: Vec<_> = diags
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(errors.is_empty(), "expected no errors, got: {errors:?}");
 }
