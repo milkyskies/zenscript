@@ -725,36 +725,6 @@ impl Parser {
         false
     }
 
-    // ── If Expression ────────────────────────────────────────────
-
-    fn parse_if_expr(&mut self) -> Result<Expr, ParseError> {
-        let start_span = self.current_span();
-        self.expect(&TokenKind::If)?;
-        let condition = self.parse_expr()?;
-        let then_branch = self.parse_block_expr()?;
-
-        let else_branch = if self.check(&TokenKind::Else) {
-            self.advance();
-            if self.check(&TokenKind::If) {
-                Some(Box::new(self.parse_if_expr()?))
-            } else {
-                Some(Box::new(self.parse_block_expr()?))
-            }
-        } else {
-            Option::None
-        };
-
-        let end_span = self.previous_span();
-        Ok(Expr {
-            kind: ExprKind::If {
-                condition: Box::new(condition),
-                then_branch: Box::new(then_branch),
-                else_branch,
-            },
-            span: self.merge_spans(start_span, end_span),
-        })
-    }
-
     // ── Block Expression ─────────────────────────────────────────
 
     fn parse_block_expr(&mut self) -> Result<Expr, ParseError> {

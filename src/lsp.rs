@@ -151,7 +151,6 @@ const KEYWORDS: &[(&str, &str)] = &[
     ),
     ("type", "type ${1:Name} = {\n\t${0:field}: ${2:Type},\n}"),
     ("return", "return ${0:expr}"),
-    ("if", "if ${1:condition} {\n\t${0:body}\n}"),
     ("async", "async "),
     ("await", "await ${0:expr}"),
     ("opaque", "opaque type ${1:Name} = ${0:BaseType}"),

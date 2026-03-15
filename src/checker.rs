@@ -900,16 +900,6 @@ impl Checker {
                     false
                 }
             }),
-            ExprKind::If {
-                then_branch,
-                else_branch,
-                ..
-            } => {
-                self.body_has_return(then_branch)
-                    && else_branch
-                        .as_ref()
-                        .is_some_and(|e| self.body_has_return(e))
-            }
             ExprKind::Match { arms, .. } => {
                 !arms.is_empty() && arms.iter().all(|arm| self.body_has_return(&arm.body))
             }

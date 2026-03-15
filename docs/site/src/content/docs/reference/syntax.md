@@ -123,16 +123,6 @@ match expr {
 }
 ```
 
-### If/Else
-
-```floe
-if condition {
-  then_expr
-} else {
-  else_expr
-}
-```
-
 ### Function Call
 
 ```floe

@@ -175,22 +175,6 @@ impl Codegen {
                 self.emit_match(subject, arms);
             }
 
-            ExprKind::If {
-                condition,
-                then_branch,
-                else_branch,
-            } => {
-                self.emit_expr(condition);
-                self.push(" ? ");
-                self.emit_expr(then_branch);
-                self.push(" : ");
-                if let Some(else_expr) = else_branch {
-                    self.emit_expr(else_expr);
-                } else {
-                    self.push("undefined");
-                }
-            }
-
             ExprKind::Return(value) => {
                 self.push("return");
                 if let Some(v) = value {

@@ -248,35 +248,6 @@ impl<'src> Lowerer<'src> {
                 })
             }
 
-            SyntaxKind::IF_EXPR => {
-                let mut exprs = Vec::new();
-                for child in node.children() {
-                    if let Some(expr) = self.lower_expr_node(&child) {
-                        exprs.push(expr);
-                    }
-                }
-
-                // Also collect token-level expressions
-                if exprs.is_empty()
-                    && let Some(expr) = self.lower_token_expr(node)
-                {
-                    exprs.push(expr);
-                }
-
-                let condition = exprs.first().cloned()?;
-                let then_branch = exprs.get(1).cloned()?;
-                let else_branch = exprs.get(2).cloned().map(Box::new);
-
-                Some(Expr {
-                    span,
-                    kind: ExprKind::If {
-                        condition: Box::new(condition),
-                        then_branch: Box::new(then_branch),
-                        else_branch,
-                    },
-                })
-            }
-
             SyntaxKind::BLOCK_EXPR => {
                 let mut items = Vec::new();
                 for child in node.children() {

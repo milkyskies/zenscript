@@ -265,37 +265,6 @@ impl Formatter<'_> {
         }
     }
 
-    // ── If ──────────────────────────────────────────────────────
-
-    pub(crate) fn fmt_if(&mut self, node: &SyntaxNode) {
-        self.write("if ");
-
-        let children: Vec<_> = node.children().collect();
-        let mut child_iter = children.iter();
-
-        if let Some(cond) = child_iter.next() {
-            if cond.kind() == SyntaxKind::BLOCK_EXPR {
-                self.fmt_token_expr_after_keyword(node, SyntaxKind::KW_IF);
-                self.write(" ");
-                self.fmt_block(cond);
-            } else {
-                self.fmt_node(cond);
-                self.write(" ");
-                if let Some(then_block) = child_iter.next() {
-                    self.fmt_node(then_block);
-                }
-            }
-        }
-
-        let has_else = self.has_token(node, SyntaxKind::KW_ELSE);
-        if has_else {
-            self.write(" else ");
-            if let Some(else_node) = child_iter.next() {
-                self.fmt_node(else_node);
-            }
-        }
-    }
-
     // ── Binary ──────────────────────────────────────────────────
 
     pub(crate) fn fmt_binary(&mut self, node: &SyntaxNode) {

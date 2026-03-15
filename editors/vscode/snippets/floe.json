@@ -111,6 +111,13 @@
     ],
     "description": "Opaque type"
   },
+  "Tap Debug": {
+    "prefix": "tap",
+    "body": [
+      "tap(${1:Console.log})"
+    ],
+    "description": "Tap for pipeline debugging"
+  },
   "Todo Placeholder": {
     "prefix": "todo",
     "body": [

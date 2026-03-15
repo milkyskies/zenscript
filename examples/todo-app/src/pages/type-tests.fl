@@ -42,16 +42,14 @@ fn describeFilter(f: Filter) -> string {
 //     }
 // }
 
-// ── If/else branch consistency ───────────────────────────
+// ── Match as conditional ─────────────────────────────────
 
 fn abs(x: number) -> number {
-    if x > 0 { x } else { 0 - x }  // ✓ both branches are number
+    match x > 0 {
+        true -> x,
+        false -> 0 - x,
+    }
 }
-
-// Uncomment to see error: incompatible types in if/else
-// fn badIfElse(x: number) -> number {
-//     if x > 0 { x } else { "negative" }
-// }
 
 // ── Pipe type checking ──────────────────────────────────
 

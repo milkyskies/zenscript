@@ -676,7 +676,7 @@ mod tests {
 
     #[test]
     fn banned_keywords() {
-        let tokens = lex("let class throw null undefined any as enum function");
+        let tokens = lex("let class throw null undefined any as enum function if else");
         assert_eq!(
             tokens,
             vec![
@@ -689,6 +689,8 @@ mod tests {
                 TokenKind::Banned(BannedKeyword::As),
                 TokenKind::Banned(BannedKeyword::Enum),
                 TokenKind::Banned(BannedKeyword::Function),
+                TokenKind::Banned(BannedKeyword::If),
+                TokenKind::Banned(BannedKeyword::Else),
                 TokenKind::Eof,
             ]
         );
