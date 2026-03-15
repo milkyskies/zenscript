@@ -77,6 +77,20 @@ const total = orders
   |> reduce(|sum, n| sum + n, 0, _)
 ```
 
+## Debugging with `tap`
+
+Need to inspect a value mid-pipeline without breaking the chain? Use `tap`:
+
+```floe
+const result = users
+  |> Array.filter(.active)
+  |> tap(Console.log)          // logs filtered users, passes them through
+  |> Array.map(.name)
+  |> Array.sort
+```
+
+`tap` calls the function you give it (for side effects like logging), then returns the original value unchanged. It compiles to an IIFE that calls the function and returns the value.
+
 ## When to Use Pipes
 
 Pipes shine when you have a sequence of transformations. They replace:

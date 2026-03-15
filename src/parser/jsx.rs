@@ -202,8 +202,6 @@ impl Parser {
             TokenKind::Opaque => Some("opaque".into()),
             TokenKind::Async => Some("async".into()),
             TokenKind::Await => Some("await".into()),
-            TokenKind::If => Some("if".into()),
-            TokenKind::Else => Some("else".into()),
             TokenKind::For => Some("for".into()),
             TokenKind::SelfKw => Some("self".into()),
             TokenKind::Try => Some("try".into()),
@@ -278,14 +276,6 @@ impl Parser {
             TokenKind::Return => {
                 self.advance();
                 Ok("return".to_string())
-            }
-            TokenKind::If => {
-                self.advance();
-                Ok("if".to_string())
-            }
-            TokenKind::Else => {
-                self.advance();
-                Ok("else".to_string())
             }
             TokenKind::Async => {
                 self.advance();

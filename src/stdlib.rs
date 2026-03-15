@@ -637,6 +637,14 @@ fn build_stdlib() -> Vec<StdlibFn> {
             return_type: Type::Number,
             codegen: "Math.tan($0)",
         },
+        // ── Pipe Utilities ────────────────────────────────────────
+        StdlibFn {
+            module: "Pipe",
+            name: "tap",
+            params: vec![t.clone(), fun(vec![t.clone()], Type::Unit)],
+            return_type: t.clone(),
+            codegen: "(() => { const _v = $0; ($1)(_v); return _v; })()",
+        },
         // ── JSON ───────────────────────────────────────────────
         StdlibFn {
             module: "JSON",
@@ -691,6 +699,7 @@ mod tests {
         assert!(reg.is_module("Console"));
         assert!(reg.is_module("Math"));
         assert!(reg.is_module("JSON"));
+        assert!(reg.is_module("Pipe"));
         assert!(!reg.is_module("Foo"));
     }
 
@@ -719,6 +728,13 @@ mod tests {
         let reg = StdlibRegistry::new();
         let f = reg.lookup("Math", "floor").unwrap();
         assert_eq!(f.codegen, "Math.floor($0)");
+    }
+
+    #[test]
+    fn lookup_pipe_tap() {
+        let reg = StdlibRegistry::new();
+        let f = reg.lookup("Pipe", "tap").unwrap();
+        assert!(f.codegen.contains("return _v"));
     }
 
     #[test]

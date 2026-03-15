@@ -42,14 +42,13 @@ export fn Button(props: ButtonProps) -> JSX.Element {
 
 ## Conditional Rendering
 
-Use `if`/`else` expressions:
+Use `match` expressions:
 
 ```floe
 return <div>
-  {if isLoggedIn {
-    <UserProfile user={user} />
-  } else {
-    <LoginForm />
+  {match isLoggedIn {
+    true -> <UserProfile user={user} />,
+    false -> <LoginForm />,
   }}
 </div>
 ```

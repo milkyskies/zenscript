@@ -652,36 +652,6 @@ impl Checker {
                 result_type.unwrap_or(Type::Unit)
             }
 
-            ExprKind::If {
-                condition,
-                then_branch,
-                else_branch,
-            } => {
-                self.check_expr(condition);
-                let then_ty = self.check_expr(then_branch);
-                if let Some(else_expr) = else_branch {
-                    let else_ty = self.check_expr(else_expr);
-                    if !self.types_compatible(&then_ty, &else_ty)
-                        && !matches!(then_ty, Type::Unknown | Type::Var(_))
-                        && !matches!(else_ty, Type::Unknown | Type::Var(_))
-                    {
-                        self.diagnostics.push(
-                            Diagnostic::error(
-                                format!(
-                                    "if/else branches have incompatible types: `if` returns `{}`, `else` returns `{}`",
-                                    then_ty.display_name(),
-                                    else_ty.display_name()
-                                ),
-                                else_expr.span,
-                            )
-                            .with_label(format!("expected `{}`", then_ty.display_name()))
-                            .with_code("E001"),
-                        );
-                    }
-                }
-                then_ty
-            }
-
             ExprKind::Return(value) => {
                 if let Some(e) = value {
                     self.check_expr(e)

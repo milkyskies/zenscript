@@ -779,17 +779,18 @@ fn await_expr() {
     assert!(matches!(expr, ExprKind::Await(_)));
 }
 
-// ── If Expression ────────────────────────────────────────────
+// ── If/Else is Banned ────────────────────────────────────────
 
 #[test]
-fn if_else_expr() {
-    let expr = first_expr("if x { 1 } else { 2 }");
-    match expr {
-        ExprKind::If { else_branch, .. } => {
-            assert!(else_branch.is_some());
-        }
-        _ => panic!("expected if"),
-    }
+fn if_is_banned() {
+    let result = parse("if x { 1 } else { 2 }");
+    assert!(result.is_err());
+    let errors = result.unwrap_err();
+    assert!(
+        errors.iter().any(|e| e.message.contains("banned keyword")),
+        "expected banned keyword error for `if`, got: {:?}",
+        errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+    );
 }
 
 // ── Grouped Expression ───────────────────────────────────────

@@ -768,7 +768,6 @@ impl<'src> CstParser<'src> {
                 }
                 self.builder.finish_node();
             }
-            Some(TokenKind::If) => self.parse_if_expr(),
             Some(TokenKind::LeftBrace) => self.parse_block_expr(),
 
             Some(TokenKind::LeftBracket) => {
@@ -1148,30 +1147,6 @@ impl<'src> CstParser<'src> {
             self.eat_trivia();
             self.parse_pattern();
         }
-    }
-
-    // ── If Expression ────────────────────────────────────────────
-
-    fn parse_if_expr(&mut self) {
-        self.builder.start_node(SyntaxKind::IF_EXPR.into());
-        self.expect(TokenKind::If);
-        self.eat_trivia();
-        self.parse_expr();
-        self.eat_trivia();
-        self.parse_block_expr();
-        self.eat_trivia();
-
-        if self.at(TokenKind::Else) {
-            self.bump();
-            self.eat_trivia();
-            if self.at(TokenKind::If) {
-                self.parse_if_expr();
-            } else {
-                self.parse_block_expr();
-            }
-        }
-
-        self.builder.finish_node();
     }
 
     // ── Block Expression ─────────────────────────────────────────
