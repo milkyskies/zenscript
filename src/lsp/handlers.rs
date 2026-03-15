@@ -117,7 +117,7 @@ impl LanguageServer for FloeLsp {
             }));
         }
 
-        // Check for member access on npm imports (e.g. z.object, z.string)
+        // Check for member access (e.g. z.object, UserSchema.parse)
         if is_member_access {
             let bytes = doc.content.as_bytes();
             let dot_pos = word_start - 1;
@@ -128,11 +128,24 @@ impl LanguageServer for FloeLsp {
                 obj_start -= 1;
             }
             let obj_name = &doc.content[obj_start..dot_pos];
+
+            // Check tsgo member probes (npm imports like z.object)
             if let Some(ty) = doc.type_map.get(&format!("__member_{obj_name}_{word}")) {
                 return Ok(Some(Hover {
                     contents: HoverContents::Markup(MarkupContent {
                         kind: MarkupKind::Markdown,
                         value: format!("```floe\n{obj_name}.{word}: {ty}\n```"),
+                    }),
+                    range: None,
+                }));
+            }
+
+            // Show object type + member name for any member access
+            if let Some(obj_ty) = doc.type_map.get(obj_name) {
+                return Ok(Some(Hover {
+                    contents: HoverContents::Markup(MarkupContent {
+                        kind: MarkupKind::Markdown,
+                        value: format!("```floe\n{obj_name}.{word}\n```\nMember of `{obj_ty}`"),
                     }),
                     range: None,
                 }));

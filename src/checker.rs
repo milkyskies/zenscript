@@ -801,20 +801,27 @@ impl Checker {
             // using consumed set to avoid reusing the same probe
             let probe_key = format!("__probe_{binding_name}");
             let probe_prefix = format!("__probe_{binding_name}_");
+            // Search for probe results, preferring inlined probes (more precise)
+            // over direct probes (which may have unresolved generics)
             let mut found_export = None;
+            let mut found_inlined = None;
             for exports in self.dts_imports.values() {
                 for export in exports {
-                    if (export.name == probe_key || export.name.starts_with(&probe_prefix))
-                        && !self.probe_counters.contains_key(&export.name)
+                    if !self.probe_counters.contains_key(&export.name)
+                        && (export.name == probe_key || export.name.starts_with(&probe_prefix))
                     {
-                        found_export = Some(export.clone());
-                        break;
+                        if export.name.contains("inlined") {
+                            if found_inlined.is_none() {
+                                found_inlined = Some(export.clone());
+                            }
+                        } else if found_export.is_none() {
+                            found_export = Some(export.clone());
+                        }
                     }
                 }
-                if found_export.is_some() {
-                    break;
-                }
             }
+            // Prefer inlined probe (from const expression inlining) over direct probe
+            let found_export = found_inlined.or(found_export);
             if let Some(ref export) = found_export {
                 self.probe_counters.insert(export.name.clone(), 0); // mark as consumed
             }
