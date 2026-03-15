@@ -2005,3 +2005,57 @@ fn timer_globals_are_recognized() {
         );
     }
 }
+
+// ── Unsafe narrowing from unknown ───────────────────────────
+
+#[test]
+fn narrowing_unknown_to_concrete_type_is_error() {
+    let diags = check(
+        r#"
+import trusted { getData } from "some-lib"
+const data = getData()
+const x: number = data
+"#,
+    );
+    assert!(
+        has_error(&diags, "E019"),
+        "narrowing unknown to a concrete type should be an error, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn unknown_to_unknown_annotation_is_ok() {
+    let diags = check(
+        r#"
+import trusted { getData } from "some-lib"
+const data = getData()
+const x: unknown = data
+"#,
+    );
+    assert!(
+        !has_error(&diags, "E019"),
+        "annotating unknown as unknown should be fine"
+    );
+}
+
+// ── fetch requires try ──────────────────────────────────────
+
+#[test]
+fn fetch_requires_try() {
+    let diags = check(r#"const res = fetch("https://example.com")"#);
+    assert!(
+        has_error(&diags, "E014"),
+        "calling fetch without try should error, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn fetch_with_try_is_ok() {
+    let diags = check(r#"const res = try fetch("https://example.com")"#);
+    assert!(
+        !has_error(&diags, "E014"),
+        "calling fetch with try should be fine"
+    );
+}

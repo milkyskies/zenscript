@@ -142,6 +142,10 @@ impl Checker {
             env.define(name, ty.clone());
         }
 
+        // Browser globals that can throw and require `try`
+        let mut untrusted_globals = HashSet::new();
+        untrusted_globals.insert("fetch".to_string());
+
         Self {
             env,
             diagnostics: Vec::new(),
@@ -152,7 +156,7 @@ impl Checker {
             imported_names: Vec::new(),
             stdlib: StdlibRegistry::new(),
             expr_types: HashMap::new(),
-            untrusted_imports: HashSet::new(),
+            untrusted_imports: untrusted_globals,
             inside_try: false,
             registering_types: false,
             resolved_imports: HashMap::new(),
@@ -683,7 +687,23 @@ impl Checker {
             // tsgo gave us a fully-resolved type — use it
             tsgo_ty
         } else if let Some(ref declared) = declared_type {
-            if !self.types_compatible(declared, &value_type) {
+            // Reject narrowing from `unknown` to a concrete type — this is an unsafe cast.
+            // `const x: User = data` where data is unknown is not allowed.
+            // Use runtime validation (e.g. Zod) instead.
+            if matches!(value_type, Type::Unknown) && !matches!(declared, Type::Unknown) {
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        format!(
+                            "cannot narrow `unknown` to `{}` — use runtime validation instead",
+                            declared.display_name()
+                        ),
+                        span,
+                    )
+                    .with_label("unsafe narrowing from `unknown`")
+                    .with_help("use a validation library like Zod, or match on the value")
+                    .with_code("E019"),
+                );
+            } else if !self.types_compatible(declared, &value_type) {
                 self.diagnostics.push(
                     Diagnostic::error(
                         format!(
