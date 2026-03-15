@@ -1388,11 +1388,17 @@ impl Checker {
     // ── Type Compatibility ───────────────────────────────────────
 
     fn types_compatible(&self, expected: &Type, actual: &Type) -> bool {
-        if matches!(expected, Type::Unknown | Type::Var(_))
-            || matches!(actual, Type::Unknown | Type::Var(_))
-        {
+        // Unknown/Var as EXPECTED: anything can be assigned to unknown (widening)
+        if matches!(expected, Type::Unknown | Type::Var(_)) {
             return true;
         }
+        // Var as ACTUAL: type variables are still being inferred, allow them
+        if matches!(actual, Type::Var(_)) {
+            return true;
+        }
+        // Unknown as ACTUAL with concrete expected: NOT compatible.
+        // Must narrow unknown before assigning to a concrete type.
+        // (This is the key strictness rule — same as TypeScript's unknown.)
 
         // `never` is compatible with any type (it means "this code never returns")
         if matches!(actual, Type::Never) || matches!(expected, Type::Never) {
