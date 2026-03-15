@@ -55,6 +55,9 @@ pub struct Checker {
     /// Maps variable/function names to their inferred type display names.
     /// Accumulated as names are defined so inner-scope names aren't lost.
     name_types: HashMap<String, String>,
+    /// Tracks where each name was defined (e.g., "const", "function", "for-block function from \"./todo\"").
+    /// Used to provide context in shadowing error messages.
+    defined_sources: HashMap<String, String>,
 }
 
 impl Default for Checker {
@@ -82,6 +85,7 @@ impl Checker {
             dts_imports: HashMap::new(),
             pipe_input_type: None,
             name_types: HashMap::new(),
+            defined_sources: HashMap::new(),
         }
     }
 
@@ -140,7 +144,12 @@ impl Checker {
         self.registering_types = false;
 
         // Register functions from resolved imports
-        for resolved in self.resolved_imports.values().cloned().collect::<Vec<_>>() {
+        for (source, resolved) in self
+            .resolved_imports
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect::<Vec<_>>()
+        {
             for func in &resolved.function_decls {
                 let return_type = func
                     .return_type
@@ -162,9 +171,11 @@ impl Checker {
                     return_type: Box::new(return_type),
                 };
                 self.env.define(&func.name, fn_type);
+                self.defined_sources
+                    .insert(func.name.clone(), format!("function from \"{}\"", source));
             }
             for block in &resolved.for_blocks {
-                self.check_for_block_imported(block);
+                self.check_for_block_imported_with_source(block, &source);
             }
         }
 
@@ -227,13 +238,15 @@ impl Checker {
     /// Emit an error if `name` is already defined in any scope (no shadowing allowed).
     fn check_no_redefinition(&mut self, name: &str, span: Span) {
         if self.env.is_defined_in_any_scope(name) {
+            let msg = if let Some(source) = self.defined_sources.get(name) {
+                format!("`{name}` is already defined ({source}) and cannot be shadowed")
+            } else {
+                format!("`{name}` is already defined and cannot be shadowed")
+            };
             self.diagnostics.push(
-                Diagnostic::error(
-                    format!("`{name}` is already defined and cannot be shadowed"),
-                    span,
-                )
-                .with_label("already defined")
-                .with_code("E016"),
+                Diagnostic::error(msg, span)
+                    .with_label("already defined")
+                    .with_code("E016"),
             );
         }
     }
@@ -463,6 +476,10 @@ impl Checker {
             };
 
             self.env.define(effective_name, ty);
+            self.defined_sources.insert(
+                effective_name.to_string(),
+                format!("import from \"{}\"", decl.source),
+            );
             self.imported_names
                 .push((effective_name.to_string(), spec.span));
 
@@ -509,7 +526,7 @@ impl Checker {
     }
 
     /// Register for-block functions from an imported module without checking bodies.
-    fn check_for_block_imported(&mut self, block: &ForBlock) {
+    fn check_for_block_imported_with_source(&mut self, block: &ForBlock, source: &str) {
         let for_type = self.resolve_type(&block.type_name);
 
         for func in &block.functions {
@@ -539,6 +556,10 @@ impl Checker {
                 return_type: Box::new(return_type),
             };
             self.env.define(&func.name, fn_type);
+            self.defined_sources.insert(
+                func.name.clone(),
+                format!("for-block function from \"{}\"", source),
+            );
         }
     }
 
@@ -591,6 +612,8 @@ impl Checker {
                 self.name_types
                     .insert(name.clone(), final_type.display_name());
                 self.env.define(name, final_type);
+                self.defined_sources
+                    .insert(name.clone(), "const".to_string());
                 if decl.exported {
                     self.used_names.insert(name.clone());
                 }
@@ -612,6 +635,8 @@ impl Checker {
                     self.check_no_redefinition(name, span);
                     self.name_types.insert(name.clone(), elem_ty.display_name());
                     self.env.define(name, elem_ty);
+                    self.defined_sources
+                        .insert(name.clone(), "const".to_string());
                     self.defined_names.push((name.clone(), span));
                 }
             }
@@ -619,6 +644,8 @@ impl Checker {
                 for name in names {
                     self.check_no_redefinition(name, span);
                     self.env.define(name, Type::Unknown);
+                    self.defined_sources
+                        .insert(name.clone(), "const".to_string());
                     self.defined_names.push((name.clone(), span));
                 }
             }
@@ -666,6 +693,8 @@ impl Checker {
         };
         self.check_no_redefinition(&decl.name, span);
         self.env.define(&decl.name, fn_type);
+        self.defined_sources
+            .insert(decl.name.clone(), "function".to_string());
         if decl.exported {
             self.used_names.insert(decl.name.clone());
         }
@@ -764,6 +793,8 @@ impl Checker {
             };
             self.check_no_redefinition(&func.name, block.span);
             self.env.define(&func.name, fn_type);
+            self.defined_sources
+                .insert(func.name.clone(), "for-block function".to_string());
             if func.exported {
                 self.used_names.insert(func.name.clone());
             }

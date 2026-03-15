@@ -227,6 +227,9 @@ impl FloeLsp {
                     }
                 }
 
+                // Add imported for-block functions to the symbol index
+                index.add_imported_for_blocks(&resolved_imports);
+
                 let checker = if resolved_imports.is_empty() && dts_map.is_empty() {
                     Checker::new()
                 } else if dts_map.is_empty() {

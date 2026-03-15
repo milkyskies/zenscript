@@ -821,30 +821,48 @@ impl Checker {
         // If the right side is a bare function identifier (not a call),
         // the pipe effectively calls it: `a |> f` means `f(a)`.
         // Return the function's return type, not the function type itself.
-        if let ExprKind::Identifier(name) = &right.kind
-            && let Type::Function {
-                params,
-                return_type,
-            } = right_ty
-        {
-            // Validate the piped value as the first (and only) argument
-            if let Some(first_param) = params.first()
-                && !self.types_compatible(first_param, left_ty)
-            {
-                self.diagnostics.push(
-                    Diagnostic::error(
-                        format!(
-                            "argument 1 to `{name}`: expected `{}`, found `{}`",
-                            first_param.display_name(),
-                            left_ty.display_name()
-                        ),
-                        right.span,
-                    )
-                    .with_label(format!("expected `{}`", first_param.display_name()))
-                    .with_code("E001"),
-                );
+        if let ExprKind::Identifier(name) = &right.kind {
+            match right_ty {
+                Type::Function {
+                    params,
+                    return_type,
+                } => {
+                    // Validate the piped value as the first (and only) argument
+                    if let Some(first_param) = params.first()
+                        && !self.types_compatible(first_param, left_ty)
+                    {
+                        self.diagnostics.push(
+                            Diagnostic::error(
+                                format!(
+                                    "argument 1 to `{name}`: expected `{}`, found `{}`",
+                                    first_param.display_name(),
+                                    left_ty.display_name()
+                                ),
+                                right.span,
+                            )
+                            .with_label(format!("expected `{}`", first_param.display_name()))
+                            .with_code("E001"),
+                        );
+                    }
+                    return *return_type;
+                }
+                // Unknown types: don't error (not enough info)
+                Type::Unknown | Type::Var(_) => {}
+                // Non-function types: error
+                _ => {
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            format!(
+                                "cannot pipe into `{name}`: expected a function, found `{}`",
+                                right_ty.display_name()
+                            ),
+                            right.span,
+                        )
+                        .with_label("not a function")
+                        .with_code("E001"),
+                    );
+                }
             }
-            return *return_type;
         }
 
         right_ty

@@ -294,6 +294,68 @@ impl SymbolIndex {
         }
     }
 
+    /// Add symbols for imported for-block functions from resolved imports.
+    /// These don't appear in the current file's AST but are defined via cross-file resolution.
+    pub(super) fn add_imported_for_blocks(
+        &mut self,
+        resolved_imports: &std::collections::HashMap<String, crate::resolve::ResolvedImports>,
+    ) {
+        for (source, resolved) in resolved_imports {
+            for block in &resolved.for_blocks {
+                let type_str = type_expr_to_string(&block.type_name);
+                for func in &block.functions {
+                    let params: Vec<String> = func
+                        .params
+                        .iter()
+                        .map(|p| {
+                            if p.name == "self" {
+                                format!("self: {type_str}")
+                            } else if let Some(ty) = &p.type_ann {
+                                format!("{}: {}", p.name, type_expr_to_string(ty))
+                            } else {
+                                p.name.clone()
+                            }
+                        })
+                        .collect();
+                    let ret = func
+                        .return_type
+                        .as_ref()
+                        .map(|t| format!(": {}", type_expr_to_string(t)))
+                        .unwrap_or_default();
+
+                    let first_param_type = if func.params.first().is_some_and(|p| p.name == "self")
+                    {
+                        Some(type_str.clone())
+                    } else {
+                        func.params
+                            .first()
+                            .and_then(|p| p.type_ann.as_ref())
+                            .map(type_expr_to_string)
+                    };
+
+                    let return_type_str = func.return_type.as_ref().map(type_expr_to_string);
+
+                    self.symbols.push(Symbol {
+                        name: func.name.clone(),
+                        kind: SymbolKind::FUNCTION,
+                        start: 0,
+                        end: 0,
+                        import_source: Some(source.clone()),
+                        detail: format!(
+                            "fn {}({}){} (from \"{}\")",
+                            func.name,
+                            params.join(", "),
+                            ret,
+                            source
+                        ),
+                        first_param_type,
+                        return_type_str,
+                    });
+                }
+            }
+        }
+    }
+
     pub(super) fn find_by_name(&self, name: &str) -> Vec<&Symbol> {
         self.symbols.iter().filter(|s| s.name == name).collect()
     }

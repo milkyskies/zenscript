@@ -899,3 +899,102 @@ fn test() -> number {
         diags.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
 }
+
+// ── Bug #192: Shadowing error context ───────────────────────
+
+#[test]
+fn shadow_error_includes_source_const() {
+    let diags = check(
+        r#"
+const x = 5
+const x = 10
+"#,
+    );
+    assert!(
+        has_error_containing(&diags, "already defined (const)"),
+        "shadow error should mention source 'const', got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn shadow_error_includes_source_function() {
+    let diags = check(
+        r#"
+fn double(x: number) -> number { x * 2 }
+const double = 42
+"#,
+    );
+    assert!(
+        has_error_containing(&diags, "already defined (function)"),
+        "shadow error should mention source 'function', got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn shadow_error_includes_source_for_block() {
+    let diags = check(
+        r#"
+type Todo = { text: string, done: boolean }
+for Array<Todo> {
+    export fn remaining(self) -> number { 0 }
+}
+const remaining = 5
+"#,
+    );
+    assert!(
+        has_error_containing(&diags, "already defined (for-block function)"),
+        "shadow error should mention source 'for-block function', got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+// ── Bug #192: Pipe into non-function ────────────────────────
+
+#[test]
+fn pipe_into_non_function_errors() {
+    let diags = check(
+        r#"
+const items = [1, 2, 3]
+const target = "hello"
+const _x = items |> target
+"#,
+    );
+    assert!(
+        has_error_containing(&diags, "cannot pipe into `target`"),
+        "should error on piping into non-function, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn pipe_into_number_errors() {
+    let diags = check(
+        r#"
+const items = [1, 2, 3]
+const count = 42
+const _x = items |> count
+"#,
+    );
+    assert!(
+        has_error_containing(&diags, "cannot pipe into `count`"),
+        "should error on piping into number, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn pipe_into_function_ok() {
+    let diags = check(
+        r#"
+fn double(x: number) -> number { x * 2 }
+const _r = 5 |> double
+"#,
+    );
+    assert!(
+        !has_error_containing(&diags, "cannot pipe into"),
+        "piping into function should not error, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}

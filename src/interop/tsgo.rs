@@ -294,10 +294,16 @@ fn type_decl_to_ts(decl: &TypeDecl) -> String {
             format!("type {}{type_params} = {};", decl.name, type_expr_to_ts(ty))
         }
         TypeDef::Union(variants) => {
-            // Floe tagged unions don't have a direct TS equivalent;
-            // emit a simple union of string literals as a placeholder
-            let parts: Vec<String> = variants.iter().map(|v| format!("\"{}\"", v.name)).collect();
-            format!("type {}{type_params} = {};", decl.name, parts.join(" | "))
+            // Emit as const enum so Filter.All works in the probe
+            let members: Vec<String> = variants
+                .iter()
+                .map(|v| format!("  {} = \"{}\"", v.name, v.name))
+                .collect();
+            format!(
+                "const enum {}{type_params} {{\n{}\n}}",
+                decl.name,
+                members.join(",\n")
+            )
         }
     }
 }
