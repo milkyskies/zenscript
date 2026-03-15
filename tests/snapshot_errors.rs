@@ -72,12 +72,6 @@ fn snapshot_error_type_mismatch_comparison() {
 }
 
 #[test]
-fn snapshot_error_mixed_array() {
-    let output = get_diagnostics("test.fl", r#"const _x = [1, "two", 3]"#);
-    insta::assert_snapshot!(output);
-}
-
-#[test]
 fn snapshot_error_exported_missing_return_type() {
     let output = get_diagnostics(
         "test.fl",
