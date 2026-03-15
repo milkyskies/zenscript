@@ -96,6 +96,7 @@ impl Codegen {
 
             // Constructor: `User(name: "Ry", email: e)` → `{ name: "Ry", email: e }`
             // Union variant: `Valid(text)` → `{ tag: "Valid", text: text }`
+            // npm constructor: `QueryClient({...})` → `new QueryClient({...})`
             ExprKind::Construct {
                 type_name,
                 spread,
@@ -106,6 +107,27 @@ impl Codegen {
                     .get(type_name.as_str())
                     .map(|(_, fields)| fields.clone());
                 let is_variant = variant_field_names.is_some();
+
+                // Floe constructors use named args: User(name: "x", age: 30)
+                // npm constructor calls use positional args: QueryClient({...})
+                // If all args are positional (no named args), emit as `new Name(args)`
+                let has_named_args = args.iter().any(|a| matches!(a, Arg::Named { .. }));
+                if !is_variant && !has_named_args && spread.is_none() {
+                    self.push("new ");
+                    self.push(type_name);
+                    self.push("(");
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 {
+                            self.push(", ");
+                        }
+                        if let Arg::Positional(e) = arg {
+                            self.emit_expr(e);
+                        }
+                    }
+                    self.push(")");
+                    return;
+                }
+
                 self.push("{ ");
                 if is_variant {
                     self.push("tag: \"");
