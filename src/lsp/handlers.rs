@@ -1054,19 +1054,24 @@ pub(super) fn import_path_at_offset(source: &str, offset: usize) -> Option<Strin
         return None;
     }
 
-    // Find the string literal in the line (between quotes)
-    let from_pos = line.find("from")?;
-    let after_from = &line[from_pos + 4..];
+    // Find the string literal — after "from" if present, otherwise after "import"
+    let search_after = if let Some(from_pos) = line.find("from") {
+        from_pos + 4
+    } else {
+        // Bare import: `import "../todo"` — search after "import"
+        line.find("import").unwrap_or(0) + 6
+    };
+    let after_keyword = &line[search_after..];
 
     // Find opening quote
     let quote_char;
     let quote_start;
-    if let Some(pos) = after_from.find('"') {
+    if let Some(pos) = after_keyword.find('"') {
         quote_char = '"';
-        quote_start = from_pos + 4 + pos;
-    } else if let Some(pos) = after_from.find('\'') {
+        quote_start = search_after + pos;
+    } else if let Some(pos) = after_keyword.find('\'') {
         quote_char = '\'';
-        quote_start = from_pos + 4 + pos;
+        quote_start = search_after + pos;
     } else {
         return None;
     }

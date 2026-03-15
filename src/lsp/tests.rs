@@ -829,3 +829,12 @@ fn import_path_at_offset_single_quotes() {
     let result = import_path_at_offset(source, quote_pos + 2);
     assert_eq!(result, Some("./foo".to_string()));
 }
+
+#[test]
+fn import_path_at_offset_bare_import() {
+    // `import "../todo"` has no `from` keyword
+    let source = r#"import "../todo""#;
+    let quote_pos = source.find('"').unwrap();
+    let result = import_path_at_offset(source, quote_pos + 2);
+    assert_eq!(result, Some("../todo".to_string()));
+}
