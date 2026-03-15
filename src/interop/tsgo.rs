@@ -34,8 +34,12 @@ impl TsgoResolver {
     ///
     /// Returns a map from npm specifier to its resolved exports. The exports
     /// contain fully-resolved types (no unresolved generics).
-    pub fn resolve_imports(&mut self, program: &Program) -> HashMap<String, Vec<DtsExport>> {
-        let probe = generate_probe(program);
+    pub fn resolve_imports(
+        &mut self,
+        program: &Program,
+        resolved_imports: &HashMap<String, crate::resolve::ResolvedImports>,
+    ) -> HashMap<String, Vec<DtsExport>> {
+        let probe = generate_probe(program, resolved_imports);
         if probe.is_empty() {
             return HashMap::new();
         }
@@ -142,7 +146,10 @@ fn collect_consts_from_expr<'a>(expr: &'a Expr, consts: &mut Vec<&'a ConstDecl>)
 }
 
 /// Generate the TypeScript probe file content from a Floe program.
-fn generate_probe(program: &Program) -> String {
+fn generate_probe(
+    program: &Program,
+    resolved_imports: &HashMap<String, crate::resolve::ResolvedImports>,
+) -> String {
     let mut lines = Vec::new();
     let mut probe_index = 0usize;
 
@@ -190,6 +197,16 @@ fn generate_probe(program: &Program) -> String {
     // Emit type declarations from the program so tsgo can resolve them
     for item in &program.items {
         if let ItemKind::TypeDecl(decl) = &item.kind {
+            let ts_type = type_decl_to_ts(decl);
+            if !ts_type.is_empty() {
+                lines.push(ts_type);
+            }
+        }
+    }
+
+    // Also emit type declarations from resolved .fl imports
+    for resolved in resolved_imports.values() {
+        for decl in &resolved.type_decls {
             let ts_type = type_decl_to_ts(decl);
             if !ts_type.is_empty() {
                 lines.push(ts_type);
@@ -618,7 +635,7 @@ mod tests {
         let source = r#"import { useState } from "react"
 const [count, setCount] = useState(0)"#;
         let program = Parser::new(source).parse_program().unwrap();
-        let probe = generate_probe(&program);
+        let probe = generate_probe(&program, &HashMap::new());
 
         assert!(probe.contains("import { useState } from \"react\";"));
         assert!(probe.contains("export const _r0 = useState(0);"));
@@ -630,7 +647,7 @@ const [count, setCount] = useState(0)"#;
 type Todo = { text: string }
 const [todos, setTodos] = useState<Array<Todo>>([])"#;
         let program = Parser::new(source).parse_program().unwrap();
-        let probe = generate_probe(&program);
+        let probe = generate_probe(&program, &HashMap::new());
 
         assert!(probe.contains("import { useState } from \"react\";"));
         assert!(probe.contains("type Todo = {"));
@@ -642,7 +659,7 @@ const [todos, setTodos] = useState<Array<Todo>>([])"#;
         let source = r#"import { foo } from "./local"
 const x = 42"#;
         let program = Parser::new(source).parse_program().unwrap();
-        let probe = generate_probe(&program);
+        let probe = generate_probe(&program, &HashMap::new());
 
         assert!(probe.is_empty());
     }
@@ -652,7 +669,7 @@ const x = 42"#;
         let source = r#"import { useState, useEffect } from "react"
 const [count, setCount] = useState(0)"#;
         let program = Parser::new(source).parse_program().unwrap();
-        let probe = generate_probe(&program);
+        let probe = generate_probe(&program, &HashMap::new());
 
         // useState should be a probe call, both should be re-exported
         assert!(probe.contains("export const _r0 = useState(0);"));
@@ -692,7 +709,7 @@ const [input, setInput] = useState("")
 "#;
         let program = Parser::new(source).parse_program().unwrap();
         let mut resolver = TsgoResolver::new(&todo_app_dir);
-        let result = resolver.resolve_imports(&program);
+        let result = resolver.resolve_imports(&program, &HashMap::new());
 
         eprintln!("tsgo result keys: {:?}", result.keys().collect::<Vec<_>>());
         if let Some(react_exports) = result.get("react") {
@@ -715,6 +732,48 @@ const [input, setInput] = useState("")
                 "should have react exports, got keys: {:?}",
                 result.keys().collect::<Vec<_>>()
             );
+        }
+    }
+
+    #[test]
+    fn resolve_imports_union_type_with_usestate() {
+        let todo_app_dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/todo-app");
+        if !todo_app_dir.join("node_modules").is_dir() {
+            eprintln!("Skipping: no node_modules in todo-app");
+            return;
+        }
+
+        let source = r#"
+import trusted { useState } from "react"
+type Filter = | All | Active | Completed
+const [filter, setFilter] = useState<Filter>(Filter.All)
+"#;
+        let program = Parser::new(source).parse_program().unwrap();
+
+        // Check what probe is generated
+        let probe = generate_probe(&program, &HashMap::new());
+        eprintln!("PROBE:\n{probe}");
+
+        let mut resolver = TsgoResolver::new(&todo_app_dir);
+        let result = resolver.resolve_imports(&program, &HashMap::new());
+
+        if let Some(react_exports) = result.get("react") {
+            for export in react_exports {
+                eprintln!("  export: {} -> {:?}", export.name, export.ts_type);
+            }
+            // setFilter should be Dispatch<SetStateAction<Filter>>, not Dispatch<unknown>
+            let probe = react_exports
+                .iter()
+                .find(|e| e.name == "__probe_filter_setFilter");
+            assert!(probe.is_some(), "should have probe for filter/setFilter");
+            let ts_type_str = format!("{:?}", probe.unwrap().ts_type);
+            assert!(
+                !ts_type_str.contains("unknown"),
+                "setFilter should not be unknown, got: {ts_type_str}"
+            );
+        } else {
+            panic!("should have react exports");
         }
     }
 
