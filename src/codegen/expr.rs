@@ -196,7 +196,17 @@ impl Codegen {
                     self.push(")");
                 }
                 self.push(" => ");
+                // Wrap object-like bodies in parens to avoid block statement ambiguity
+                // e.g. (p) => ({ id: p.id }) not (p) => { id: p.id }
+                let needs_parens =
+                    matches!(body.kind, ExprKind::Construct { .. } | ExprKind::Object(_));
+                if needs_parens {
+                    self.push("(");
+                }
                 self.emit_expr(body);
+                if needs_parens {
+                    self.push(")");
+                }
             }
 
             // Match: `match x { A -> ..., B -> ... }` → ternary chain
