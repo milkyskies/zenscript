@@ -156,7 +156,14 @@ impl Codegen {
                 self.push("]");
             }
 
-            ExprKind::Arrow { params, body } => {
+            ExprKind::Arrow {
+                async_fn,
+                params,
+                body,
+            } => {
+                if *async_fn {
+                    self.push("async ");
+                }
                 if params.len() == 1 && params[0].type_ann.is_none() {
                     self.push("(");
                     self.push(&params[0].name);

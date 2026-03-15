@@ -26,12 +26,14 @@ const queryClient = QueryClient({
 })
 
 fn PostAuthor(props: { userId: number }) -> JSX.Element {
+    async fn fetchUser() {
+        const res = await fetch(`https://jsonplaceholder.typicode.com/users/${props.userId}`)
+        return await res.json()
+    }
+
     const { data } = useSuspenseQuery({
         queryKey: ["user", props.userId],
-        queryFn: async || {
-            const res = await fetch(`https://jsonplaceholder.typicode.com/users/${props.userId}`)
-            return await res.json()
-        },
+        queryFn: fetchUser,
     })
 
     const user: User = data

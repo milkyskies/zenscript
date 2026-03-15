@@ -1302,6 +1302,46 @@ fn object_literal_shorthand() {
 // `|{ x, y }| expr` should parse with destructured params
 
 #[test]
+fn async_zero_arg_lambda() {
+    let expr = first_expr("async || fetchData()");
+    match expr {
+        ExprKind::Arrow {
+            async_fn, params, ..
+        } => {
+            assert!(async_fn, "expected async lambda");
+            assert_eq!(params.len(), 0);
+        }
+        other => panic!("expected arrow, got {other:?}"),
+    }
+}
+
+#[test]
+fn async_lambda_with_params() {
+    let expr = first_expr("async |url| fetch(url)");
+    match expr {
+        ExprKind::Arrow {
+            async_fn, params, ..
+        } => {
+            assert!(async_fn, "expected async lambda");
+            assert_eq!(params.len(), 1);
+            assert_eq!(params[0].name, "url");
+        }
+        other => panic!("expected arrow, got {other:?}"),
+    }
+}
+
+#[test]
+fn non_async_lambda_is_not_async() {
+    let expr = first_expr("|| 42");
+    match expr {
+        ExprKind::Arrow { async_fn, .. } => {
+            assert!(!async_fn, "expected non-async lambda");
+        }
+        other => panic!("expected arrow, got {other:?}"),
+    }
+}
+
+#[test]
 fn lambda_destructured_param() {
     let expr = first_expr("|{ name, age }| name");
     match expr {

@@ -206,6 +206,7 @@ impl<'src> Lowerer<'src> {
                 Some(Expr {
                     span,
                     kind: ExprKind::Arrow {
+                        async_fn: false,
                         params,
                         body: Box::new(body?),
                     },

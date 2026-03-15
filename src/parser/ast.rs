@@ -295,8 +295,12 @@ pub enum ExprKind {
     Index { object: Box<Expr>, index: Box<Expr> },
 
     // -- Functions --
-    /// Arrow function: `(a, b) => a + b`
-    Arrow { params: Vec<Param>, body: Box<Expr> },
+    /// Arrow function: `|a, b| a + b` or `async |a, b| a + b`
+    Arrow {
+        async_fn: bool,
+        params: Vec<Param>,
+        body: Box<Expr>,
+    },
 
     // -- Control flow --
     /// Match expression: `match x { Pat -> expr, ... }`

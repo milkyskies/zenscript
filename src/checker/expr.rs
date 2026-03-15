@@ -595,7 +595,7 @@ impl Checker {
                 }
             }
 
-            ExprKind::Arrow { params, body } => {
+            ExprKind::Arrow { params, body, .. } => {
                 self.env.push_scope();
                 let param_types: Vec<_> = params
                     .iter()
@@ -606,6 +606,17 @@ impl Checker {
                             .map(|t| self.resolve_type(t))
                             .unwrap_or_else(|| self.fresh_type_var());
                         self.env.define(&p.name, ty.clone());
+                        // For destructured params, also define the field names
+                        if let Some(ref destructure) = p.destructure {
+                            match destructure {
+                                ParamDestructure::Object(fields)
+                                | ParamDestructure::Array(fields) => {
+                                    for field in fields {
+                                        self.env.define(field, Type::Unknown);
+                                    }
+                                }
+                            }
+                        }
                         ty
                     })
                     .collect();

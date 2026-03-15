@@ -536,6 +536,43 @@ impl Parser {
             // Dot shorthand: `.field` or `.field op expr`
             TokenKind::Dot => self.parse_dot_shorthand(),
 
+            // Async lambda: `async || body` or `async |params| body`
+            TokenKind::Async
+                if matches!(
+                    self.peek_kind(),
+                    Some(TokenKind::VerticalBar | TokenKind::PipePipe)
+                ) =>
+            {
+                self.advance(); // consume `async`
+                if self.check(&TokenKind::PipePipe) {
+                    self.advance(); // consume `||`
+                    let body = self.parse_expr()?;
+                    let end_span = self.previous_span();
+                    Ok(Expr {
+                        kind: ExprKind::Arrow {
+                            async_fn: true,
+                            params: vec![],
+                            body: Box::new(body),
+                        },
+                        span: self.merge_spans(start_span, end_span),
+                    })
+                } else {
+                    self.expect(&TokenKind::VerticalBar)?;
+                    let params = self.parse_lambda_params()?;
+                    self.expect(&TokenKind::VerticalBar)?;
+                    let body = self.parse_expr()?;
+                    let end_span = self.previous_span();
+                    Ok(Expr {
+                        kind: ExprKind::Arrow {
+                            async_fn: true,
+                            params,
+                            body: Box::new(body),
+                        },
+                        span: self.merge_spans(start_span, end_span),
+                    })
+                }
+            }
+
             // Pipe lambda: `|params| body` or `|| body` (zero-arg)
             TokenKind::VerticalBar => self.parse_pipe_lambda(),
 
@@ -546,6 +583,7 @@ impl Parser {
                 let end_span = self.previous_span();
                 Ok(Expr {
                     kind: ExprKind::Arrow {
+                        async_fn: false,
                         params: vec![],
                         body: Box::new(body),
                     },
@@ -670,6 +708,7 @@ impl Parser {
 
         Ok(Expr {
             kind: ExprKind::Arrow {
+                async_fn: false,
                 params,
                 body: Box::new(body),
             },
