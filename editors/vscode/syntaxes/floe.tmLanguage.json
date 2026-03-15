@@ -7,6 +7,7 @@
     { "include": "#strings" },
     { "include": "#template-literals" },
     { "include": "#jsx" },
+    { "include": "#braces" },
     { "include": "#keywords" },
     { "include": "#storage" },
     { "include": "#constants" },
@@ -18,6 +19,14 @@
     { "include": "#identifiers" }
   ],
   "repository": {
+    "braces": {
+      "comment": "Brace balancing — ensures nested { } (match blocks, etc.) are properly paired so inner } doesn't close an outer scope like JSX attribute expressions",
+      "begin": "\\{",
+      "end": "\\}",
+      "patterns": [
+        { "include": "source.floe" }
+      ]
+    },
     "comments": {
       "patterns": [
         {
@@ -130,8 +139,8 @@
           "match": "\\b(Result|Option|Brand|Array|Promise|JSX)\\b"
         },
         {
-          "comment": "Generic type parameters: <Type>",
-          "begin": "<",
+          "comment": "Generic type parameters: <Type> — only after an identifier",
+          "begin": "(?<=[a-zA-Z0-9_])<",
           "end": ">",
           "beginCaptures": {
             "0": { "name": "punctuation.definition.typeparameters.begin.floe" }
@@ -210,8 +219,8 @@
           }
         },
         {
-          "comment": "Function calls",
-          "match": "\\b([a-z_][a-zA-Z0-9_]*)\\s*(?=\\()",
+          "comment": "Function calls (including generic calls like fn<Type>(...))",
+          "match": "\\b([a-z_][a-zA-Z0-9_]*)\\s*(?=<[A-Z]|\\()",
           "captures": {
             "1": { "name": "entity.name.function.floe" }
           }
@@ -247,29 +256,53 @@
     "jsx": {
       "patterns": [
         {
-          "comment": "JSX closing tag",
-          "match": "(</)([A-Z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9-]*)(>)",
-          "captures": {
-            "1": { "name": "punctuation.definition.tag.begin.floe" },
-            "2": { "name": "entity.name.tag.floe" },
-            "3": { "name": "punctuation.definition.tag.end.floe" }
-          }
-        },
-        {
-          "comment": "JSX opening/self-closing tag",
-          "begin": "(<)([A-Z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9-]*)(?=[\\s/>])",
+          "comment": "JSX element: handles both self-closing (<br />) and paired (<div>...</div>) tags",
+          "begin": "(?<![a-zA-Z0-9_])(<)([A-Z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9-]*)(?=[\\s/>])",
           "beginCaptures": {
             "1": { "name": "punctuation.definition.tag.begin.floe" },
             "2": { "name": "entity.name.tag.floe" }
           },
-          "end": "(/?>)",
+          "end": "(/>)|(?:(</)(\\2)(>))",
           "endCaptures": {
-            "1": { "name": "punctuation.definition.tag.end.floe" }
+            "1": { "name": "punctuation.definition.tag.end.floe" },
+            "2": { "name": "punctuation.definition.tag.begin.floe" },
+            "3": { "name": "entity.name.tag.floe" },
+            "4": { "name": "punctuation.definition.tag.end.floe" }
           },
           "patterns": [
+            {
+              "comment": "Transition: > ends opening tag attrs, enters body content",
+              "begin": "(?<!/)>",
+              "beginCaptures": {
+                "0": { "name": "punctuation.definition.tag.end.floe" }
+              },
+              "end": "(?=</)",
+              "patterns": [
+                { "include": "#jsx-body" }
+              ]
+            },
             { "include": "#jsx-attributes" }
           ]
         }
+      ]
+    },
+    "jsx-body": {
+      "patterns": [
+        {
+          "comment": "JSX expression in body: {expr}",
+          "begin": "\\{",
+          "beginCaptures": {
+            "0": { "name": "punctuation.section.embedded.begin.floe" }
+          },
+          "end": "\\}",
+          "endCaptures": {
+            "0": { "name": "punctuation.section.embedded.end.floe" }
+          },
+          "patterns": [
+            { "include": "source.floe" }
+          ]
+        },
+        { "include": "#jsx" }
       ]
     },
     "jsx-attributes": {
