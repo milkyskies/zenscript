@@ -76,7 +76,6 @@ impl TsgoResolver {
             }
         };
 
-        // Parse the output .d.ts
         let exports = match parse_dts_exports_from_str(&dts_content) {
             Ok(exports) => exports,
             Err(e) => {
@@ -248,20 +247,26 @@ fn generate_probe(
         } = &decl.value.kind
         {
             let callee_name = expr_to_callee_name(callee);
-            if let Some(name) = &callee_name
-                && imported_names.contains_key(name)
-            {
-                let ts_type_args: Vec<String> = type_args.iter().map(type_expr_to_ts).collect();
-                let ts_args: Vec<String> = args.iter().map(arg_to_ts_approx).collect();
-                probe_calls.push(ProbeCall {
-                    index: probe_index,
-                    callee: name.clone(),
-                    type_args: ts_type_args,
-                    args: ts_args,
-                    binding: decl.binding.clone(),
-                });
-                probe_index += 1;
-                continue;
+            if let Some(name) = &callee_name {
+                // Direct import call: useState(...), useSuspenseQuery(...)
+                let is_imported = imported_names.contains_key(name);
+                // Member call on import: z.object(...), z.array(...)
+                let is_member_of_import = name.contains('.')
+                    && imported_names.contains_key(name.split('.').next().unwrap_or(""));
+
+                if is_imported || is_member_of_import {
+                    let ts_type_args: Vec<String> = type_args.iter().map(type_expr_to_ts).collect();
+                    let ts_args: Vec<String> = args.iter().map(arg_to_ts_approx).collect();
+                    probe_calls.push(ProbeCall {
+                        index: probe_index,
+                        callee: name.clone(),
+                        type_args: ts_type_args,
+                        args: ts_args,
+                        binding: decl.binding.clone(),
+                    });
+                    probe_index += 1;
+                    continue;
+                }
             }
         }
     }
@@ -282,12 +287,64 @@ fn generate_probe(
     // Collect free variables referenced in probe call args and declare them
     // so tsgo doesn't error on undefined identifiers
     let mut declared_names: HashSet<String> = imported_names.keys().cloned().collect();
-    // Also include type names
+    // Also include type names and function names
+    let mut local_functions: HashMap<String, &FunctionDecl> = HashMap::new();
     for item in &program.items {
-        if let ItemKind::TypeDecl(decl) = &item.kind {
-            declared_names.insert(decl.name.clone());
+        match &item.kind {
+            ItemKind::TypeDecl(decl) => {
+                declared_names.insert(decl.name.clone());
+            }
+            ItemKind::Function(decl) => {
+                declared_names.insert(decl.name.clone());
+                local_functions.insert(decl.name.clone(), decl);
+            }
+            _ => {}
         }
     }
+    // Also collect functions defined inside other functions (nested)
+    for item in &program.items {
+        if let ItemKind::Function(func) = &item.kind {
+            collect_nested_functions(&func.body, &mut declared_names, &mut local_functions);
+        }
+    }
+
+    // Collect ALL referenced identifiers (even declared ones) to find local function refs
+    let mut all_referenced: HashSet<String> = HashSet::new();
+    let empty_set: HashSet<String> = HashSet::new();
+    for call in &probe_calls {
+        for arg_str in &call.args {
+            collect_free_vars_from_ts(arg_str, &empty_set, &mut all_referenced);
+        }
+    }
+
+    // Emit local function declarations with proper TS signatures
+    for (name, func) in &local_functions {
+        if all_referenced.contains(name.as_str()) {
+            let params: Vec<String> = func
+                .params
+                .iter()
+                .map(|p| {
+                    let ty = p
+                        .type_ann
+                        .as_ref()
+                        .map(type_expr_to_ts)
+                        .unwrap_or_else(|| "any".to_string());
+                    format!("{}: {}", p.name, ty)
+                })
+                .collect();
+            let ret = func
+                .return_type
+                .as_ref()
+                .map(type_expr_to_ts)
+                .unwrap_or_else(|| "any".to_string());
+            let async_prefix = if func.async_fn { "async " } else { "" };
+            lines.push(format!(
+                "declare {async_prefix}function {name}({}): {ret};",
+                params.join(", ")
+            ));
+        }
+    }
+    // Collect free vars (excluding declared names) and emit as `any`
     let mut free_vars: HashSet<String> = HashSet::new();
     for call in &probe_calls {
         for arg_str in &call.args {
@@ -373,7 +430,11 @@ fn generate_probe(
         return String::new();
     }
 
-    lines.join("\n") + "\n"
+    {
+        let r = lines.join("\n") + "\n";
+        eprintln!("[probe]\n{r}");
+        r
+    }
 }
 
 /// Recursively collect all `X.field` member accesses where X is an imported name.
@@ -600,8 +661,10 @@ fn type_expr_to_ts(ty: &TypeExpr) -> String {
                     return format!("{inner} | null | undefined");
                 }
                 "Result" if type_args.len() == 2 => {
-                    // Result<T, E> doesn't have a TS equivalent; use T
-                    return type_expr_to_ts(&type_args[0]);
+                    // Result<T, E> → discriminated union matching Floe's codegen
+                    let ok = type_expr_to_ts(&type_args[0]);
+                    let err = type_expr_to_ts(&type_args[1]);
+                    return format!("{{ ok: true, value: {ok} }} | {{ ok: false, error: {err} }}");
                 }
                 other => other,
             };
@@ -869,10 +932,21 @@ fn build_specifier_map(
 
         if let ExprKind::Call { callee, .. } = &decl.value.kind {
             let callee_name = expr_to_callee_name(callee);
-            if let Some(name) = &callee_name
-                && imported_names.contains_key(name)
-            {
-                let specifier = &imported_names[name];
+            if let Some(name) = &callee_name {
+                let is_imported = imported_names.contains_key(name);
+                let root_name = name.split('.').next().unwrap_or("");
+                let is_member_of_import =
+                    name.contains('.') && imported_names.contains_key(root_name);
+
+                if !is_imported && !is_member_of_import {
+                    continue;
+                }
+
+                let specifier = if is_imported {
+                    &imported_names[name]
+                } else {
+                    &imported_names[root_name]
+                };
                 let binding_name = const_binding_name(&decl.binding);
 
                 // For array bindings, collect individual element types
@@ -983,6 +1057,23 @@ fn const_binding_name(binding: &ConstBinding) -> String {
         ConstBinding::Array(names) => names.join("_"),
         ConstBinding::Object(names) => names.join("_"),
         ConstBinding::Tuple(names) => names.join("_"),
+    }
+}
+
+/// Collect function declarations nested inside expression bodies.
+fn collect_nested_functions<'a>(
+    expr: &'a Expr,
+    declared: &mut HashSet<String>,
+    functions: &mut HashMap<String, &'a FunctionDecl>,
+) {
+    if let ExprKind::Block(items) = &expr.kind {
+        for item in items {
+            if let ItemKind::Function(decl) = &item.kind {
+                declared.insert(decl.name.clone());
+                functions.insert(decl.name.clone(), decl);
+                collect_nested_functions(&decl.body, declared, functions);
+            }
+        }
     }
 }
 

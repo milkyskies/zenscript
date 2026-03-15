@@ -88,7 +88,7 @@ impl Checker {
         // importing. Defined as Records so member access works through
         // the normal type-checking path.
 
-        let response_type = Type::Record(vec![
+        let response_record = Type::Record(vec![
             (
                 "json".to_string(),
                 Type::Function {
@@ -110,16 +110,16 @@ impl Checker {
             ("url".to_string(), Type::String),
         ]);
 
-        let error_type = Type::Record(vec![
+        let error_record = Type::Record(vec![
             ("message".to_string(), Type::String),
             ("name".to_string(), Type::String),
             ("stack".to_string(), Type::Option(Box::new(Type::String))),
         ]);
 
-        // Register Response and Error as known named types so the checker
-        // can resolve them when used in type annotations or returned by functions.
-        env.define("Response", response_type.clone());
-        env.define("Error", error_type.clone());
+        // Register as named types that display nicely and resolve to
+        // records for member access via resolve_type_to_concrete
+        env.define("Response", response_record);
+        env.define("Error", error_record);
 
         // ── Browser/runtime globals ─────────────────────────────────
 
@@ -128,7 +128,7 @@ impl Checker {
                 "fetch",
                 Type::Function {
                     params: vec![Type::String],
-                    return_type: Box::new(response_type),
+                    return_type: Box::new(Type::Named("Response".to_string())),
                 },
             ),
             ("window", Type::Unknown),
@@ -495,7 +495,7 @@ impl Checker {
             "()" => Type::Unit,
             "undefined" => Type::Undefined,
             "unknown" => Type::Unknown,
-            "Error" => Type::Named("Error".to_string()),
+            "Error" | "Response" => Type::Named(name.to_string()),
             "Result" => {
                 let ok = type_args
                     .first()
@@ -725,6 +725,7 @@ impl Checker {
 
         let final_type = if let Some(tsgo_ty) = tsgo_type {
             // tsgo gave us a fully-resolved type — use it
+
             tsgo_ty
         } else if let Some(ref declared) = declared_type {
             // Reject narrowing from `unknown` to a concrete type — this is an unsafe cast.
