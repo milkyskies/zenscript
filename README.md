@@ -1,8 +1,6 @@
 # Floe
 
-A programming language inspired by Gleam and Rust that compiles to vanilla TypeScript + React.
-
-Familiar syntax for TS/React developers, but with pipes, exhaustive pattern matching, no escape hatches, and compile-time safety that eliminates entire categories of bugs. Zero runtime dependencies - the compiler does all the work, the output is boring `.tsx`.
+A strict, functional language that compiles to TypeScript. Works with any TypeScript or React library. The compiler is written in Rust.
 
 > **Status:** Early development. The compiler is functional but the language is not yet stable.
 
@@ -20,8 +18,6 @@ Familiar syntax for TS/React developers, but with pipes, exhaustive pattern matc
 cargo build
 ```
 
-This produces the `floe` CLI binary.
-
 ### Install JS dependencies
 
 ```bash
@@ -34,104 +30,11 @@ pnpm install
 pnpm dev:todo
 ```
 
-This builds the Vite plugin, then starts the todo app with hot reload.
+## Documentation
 
-## Language Features
+Full language guide and reference: [milkyskies.github.io/floe](https://milkyskies.github.io/floe)
 
-### Pipe Operator
-
-```floe
-users
-  |> Array.filter(.active)
-  |> Array.sortBy(.name)
-  |> Array.take(10)
-
-// Placeholder for non-first position
-"hello" |> String.padStart(_, 10)
-
-// Dot shorthand for field access
-todos |> Array.filter(.done == false)
-todos |> Array.map(.text)
-
-// Pipe lambdas for more complex transforms
-todos |> Array.map(|t| Todo(..t, done: true))
-```
-
-### Exhaustive Pattern Matching
-
-```floe
-match route {
-  Home          -> <HomePage />
-  Profile(id)   -> <ProfilePage id={id} />
-  Settings(tab) -> <SettingsPage tab={tab} />
-}
-
-match fetchUser(id) {
-  Ok(user)          -> <Profile user={user} />
-  Err(NotFound)     -> <NotFoundPage />
-  Err(Network(msg)) -> <ErrorBanner msg={msg} />
-}
-```
-
-### Result and Option Types
-
-```floe
-// No null, no undefined, no throw
-fn loadProfile(id: UserId) -> Result<Profile, AppError> {
-  const user  = fetchUser(id)?
-  const posts = fetchPosts(user.id)?
-  Ok({ user, posts })
-}
-
-// Option for missing values
-const display = match user.nickname {
-  Some(nick) -> nick
-  None       -> user.name
-}
-```
-
-### Tagged Unions
-
-```floe
-type Filter =
-  | All
-  | Active
-  | Completed
-
-type Route =
-  | Home
-  | Profile(id: string)
-  | Settings(tab: string)
-  | NotFound
-
-// Construct variants with qualified syntax
-const f = Filter.All
-const r = Route.Profile(id: "123")
-
-// Match arms stay bare
-match filter {
-  All       -> todos,
-  Active    -> todos |> Array.filter(.done == false),
-  Completed -> todos |> Array.filter(.done == true),
-}
-```
-
-### What's Removed
-
-No `class`, `enum`, `any`, `null`, `undefined`, `throw`, `let`, or `as`. These are compile errors - use safer alternatives like `type` unions, `Option<T>`, `Result<T, E>`, `const`, and `match`.
-
-## CLI Usage
-
-```bash
-floe build <file.fl>           # Compile .fl files to .tsx
-floe build <file.fl> --out-dir dist  # Specify output directory
-floe check <file.fl>           # Type-check without emitting
-floe watch <dir> --out-dir dist     # Watch and recompile on change
-floe fmt <file.fl>             # Format source files
-floe fmt --check <file.fl>     # Check formatting (CI mode)
-floe init [path]               # Scaffold a new Floe project
-floe lsp                       # Start the language server
-```
+Example app: [`examples/todo-app/`](examples/todo-app/)
 
 ## Project Structure
 
@@ -189,30 +92,6 @@ pnpm lint                  # Lint all JS packages
 pnpm format                # Format all JS packages
 pnpm clean                 # Clean all node_modules and dist
 ```
-
-### Running the Docs Site
-
-```bash
-pnpm dev:docs
-```
-
-### VS Code Extension
-
-For development, use the provided script:
-
-```bash
-./scripts/dev-vscode.sh
-```
-
-## How It Works
-
-```
-.fl source → Lexer → Parser → CST → Type Checker → Codegen → .tsx output
-```
-
-The compiler is a single Rust binary that takes `.fl` files and emits `.tsx`. From there, your existing build toolchain (Vite, Next.js, etc.) picks it up like any other TypeScript file.
-
-The parser is handwritten recursive descent (no parser generators) for better error recovery and LSP integration.
 
 ## Contributing
 
