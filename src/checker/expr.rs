@@ -792,6 +792,13 @@ impl Checker {
 
             ExprKind::Spread(inner) => self.check_expr(inner),
 
+            ExprKind::Object(fields) => {
+                for (_key, value) in fields {
+                    self.check_expr(value);
+                }
+                Type::Unknown
+            }
+
             ExprKind::DotShorthand { predicate, .. } => {
                 // Check the predicate RHS expression if present
                 if let Some((_op, rhs)) = predicate {

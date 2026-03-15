@@ -347,6 +347,7 @@ impl Parser {
             name,
             type_ann,
             default,
+            destructure: None,
             span: self.merge_spans(start_span, end_span),
         })
     }
@@ -613,6 +614,7 @@ impl Parser {
                 name: "self".to_string(),
                 type_ann: Option::None,
                 default: Option::None,
+                destructure: None,
                 span: self.merge_spans(start_span, end_span),
             });
         }
@@ -670,6 +672,7 @@ impl Parser {
                 name: "self".to_string(),
                 type_ann: Option::None, // type inferred from for block
                 default: Option::None,
+                destructure: None,
                 span: self.merge_spans(start_span, end_span),
             });
         }

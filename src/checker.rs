@@ -148,11 +148,14 @@ impl Checker {
         mut self,
         program: &Program,
     ) -> (Vec<Diagnostic>, HashMap<String, String>, ExprTypeMap) {
-        // Pre-register types and functions from resolved imports
+        // Pre-register types, traits, and functions from resolved imports
         self.registering_types = true;
         for resolved in self.resolved_imports.values().cloned().collect::<Vec<_>>() {
             for decl in &resolved.type_decls {
                 self.register_type_decl(decl);
+            }
+            for decl in &resolved.trait_decls {
+                self.register_trait_decl(decl);
             }
         }
         self.registering_types = false;
@@ -875,6 +878,7 @@ impl Checker {
 
         // If this is a trait impl block, validate the trait contract
         if let Some(ref trait_name) = block.trait_name {
+            self.used_names.insert(trait_name.clone());
             let type_display = for_type.display_name();
             self.check_trait_impl(&type_display, trait_name, &block.functions, block.span);
         }

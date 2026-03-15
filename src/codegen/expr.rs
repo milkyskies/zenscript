@@ -277,6 +277,19 @@ impl Codegen {
                 self.emit_expr(inner);
             }
 
+            ExprKind::Object(fields) => {
+                self.push("{ ");
+                for (i, (key, value)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        self.push(", ");
+                    }
+                    self.push(key);
+                    self.push(": ");
+                    self.emit_expr(value);
+                }
+                self.push(" }");
+            }
+
             ExprKind::DotShorthand { field, predicate } => {
                 match predicate {
                     Some((op, rhs)) => match op {

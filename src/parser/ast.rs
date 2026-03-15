@@ -92,7 +92,19 @@ pub struct Param {
     pub name: String,
     pub type_ann: Option<TypeExpr>,
     pub default: Option<Expr>,
+    /// Destructuring pattern for this parameter: `|{ x, y }| ...`
+    /// When present, `name` is a generated identifier and this holds the field names.
+    pub destructure: Option<ParamDestructure>,
     pub span: Span,
+}
+
+/// Destructuring pattern for a function/lambda parameter.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ParamDestructure {
+    /// Object destructuring: `{ field1, field2 }`
+    Object(Vec<String>),
+    /// Array destructuring: `[a, b]`
+    Array(Vec<String>),
 }
 
 // ── Type Declarations ────────────────────────────────────────────
@@ -330,6 +342,10 @@ pub enum ExprKind {
     // -- Array --
     /// Array literal: `[1, 2, 3]`
     Array(Vec<Expr>),
+
+    /// Object literal: `{ name: "Alice", age: 30 }`
+    /// Fields are (key, value) pairs. Shorthand `{ name }` desugars to `{ name: name }`.
+    Object(Vec<(String, Expr)>),
 
     /// Tuple literal: `(1, 2)`, `("key", 42, true)`
     Tuple(Vec<Expr>),

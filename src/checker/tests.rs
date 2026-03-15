@@ -1829,3 +1829,86 @@ for User: Printable {
     );
     assert!(has_error_containing(&diags, "prettyPrint"));
 }
+
+// ── Bug: Cross-file trait resolution ────────────────────────
+// Traits imported from another file should be recognized by the checker
+
+#[test]
+fn cross_file_trait_resolution() {
+    use crate::lexer::span::Span;
+    use crate::parser::ast::*;
+    use crate::resolve::ResolvedImports;
+    use std::collections::HashMap;
+
+    let dummy_span = Span::new(0, 0, 0, 0);
+
+    // Simulate a resolved import that exports a trait `Display`
+    let mut imports = HashMap::new();
+    let mut resolved = ResolvedImports::default();
+    resolved.trait_decls.push(TraitDecl {
+        exported: true,
+        name: "Display".to_string(),
+        methods: vec![TraitMethod {
+            name: "display".to_string(),
+            params: vec![Param {
+                name: "self".to_string(),
+                type_ann: None,
+                default: None,
+                destructure: None,
+                span: dummy_span,
+            }],
+            return_type: Some(TypeExpr {
+                kind: TypeExprKind::Named {
+                    name: "string".to_string(),
+                    type_args: vec![],
+                    bounds: vec![],
+                },
+                span: dummy_span,
+            }),
+            body: None,
+            span: dummy_span,
+        }],
+        span: dummy_span,
+    });
+    // Also need to export the type
+    resolved.type_decls.push(TypeDecl {
+        exported: true,
+        opaque: false,
+        name: "User".to_string(),
+        type_params: vec![],
+        def: TypeDef::Record(vec![RecordField {
+            name: "name".to_string(),
+            type_ann: TypeExpr {
+                kind: TypeExprKind::Named {
+                    name: "string".to_string(),
+                    type_args: vec![],
+                    bounds: vec![],
+                },
+                span: dummy_span,
+            },
+            default: None,
+            span: dummy_span,
+        }]),
+    });
+    imports.insert("./types".to_string(), resolved);
+
+    let source = r#"
+import { User, Display } from "./types"
+
+for User: Display {
+    fn display(self) -> string {
+        self.name
+    }
+}
+"#;
+
+    let program = Parser::new(source)
+        .parse_program()
+        .expect("parse should succeed");
+    let diags = Checker::with_imports(imports).check(&program);
+    assert!(
+        !has_error_containing(&diags, "unknown trait"),
+        "imported trait Display should be recognized, but got errors: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}

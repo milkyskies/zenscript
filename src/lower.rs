@@ -287,6 +287,7 @@ impl<'src> Lowerer<'src> {
             name,
             type_ann,
             default,
+            destructure: None,
             span,
         })
     }
@@ -483,6 +484,7 @@ impl<'src> Lowerer<'src> {
                 name: "self".to_string(),
                 type_ann: None,
                 default: None,
+                destructure: None,
                 span,
             });
         }
