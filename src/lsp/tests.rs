@@ -831,6 +831,24 @@ fn import_path_at_offset_single_quotes() {
 }
 
 #[test]
+fn symbol_index_for_block_function_detail() {
+    let source = r#"
+type Todo = { text: string, done: boolean }
+for Array<Todo> {
+    export fn remaining(self) -> number { 0 }
+}
+"#;
+    let program = Parser::new(source).parse_program().unwrap();
+    let index = SymbolIndex::build(&program);
+    let syms = index.find_by_name("remaining");
+    assert!(!syms.is_empty());
+    assert_eq!(
+        syms[0].detail, "fn remaining(self: Array<Todo>) -> number",
+        "for-block function should show clean signature, not wrapped in for {{ }}"
+    );
+}
+
+#[test]
 fn import_path_at_offset_bare_import() {
     // `import "../todo"` has no `from` keyword
     let source = r#"import "../todo""#;

@@ -221,7 +221,7 @@ impl SymbolIndex {
                         let ret = func
                             .return_type
                             .as_ref()
-                            .map(|t| format!(": {}", type_expr_to_string(t)))
+                            .map(|t| format!(" -> {}", type_expr_to_string(t)))
                             .unwrap_or_default();
 
                         // First param type is the for block's type (for self params)
@@ -243,12 +243,7 @@ impl SymbolIndex {
                             start: block.span.start,
                             end: block.span.end,
                             import_source: None,
-                            detail: format!(
-                                "for {type_str} {{ fn {}({}){}  }}",
-                                func.name,
-                                params.join(", "),
-                                ret
-                            ),
+                            detail: format!("fn {}({}){ret}", func.name, params.join(", "),),
                             first_param_type,
                             return_type_str,
                         });
