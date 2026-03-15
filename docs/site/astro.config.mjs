@@ -1,5 +1,6 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import starlightLlmsTxt from "starlight-llms-txt";
 
 export default defineConfig({
   site: "https://milkyskies.github.io",
@@ -19,6 +20,7 @@ export default defineConfig({
       favicon: "/logo.svg",
       description:
         "A strict, functional language that compiles to TypeScript. Use any TypeScript or React library as-is.",
+      plugins: [starlightLlmsTxt()],
       social: [
         {
           icon: "github",
@@ -38,6 +40,7 @@ export default defineConfig({
             { label: "Pipes", slug: "guide/pipes" },
             { label: "Pattern Matching", slug: "guide/pattern-matching" },
             { label: "Error Handling", slug: "guide/error-handling" },
+            { label: "TypeScript Interop", slug: "guide/typescript-interop" },
             { label: "For Blocks", slug: "guide/for-blocks" },
             { label: "Traits", slug: "guide/traits" },
             { label: "JSX", slug: "guide/jsx" },
