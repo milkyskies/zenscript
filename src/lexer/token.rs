@@ -43,8 +43,6 @@ pub enum TokenKind {
     Opaque,
     Async,
     Await,
-    If,
-    Else,
     /// `for` — for block keyword (grouping functions under a type)
     For,
     /// `self` — explicit receiver parameter in for blocks
@@ -179,6 +177,8 @@ pub enum BannedKeyword {
     Enum,
     Void,
     Function,
+    If,
+    Else,
 }
 
 impl BannedKeyword {
@@ -196,6 +196,8 @@ impl BannedKeyword {
             Self::Enum => "Use `type` with `|` variants instead of enum",
             Self::Void => "Use the unit type `()` instead of `void`",
             Self::Function => "Use `fn` instead of `function`",
+            Self::If => "Use `match` instead of `if`",
+            Self::Else => "Use `match` instead of `else`",
         }
     }
 
@@ -212,6 +214,8 @@ impl BannedKeyword {
             Self::Enum => "enum",
             Self::Void => "void",
             Self::Function => "function",
+            Self::If => "if",
+            Self::Else => "else",
         }
     }
 }
@@ -231,8 +235,6 @@ pub fn lookup_keyword(word: &str) -> Option<TokenKind> {
         "opaque" => Some(TokenKind::Opaque),
         "async" => Some(TokenKind::Async),
         "await" => Some(TokenKind::Await),
-        "if" => Some(TokenKind::If),
-        "else" => Some(TokenKind::Else),
         "for" => Some(TokenKind::For),
         "self" => Some(TokenKind::SelfKw),
         "try" => Some(TokenKind::Try),
@@ -256,6 +258,8 @@ pub fn lookup_keyword(word: &str) -> Option<TokenKind> {
         "enum" => Some(TokenKind::Banned(BannedKeyword::Enum)),
         "void" => Some(TokenKind::Banned(BannedKeyword::Void)),
         "function" => Some(TokenKind::Banned(BannedKeyword::Function)),
+        "if" => Some(TokenKind::Banned(BannedKeyword::If)),
+        "else" => Some(TokenKind::Banned(BannedKeyword::Else)),
 
         _ => Option::None,
     }

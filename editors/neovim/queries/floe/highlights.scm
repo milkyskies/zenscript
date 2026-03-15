@@ -3,8 +3,6 @@
 "const" @keyword
 "type" @keyword
 "match" @keyword
-"if" @keyword
-"else" @keyword
 "return" @keyword
 "import" @keyword
 "from" @keyword

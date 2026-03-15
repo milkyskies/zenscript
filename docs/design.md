@@ -99,6 +99,7 @@ All four of TypeScript's `?` uses (`?.`, `??`, `?:`, `? :`) are removed. `?` now
 | `void` | Not a real type, can't use in generics | Unit type `()` — a real value |
 | `=>` | Two syntaxes for functions is one too many | `\|x\| expr` for anonymous functions |
 | `function` | Verbose keyword | `fn` |
+| `if`/`else` | Redundant control flow | `match` expression |
 
 ---
 

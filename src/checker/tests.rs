@@ -1191,33 +1191,22 @@ const _y = match x {
     );
 }
 
-// ── 5. If-else branch consistency ──────────────────────────
+// ── 5. If/else is banned (parse-level) ────────────────────
 
 #[test]
-fn if_else_incompatible_types_errors() {
-    let diags = check(
-        r#"
-const _x = if true { 1 } else { "hi" }
-"#,
-    );
+fn if_else_is_banned() {
+    let result = Parser::new("const _x = if true { 1 } else { 2 }").parse_program();
     assert!(
-        has_error_containing(&diags, "incompatible types"),
-        "should error on incompatible if-else branches, got: {:?}",
-        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+        result.is_err(),
+        "if/else should be banned at the parse level"
     );
-}
-
-#[test]
-fn if_else_compatible_ok() {
-    let diags = check(
-        r#"
-const _x = if true { 1 } else { 2 }
-"#,
-    );
+    let errors = result.unwrap_err();
     assert!(
-        !has_error_containing(&diags, "incompatible types"),
-        "compatible if-else branches should not error, got: {:?}",
-        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+        errors
+            .iter()
+            .any(|e| e.message.contains("banned keyword")),
+        "expected banned keyword error for `if`, got: {:?}",
+        errors.iter().map(|e| &e.message).collect::<Vec<_>>()
     );
 }
 

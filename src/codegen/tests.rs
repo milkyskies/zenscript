@@ -347,16 +347,6 @@ fn equality_becomes_structural() {
     assert!(result.contains("!__zenEq(a, b)"));
 }
 
-// ── If/Else -> ternary ────────────────────────────────────────
-
-#[test]
-fn if_else() {
-    assert_eq!(
-        emit("if x { 1 } else { 2 }"),
-        "x ? {\n  1;\n} : {\n  2;\n};"
-    );
-}
-
 // ── Await ────────────────────────────────────────────────────
 
 #[test]
