@@ -229,32 +229,6 @@ const f = .done == true
         (boolean)))))
 
 ===
-If expression
-===
-
-if x {
-    1
-} else {
-    2
-}
-
----
-
-(source_file
-  (expression_statement
-    (if_expression
-      condition: (primary_expression
-        (identifier))
-      consequence: (block
-        (expression_statement
-          (primary_expression
-            (number))))
-      alternative: (block
-        (expression_statement
-          (primary_expression
-            (number)))))))
-
-===
 Binary expression
 ===
 

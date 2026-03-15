@@ -448,9 +448,6 @@ impl Parser {
                 })
             }
 
-            // If expression
-            TokenKind::If => self.parse_if_expr(),
-
             // Block expression: `{ ... }`
             TokenKind::LeftBrace => self.parse_block_expr(),
 

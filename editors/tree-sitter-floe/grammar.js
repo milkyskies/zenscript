@@ -222,7 +222,6 @@ module.exports = grammar({
         $.pipe_expression,
         $.unwrap_expression,
         $.match_expression,
-        $.if_expression,
         $.call_expression,
         $.member_expression,
         $.index_expression,
@@ -395,16 +394,6 @@ module.exports = grammar({
 
     range_pattern: ($) =>
       seq(field("start", $.number), "..", field("end", $.number)),
-
-    // ── If ──────────────────────────────────────────────────
-
-    if_expression: ($) =>
-      seq(
-        "if",
-        field("condition", $._expression),
-        field("consequence", $.block),
-        optional(seq("else", field("alternative", choice($.block, $.if_expression)))),
-      ),
 
     // ── Calls ───────────────────────────────────────────────
 

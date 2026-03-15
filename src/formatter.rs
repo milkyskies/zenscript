@@ -68,7 +68,6 @@ impl<'src> Formatter<'src> {
             SyntaxKind::BLOCK_EXPR => self.fmt_block(node),
             SyntaxKind::PIPE_EXPR => self.fmt_pipe(node),
             SyntaxKind::MATCH_EXPR => self.fmt_match(node),
-            SyntaxKind::IF_EXPR => self.fmt_if(node),
             SyntaxKind::BINARY_EXPR => self.fmt_binary(node),
             SyntaxKind::UNARY_EXPR | SyntaxKind::AWAIT_EXPR => self.fmt_unary(node),
             SyntaxKind::CALL_EXPR => self.fmt_call(node),
