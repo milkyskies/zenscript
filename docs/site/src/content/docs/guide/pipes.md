@@ -2,7 +2,7 @@
 title: Pipes
 ---
 
-The pipe operator `|>` is Floe's signature feature. It lets you chain transformations left-to-right, making data flow readable.
+The pipe operator `|>` chains transformations left-to-right, making data flow readable.
 
 ## Basic Pipes
 
@@ -56,7 +56,7 @@ todos |> Array.map(.text)
 users |> Array.sortBy(.name)
 ```
 
-`.field` creates an implicit lambda — `.done == false` is shorthand for `|t| t.done == false`.
+`.field` creates an implicit lambda. `.done == false` is shorthand for `|t| t.done == false`.
 
 For anything more complex, use `|x|`:
 
