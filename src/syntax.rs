@@ -45,6 +45,7 @@ pub enum SyntaxKind {
     KW_NONE,
 
     // Built-in expressions
+    KW_PARSE,
     KW_TODO,
     KW_UNREACHABLE,
 
@@ -153,6 +154,7 @@ pub enum SyntaxKind {
     OK_EXPR,
     ERR_EXPR,
     SOME_EXPR,
+    PARSE_EXPR,
     TODO_EXPR,
     UNREACHABLE_EXPR,
 
@@ -238,6 +240,7 @@ pub fn token_kind_to_syntax(kind: &TokenKind) -> SyntaxKind {
         TokenKind::Err => SyntaxKind::KW_ERR,
         TokenKind::Some => SyntaxKind::KW_SOME,
         TokenKind::None => SyntaxKind::KW_NONE,
+        TokenKind::Parse => SyntaxKind::KW_PARSE,
         TokenKind::Todo => SyntaxKind::KW_TODO,
         TokenKind::Unreachable => SyntaxKind::KW_UNREACHABLE,
         TokenKind::Pipe => SyntaxKind::PIPE,

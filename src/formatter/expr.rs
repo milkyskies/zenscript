@@ -669,6 +669,25 @@ impl Formatter<'_> {
         self.write("]");
     }
 
+    pub(crate) fn fmt_parse_expr(&mut self, node: &SyntaxNode) {
+        self.write("parse<");
+        // Find and format the TYPE_EXPR child
+        for child in node.children() {
+            if child.kind() == SyntaxKind::TYPE_EXPR {
+                self.fmt_node(&child);
+                break;
+            }
+        }
+        self.write(">");
+        // Check if there's a value expression (non-TYPE_EXPR child)
+        let value_child = node.children().find(|c| c.kind() != SyntaxKind::TYPE_EXPR);
+        if let Some(value) = value_child {
+            self.write("(");
+            self.fmt_node(&value);
+            self.write(")");
+        }
+    }
+
     pub(crate) fn fmt_wrapper_expr(&mut self, node: &SyntaxNode) {
         let keyword = match node.kind() {
             SyntaxKind::OK_EXPR => "Ok",

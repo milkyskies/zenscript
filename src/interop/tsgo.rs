@@ -604,6 +604,9 @@ fn collect_member_accesses_expr(
         | ExprKind::Spread(inner) => {
             collect_member_accesses_expr(inner, imported_names, accesses);
         }
+        ExprKind::Parse { value, .. } => {
+            collect_member_accesses_expr(value, imported_names, accesses);
+        }
         ExprKind::TemplateLiteral(parts) => {
             for part in parts {
                 if let TemplatePart::Expr(e) = part {

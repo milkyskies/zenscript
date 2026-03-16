@@ -67,6 +67,8 @@ pub enum TokenKind {
     None,
 
     // Built-in expressions
+    /// `parse` — compiler built-in for runtime type validation
+    Parse,
     /// `todo` — placeholder that panics at runtime, type `never`
     Todo,
     /// `unreachable` — asserts unreachable code path, type `never`
@@ -275,6 +277,7 @@ pub fn lookup_keyword(word: &str) -> Option<TokenKind> {
         "None" => Some(TokenKind::None),
 
         // Built-in expressions
+        "parse" => Some(TokenKind::Parse),
         "todo" => Some(TokenKind::Todo),
         "unreachable" => Some(TokenKind::Unreachable),
 

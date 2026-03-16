@@ -289,6 +289,39 @@ fn some_constructor() {
     assert!(matches!(expr, ExprKind::Some(_)));
 }
 
+// ── Parse Built-in ───────────────────────────────────────────
+
+#[test]
+fn parse_with_value() {
+    let expr = first_expr("parse<string>(x)");
+    assert!(matches!(expr, ExprKind::Parse { .. }));
+}
+
+#[test]
+fn parse_without_parens() {
+    // In pipe context: `json |> parse<User>`
+    let expr = first_expr("parse<User>");
+    match expr {
+        ExprKind::Parse { type_arg, value } => {
+            assert!(matches!(value.kind, ExprKind::Placeholder));
+            assert!(matches!(type_arg.kind, TypeExprKind::Named { .. }));
+        }
+        other => panic!("expected Parse, got {other:?}"),
+    }
+}
+
+#[test]
+fn parse_record_type() {
+    let expr = first_expr("parse<{ name: string, age: number }>(data)");
+    assert!(matches!(expr, ExprKind::Parse { .. }));
+}
+
+#[test]
+fn parse_array_type() {
+    let expr = first_expr("parse<Array<number>>(items)");
+    assert!(matches!(expr, ExprKind::Parse { .. }));
+}
+
 // ── Pipe Lambdas ─────────────────────────────────────────────
 
 #[test]

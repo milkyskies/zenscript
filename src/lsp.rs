@@ -144,6 +144,11 @@ const BUILTINS: &[(&str, &str, &str)] = &[
     ("Err", "Err(${0:error})", "Err(error: E) -> Result<T, E>"),
     ("Some", "Some(${0:value})", "Some(value: T) -> Option<T>"),
     ("None", "None", "None -> Option<T>"),
+    (
+        "parse",
+        "parse<${1:Type}>(${0:value})",
+        "parse<T>(value) -> Result<T, Error>",
+    ),
     ("true", "true", "bool literal"),
     ("false", "false", "bool literal"),
 ];

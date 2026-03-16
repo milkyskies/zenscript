@@ -677,6 +677,19 @@ impl Checker {
                 }
             }
 
+            ExprKind::Parse { type_arg, value } => {
+                // parse<T>(value) returns Result<T, Error>
+                let t = self.resolve_type(type_arg);
+                // Check the value expression (should be unknown/any at runtime)
+                if !matches!(value.kind, ExprKind::Placeholder) {
+                    self.check_expr(value);
+                }
+                Type::Result {
+                    ok: Box::new(t),
+                    err: Box::new(Type::Named(type_names::ERROR.to_string())),
+                }
+            }
+
             ExprKind::Ok(inner) => {
                 let inner_ty = self.check_expr(inner);
                 // Infer error type from enclosing function's return type if available

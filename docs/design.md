@@ -1042,6 +1042,66 @@ These are enforced at compile time with clear error messages.
 
 ---
 
+## `parse<T>` - Compiler Built-in for Runtime Type Validation
+
+`parse<T>` is a compiler built-in that generates runtime type validators directly from Floe type definitions. No runtime library (e.g., Zod) is needed - the compiler inlines the validation code.
+
+### Syntax
+
+```floe
+// Direct call
+const user = parse<User>(json)
+
+// Pipe usage (most common)
+const user = json |> parse<User>?
+
+// With array types
+const items = data |> parse<Array<Product>>?
+
+// With inline record types
+const point = raw |> parse<{ x: number, y: number }>?
+```
+
+### Return Type
+
+`parse<T>(value)` always returns `Result<T, Error>`. Use `?` to unwrap.
+
+### Codegen
+
+For `parse<{ name: string, age: number }>(json)`, the compiler emits:
+
+```typescript
+(() => {
+  const __v = json;
+  if (typeof __v !== "object" || __v === null) return { ok: false as const, error: new Error("expected object, got " + typeof __v) };
+  if (typeof (__v as any).name !== "string") return { ok: false as const, error: new Error("field 'name': expected string, got " + typeof (__v as any).name) };
+  if (typeof (__v as any).age !== "number") return { ok: false as const, error: new Error("field 'age': expected number, got " + typeof (__v as any).age) };
+  return { ok: true as const, value: __v as { name: string; age: number } };
+})()
+```
+
+### Supported Types
+
+| Type | Validation emitted |
+|---|---|
+| `string` | `typeof x === "string"` |
+| `number` | `typeof x === "number"` |
+| `boolean` | `typeof x === "boolean"` |
+| Record types | `typeof x === "object"` + recursive field checks |
+| `Array<T>` | `Array.isArray(x)` + element validation loop |
+| `Option<T>` | Allow `undefined` or validate inner type |
+| Named types | `typeof x === "object"` (structural check) |
+
+### AST Node
+
+```
+ExprKind::Parse { type_arg: TypeExpr, value: Box<Expr> }
+```
+
+In pipe context (`json |> parse<T>`), value is a `Placeholder` that gets substituted with the piped expression.
+
+---
+
 ## Compiler Architecture (Rust)
 
 ### Crate Structure

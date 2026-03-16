@@ -1264,6 +1264,11 @@ impl Parser {
                 self.advance();
                 Ok(name)
             }
+            // Allow `parse` as a field name (e.g. Number.parse)
+            TokenKind::Parse => {
+                self.advance();
+                Ok("parse".to_string())
+            }
             _ => Err(self.error(&format!(
                 "expected identifier, found {:?}",
                 self.current_kind()

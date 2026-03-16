@@ -28,6 +28,7 @@ impl TokenKind {
             TokenKind::Err => Some("Err"),
             TokenKind::Some => Some("Some"),
             TokenKind::None => Some("None"),
+            TokenKind::Parse => Some("parse"),
             TokenKind::Todo => Some("todo"),
             TokenKind::Unreachable => Some("unreachable"),
             TokenKind::Assert => Some("assert"),

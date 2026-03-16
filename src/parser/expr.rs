@@ -493,6 +493,41 @@ impl Parser {
                 })
             }
 
+            // parse<T>(value) or parse<T> (in pipe context, value is implicit)
+            TokenKind::Parse => {
+                self.advance(); // consume `parse`
+                self.expect(&TokenKind::LessThan)?;
+                let type_arg = self.parse_type_expr()?;
+                self.expect(&TokenKind::GreaterThan)?;
+                if self.check(&TokenKind::LeftParen) {
+                    self.advance();
+                    let value = self.parse_expr()?;
+                    self.expect(&TokenKind::RightParen)?;
+                    let end_span = self.previous_span();
+                    Ok(Expr {
+                        kind: ExprKind::Parse {
+                            type_arg,
+                            value: Box::new(value),
+                        },
+                        span: self.merge_spans(start_span, end_span),
+                    })
+                } else {
+                    // No parens — used in pipe context: `json |> parse<T>`
+                    // Value will be provided by pipe desugaring. Use placeholder.
+                    let end_span = self.previous_span();
+                    Ok(Expr {
+                        kind: ExprKind::Parse {
+                            type_arg,
+                            value: Box::new(Expr {
+                                kind: ExprKind::Placeholder,
+                                span: end_span,
+                            }),
+                        },
+                        span: self.merge_spans(start_span, end_span),
+                    })
+                }
+            }
+
             // Collect block: `collect { ... }`
             TokenKind::Collect => {
                 self.advance();

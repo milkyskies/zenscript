@@ -388,6 +388,11 @@ pub enum ExprKind {
     Some(Box<Expr>),
     /// `None`
     None,
+    /// `parse<T>(value)` — compiler built-in for runtime type validation
+    Parse {
+        type_arg: TypeExpr,
+        value: Box<Expr>,
+    },
     /// `todo` — placeholder that panics at runtime, type `never`
     Todo,
     /// `unreachable` — asserts unreachable code path, type `never`

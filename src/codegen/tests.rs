@@ -1260,3 +1260,91 @@ type User = {
         "should format all fields, got: {result}"
     );
 }
+
+// ── Parse<T> Built-in ────────────────────────────────────────
+
+#[test]
+fn parse_string_type() {
+    let result = emit("parse<string>(x)");
+    assert!(
+        result.contains("typeof __v !== \"string\""),
+        "should check typeof for string, got: {result}"
+    );
+    assert!(
+        result.contains("ok: true as const"),
+        "should return ok on success, got: {result}"
+    );
+    assert!(
+        result.contains("ok: false as const"),
+        "should return error on failure, got: {result}"
+    );
+}
+
+#[test]
+fn parse_number_type() {
+    let result = emit("parse<number>(x)");
+    assert!(
+        result.contains("typeof __v !== \"number\""),
+        "should check typeof for number, got: {result}"
+    );
+}
+
+#[test]
+fn parse_boolean_type() {
+    let result = emit("parse<boolean>(x)");
+    assert!(
+        result.contains("typeof __v !== \"boolean\""),
+        "should check typeof for boolean, got: {result}"
+    );
+}
+
+#[test]
+fn parse_record_type_codegen() {
+    let result = emit("parse<{ name: string, age: number }>(data)");
+    assert!(
+        result.contains("typeof __v !== \"object\""),
+        "should check for object, got: {result}"
+    );
+    assert!(
+        result.contains("(__v as any).name"),
+        "should check field 'name', got: {result}"
+    );
+    assert!(
+        result.contains("(__v as any).age"),
+        "should check field 'age', got: {result}"
+    );
+    assert!(
+        result.contains("\"string\""),
+        "should validate string field, got: {result}"
+    );
+    assert!(
+        result.contains("\"number\""),
+        "should validate number field, got: {result}"
+    );
+}
+
+#[test]
+fn parse_array_type_codegen() {
+    let result = emit("parse<Array<number>>(items)");
+    assert!(
+        result.contains("Array.isArray"),
+        "should check Array.isArray, got: {result}"
+    );
+    assert!(
+        result.contains("typeof"),
+        "should validate element types, got: {result}"
+    );
+}
+
+#[test]
+fn parse_in_pipe() {
+    let result = emit("x |> parse<string>");
+    assert!(
+        result.contains("const __v = x"),
+        "should use piped value, got: {result}"
+    );
+    assert!(
+        result.contains("typeof __v !== \"string\""),
+        "should validate type, got: {result}"
+    );
+}

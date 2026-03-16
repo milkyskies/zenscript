@@ -239,6 +239,11 @@ impl Codegen {
                 self.push(&format!(" }}; }} catch (_e) {{ return {{ {OK_FIELD}: false as const, {ERROR_FIELD}: _e instanceof Error ? _e : new Error(String(_e)) }}; }} }})()"));
             }
 
+            // parse<T>(value) → validation IIFE
+            ExprKind::Parse { type_arg, value } => {
+                self.emit_parse(type_arg, value);
+            }
+
             // Ok(value) → { ok: true, value: value }
             ExprKind::Ok(inner) => {
                 self.push(&format!("{{ {OK_FIELD}: true as const, {VALUE_FIELD}: "));
@@ -577,6 +582,17 @@ impl Codegen {
                 }
                 self.push(")");
             }
+            // `a |> parse<T>` — substitute piped value into parse
+            ExprKind::Parse { type_arg, value } if matches!(value.kind, ExprKind::Placeholder) => {
+                let substituted = Expr {
+                    kind: ExprKind::Parse {
+                        type_arg: type_arg.clone(),
+                        value: Box::new(left.clone()),
+                    },
+                    span: right.span,
+                };
+                self.emit_expr(&substituted);
+            }
             // `a |> f` → `f(a)` — bare function (also check stdlib)
             ExprKind::Identifier(name) => {
                 if let Some(output) = self.try_emit_bare_stdlib_pipe(left, right, &[]) {
@@ -677,6 +693,146 @@ impl Codegen {
                 }
             }
         }
+    }
+
+    // ── Parse<T> Validation Codegen ─────────────────────────────
+
+    fn emit_parse(&mut self, type_arg: &TypeExpr, value: &Expr) {
+        // Generate: (() => { const __v = <value>; <checks>; return { ok: true, value: __v as T }; })()
+        self.push("(() => { const __v = ");
+        self.emit_expr(value);
+        self.push("; ");
+        self.emit_parse_checks("__v", type_arg, "");
+        self.push(&format!(
+            "return {{ {OK_FIELD}: true as const, {VALUE_FIELD}: __v as "
+        ));
+        self.emit_type_expr(type_arg);
+        self.push(" }; })()");
+    }
+
+    /// Emit validation checks for a given accessor path against a type expression.
+    /// `accessor` is the JS expression to check (e.g., "__v", "(__v as any).name").
+    /// `path` is a human-readable path for error messages (e.g., "", "field 'name'").
+    fn emit_parse_checks(&mut self, accessor: &str, type_expr: &TypeExpr, path: &str) {
+        match &type_expr.kind {
+            TypeExprKind::Named {
+                name, type_args, ..
+            } => {
+                match name.as_str() {
+                    "string" => {
+                        self.emit_typeof_check(accessor, "string", path);
+                    }
+                    "number" => {
+                        self.emit_typeof_check(accessor, "number", path);
+                    }
+                    "boolean" => {
+                        self.emit_typeof_check(accessor, "boolean", path);
+                    }
+                    "Array" => {
+                        // Array.isArray check + element validation
+                        let err_prefix = if path.is_empty() {
+                            String::new()
+                        } else {
+                            format!("{path}: ")
+                        };
+                        self.push(&format!(
+                            "if (!Array.isArray({accessor})) return {{ {OK_FIELD}: false as const, {ERROR_FIELD}: new Error(\"{err_prefix}expected array, got \" + typeof {accessor}) }}; "
+                        ));
+                        if let Some(elem_type) = type_args.first() {
+                            let idx_var = format!("__i{}", accessor.len());
+                            let elem_accessor = format!("{accessor}[{idx_var}]");
+                            let elem_path = if path.is_empty() {
+                                format!("element [\" + {idx_var} + \"]")
+                            } else {
+                                format!("{path} element [\" + {idx_var} + \"]")
+                            };
+                            self.push(&format!(
+                                "for (let {idx_var} = 0; {idx_var} < {accessor}.length; {idx_var}++) {{ "
+                            ));
+                            self.emit_parse_checks(&elem_accessor, elem_type, &elem_path);
+                            self.push("} ");
+                        }
+                    }
+                    "Option" => {
+                        // Allow undefined or validate inner type
+                        if let Some(inner_type) = type_args.first() {
+                            self.push(&format!("if ({accessor} !== undefined) {{ "));
+                            self.emit_parse_checks(accessor, inner_type, path);
+                            self.push("} ");
+                        }
+                    }
+                    _ => {
+                        // Named type — look up in expr_types to find if it's a known record.
+                        // For now, just check it's an object (non-null).
+                        let err_prefix = if path.is_empty() {
+                            String::new()
+                        } else {
+                            format!("{path}: ")
+                        };
+                        self.push(&format!(
+                            "if (typeof {accessor} !== \"object\" || {accessor} === null) return {{ {OK_FIELD}: false as const, {ERROR_FIELD}: new Error(\"{err_prefix}expected object, got \" + typeof {accessor}) }}; "
+                        ));
+                    }
+                }
+            }
+            TypeExprKind::Record(fields) => {
+                // Check it's an object
+                let err_prefix = if path.is_empty() {
+                    String::new()
+                } else {
+                    format!("{path}: ")
+                };
+                self.push(&format!(
+                    "if (typeof {accessor} !== \"object\" || {accessor} === null) return {{ {OK_FIELD}: false as const, {ERROR_FIELD}: new Error(\"{err_prefix}expected object, got \" + typeof {accessor}) }}; "
+                ));
+                // Check each field
+                for field in fields {
+                    let field_accessor = format!("({accessor} as any).{}", field.name);
+                    let field_path = if path.is_empty() {
+                        format!("field '{}'", field.name)
+                    } else {
+                        format!("{path}.{}", field.name)
+                    };
+                    self.emit_parse_checks(&field_accessor, &field.type_ann, &field_path);
+                }
+            }
+            TypeExprKind::Array(inner) => {
+                let err_prefix = if path.is_empty() {
+                    String::new()
+                } else {
+                    format!("{path}: ")
+                };
+                self.push(&format!(
+                    "if (!Array.isArray({accessor})) return {{ {OK_FIELD}: false as const, {ERROR_FIELD}: new Error(\"{err_prefix}expected array, got \" + typeof {accessor}) }}; "
+                ));
+                let idx_var = format!("__i{}", accessor.len());
+                let elem_accessor = format!("{accessor}[{idx_var}]");
+                let elem_path = if path.is_empty() {
+                    format!("element [\" + {idx_var} + \"]")
+                } else {
+                    format!("{path} element [\" + {idx_var} + \"]")
+                };
+                self.push(&format!(
+                    "for (let {idx_var} = 0; {idx_var} < {accessor}.length; {idx_var}++) {{ "
+                ));
+                self.emit_parse_checks(&elem_accessor, inner, &elem_path);
+                self.push("} ");
+            }
+            TypeExprKind::Function { .. } | TypeExprKind::Tuple(_) => {
+                // Can't validate functions or tuples at runtime — skip
+            }
+        }
+    }
+
+    fn emit_typeof_check(&mut self, accessor: &str, expected: &str, path: &str) {
+        let err_prefix = if path.is_empty() {
+            String::new()
+        } else {
+            format!("{path}: ")
+        };
+        self.push(&format!(
+            "if (typeof {accessor} !== \"{expected}\") return {{ {OK_FIELD}: false as const, {ERROR_FIELD}: new Error(\"{err_prefix}expected {expected}, got \" + typeof {accessor}) }}; "
+        ));
     }
 
     // ── Arguments (labels erased) ────────────────────────────────

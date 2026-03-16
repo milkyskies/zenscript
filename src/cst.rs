@@ -977,6 +977,28 @@ impl<'src> CstParser<'src> {
                 self.builder.finish_node();
             }
 
+            Some(TokenKind::Parse) => {
+                self.builder.start_node(SyntaxKind::PARSE_EXPR.into());
+                self.bump(); // parse
+                self.eat_trivia();
+                // parse<T> — type argument
+                self.expect(TokenKind::LessThan);
+                self.eat_trivia();
+                self.parse_type_expr();
+                self.eat_trivia();
+                self.expect(TokenKind::GreaterThan);
+                self.eat_trivia();
+                // Optional (value) — may be absent in pipe context
+                if self.current_kind() == Some(TokenKind::LeftParen) {
+                    self.bump();
+                    self.eat_trivia();
+                    self.parse_expr();
+                    self.eat_trivia();
+                    self.expect(TokenKind::RightParen);
+                }
+                self.builder.finish_node();
+            }
+
             Some(TokenKind::Match) => self.parse_match_expr(),
             Some(TokenKind::Collect) => {
                 self.builder.start_node(SyntaxKind::COLLECT_EXPR.into());
@@ -1626,7 +1648,10 @@ impl<'src> CstParser<'src> {
     }
 
     fn is_ident(&self) -> bool {
-        matches!(self.current_kind(), Some(TokenKind::Identifier(_)))
+        matches!(
+            self.current_kind(),
+            Some(TokenKind::Identifier(_) | TokenKind::Parse)
+        )
     }
 
     fn at_end(&self) -> bool {

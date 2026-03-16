@@ -183,8 +183,11 @@ None          // Option absent
 ### Builtins
 
 ```floe
-todo          // placeholder, type never, emits warning
-unreachable   // assert unreachable, type never
+todo                              // placeholder, type never, emits warning
+unreachable                       // assert unreachable, type never
+parse<T>(value)                   // runtime type validation, returns Result<T, Error>
+json |> parse<User>?              // pipe form (most common)
+data |> parse<Array<Product>>?    // validates arrays
 ```
 
 ### Qualified Variants

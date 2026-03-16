@@ -345,6 +345,31 @@ impl<'src> Lowerer<'src> {
                 })
             }
 
+            SyntaxKind::PARSE_EXPR => {
+                // parse<T>(value) or parse<T> (pipe context, placeholder)
+                let type_arg = node
+                    .children()
+                    .find(|c| c.kind() == SyntaxKind::TYPE_EXPR)
+                    .and_then(|c| self.lower_type_expr(&c))?;
+
+                let value = self
+                    .lower_child_exprs(node)
+                    .into_iter()
+                    .next()
+                    .unwrap_or(Expr {
+                        span,
+                        kind: ExprKind::Placeholder,
+                    });
+
+                Some(Expr {
+                    span,
+                    kind: ExprKind::Parse {
+                        type_arg,
+                        value: Box::new(value),
+                    },
+                })
+            }
+
             SyntaxKind::OK_EXPR => {
                 let inner = self.lower_first_expr_in(node)?;
                 Some(Expr {
