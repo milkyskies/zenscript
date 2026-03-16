@@ -131,12 +131,21 @@ pub struct TypeDecl {
 /// The right-hand side of a type declaration.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeDef {
-    /// Record type: `{ field: Type, ... }`
-    Record(Vec<RecordField>),
+    /// Record type: `{ field: Type, ...OtherType, ... }`
+    Record(Vec<RecordEntry>),
     /// Union type: `| Variant1 | Variant2(field: Type)`
     Union(Vec<Variant>),
     /// Type alias: `type X = SomeOtherType`
     Alias(TypeExpr),
+}
+
+/// An entry inside a record type definition — either a regular field or a spread.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RecordEntry {
+    /// A regular field: `name: Type`
+    Field(Box<RecordField>),
+    /// A spread: `...OtherType` — includes all fields from the referenced record type
+    Spread(RecordSpread),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -145,6 +154,49 @@ pub struct RecordField {
     pub type_ann: TypeExpr,
     pub default: Option<Expr>,
     pub span: Span,
+}
+
+/// A spread entry in a record type: `...TypeName`
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecordSpread {
+    pub type_name: String,
+    pub span: Span,
+}
+
+impl RecordEntry {
+    /// Returns the field if this is a `RecordEntry::Field`, otherwise `None`.
+    pub fn as_field(&self) -> Option<&RecordField> {
+        match self {
+            RecordEntry::Field(f) => Some(f),
+            RecordEntry::Spread(_) => None,
+        }
+    }
+
+    /// Returns the spread if this is a `RecordEntry::Spread`, otherwise `None`.
+    pub fn as_spread(&self) -> Option<&RecordSpread> {
+        match self {
+            RecordEntry::Spread(s) => Some(s),
+            RecordEntry::Field(_) => None,
+        }
+    }
+}
+
+impl TypeDef {
+    /// Returns only the direct fields (excluding spreads) from a record type definition.
+    pub fn record_fields(&self) -> Vec<&RecordField> {
+        match self {
+            TypeDef::Record(entries) => entries.iter().filter_map(RecordEntry::as_field).collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Returns the spread entries from a record type definition.
+    pub fn record_spreads(&self) -> Vec<&RecordSpread> {
+        match self {
+            TypeDef::Record(entries) => entries.iter().filter_map(RecordEntry::as_spread).collect(),
+            _ => Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

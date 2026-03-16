@@ -83,6 +83,8 @@ pub enum TokenKind {
     Underscore,
     /// `..` — spread in constructors
     DotDot,
+    /// `...` — spread in type definitions (record type composition)
+    DotDotDot,
 
     // Arithmetic
     /// `+`

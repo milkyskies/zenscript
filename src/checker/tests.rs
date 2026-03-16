@@ -1935,7 +1935,7 @@ fn cross_file_trait_resolution() {
         opaque: false,
         name: "User".to_string(),
         type_params: vec![],
-        def: TypeDef::Record(vec![RecordField {
+        def: TypeDef::Record(vec![RecordEntry::Field(Box::new(RecordField {
             name: "name".to_string(),
             type_ann: TypeExpr {
                 kind: TypeExprKind::Named {
@@ -1947,7 +1947,7 @@ fn cross_file_trait_resolution() {
             },
             default: None,
             span: dummy_span,
-        }]),
+        }))]),
     });
     imports.insert("./types".to_string(), resolved);
 
@@ -2227,5 +2227,153 @@ fn test() -> Result<string, Error> {
             .filter(|d| d.severity == Severity::Error)
             .map(|d| &d.message)
             .collect::<Vec<_>>()
+    );
+}
+
+// ── Record type composition with spread ──────────────────────
+
+#[test]
+fn record_spread_basic() {
+    let diags = check(
+        r#"
+type BaseProps = {
+    className: string,
+    disabled: boolean,
+}
+
+type ButtonProps = {
+    ...BaseProps,
+    onClick: () -> (),
+    label: string,
+}
+
+const btn = ButtonProps(className: "btn", disabled: false, onClick: || (), label: "Click")
+"#,
+    );
+    assert!(
+        !diags.iter().any(|d| d.severity == Severity::Error),
+        "expected no errors, got: {:?}",
+        diags
+    );
+}
+
+#[test]
+fn record_spread_multiple() {
+    let diags = check(
+        r#"
+type A = {
+    x: number,
+}
+
+type B = {
+    y: string,
+}
+
+type C = {
+    ...A,
+    ...B,
+    z: boolean,
+}
+
+const c = C(x: 1, y: "hello", z: true)
+"#,
+    );
+    assert!(
+        !diags.iter().any(|d| d.severity == Severity::Error),
+        "expected no errors, got: {:?}",
+        diags
+    );
+}
+
+#[test]
+fn record_spread_conflict_error() {
+    let diags = check(
+        r#"
+type A = {
+    name: string,
+}
+
+type B = {
+    ...A,
+    name: number,
+}
+"#,
+    );
+    assert!(
+        has_error(&diags, "E030"),
+        "expected duplicate field error E030, got: {:?}",
+        diags
+    );
+}
+
+#[test]
+fn record_spread_union_error() {
+    let diags = check(
+        r#"
+type Status = | Active | Inactive
+
+type Bad = {
+    ...Status,
+    extra: string,
+}
+"#,
+    );
+    assert!(
+        has_error(&diags, "E032"),
+        "expected spread-of-non-record error E032, got: {:?}",
+        diags
+    );
+}
+
+#[test]
+fn record_spread_nested() {
+    let diags = check(
+        r#"
+type A = {
+    x: number,
+}
+
+type B = {
+    ...A,
+    y: string,
+}
+
+type C = {
+    ...B,
+    z: boolean,
+}
+
+const c = C(x: 1, y: "hello", z: true)
+"#,
+    );
+    assert!(
+        !diags.iter().any(|d| d.severity == Severity::Error),
+        "expected no errors for nested spread, got: {:?}",
+        diags
+    );
+}
+
+#[test]
+fn record_spread_conflict_between_spreads() {
+    let diags = check(
+        r#"
+type A = {
+    name: string,
+}
+
+type B = {
+    name: string,
+}
+
+type C = {
+    ...A,
+    ...B,
+}
+"#,
+    );
+    assert!(
+        has_error(&diags, "E031"),
+        "expected conflict error E031 between spreads, got: {:?}",
+        diags
     );
 }

@@ -309,6 +309,25 @@ type User = {
   email: Email
 }
 
+// Record type composition with spread
+type BaseProps = {
+  className: string,
+  disabled: boolean,
+}
+
+type ButtonProps = {
+  ...BaseProps,
+  onClick: () -> (),
+  label: string,
+}
+// ButtonProps has: className, disabled, onClick, label
+
+// Multiple spreads
+type A = { x: number }
+type B = { y: string }
+type C = { ...A, ...B, z: boolean }
+// C has: x, y, z
+
 // Simple union type (has |)
 type Route =
   | Home

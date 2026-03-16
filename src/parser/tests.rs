@@ -597,8 +597,47 @@ fn type_record() {
         ItemKind::TypeDecl(decl) => {
             assert_eq!(decl.name, "User");
             match decl.def {
-                TypeDef::Record(fields) => assert_eq!(fields.len(), 2),
-                other => panic!("expected record, got {other:?}"),
+                TypeDef::Record(ref entries) => assert_eq!(entries.len(), 2),
+                ref other => panic!("expected record, got {other:?}"),
+            }
+        }
+        other => panic!("expected type decl, got {other:?}"),
+    }
+}
+
+#[test]
+fn type_record_with_spread() {
+    match first_item("type B = { ...A, extra: string }") {
+        ItemKind::TypeDecl(decl) => {
+            assert_eq!(decl.name, "B");
+            match decl.def {
+                TypeDef::Record(ref entries) => {
+                    assert_eq!(entries.len(), 2);
+                    assert!(entries[0].as_spread().is_some());
+                    assert_eq!(entries[0].as_spread().unwrap().type_name, "A");
+                    assert!(entries[1].as_field().is_some());
+                    assert_eq!(entries[1].as_field().unwrap().name, "extra");
+                }
+                ref other => panic!("expected record, got {other:?}"),
+            }
+        }
+        other => panic!("expected type decl, got {other:?}"),
+    }
+}
+
+#[test]
+fn type_record_with_multiple_spreads() {
+    match first_item("type C = { ...A, ...B, extra: string }") {
+        ItemKind::TypeDecl(decl) => {
+            assert_eq!(decl.name, "C");
+            match decl.def {
+                TypeDef::Record(ref entries) => {
+                    assert_eq!(entries.len(), 3);
+                    assert_eq!(entries[0].as_spread().unwrap().type_name, "A");
+                    assert_eq!(entries[1].as_spread().unwrap().type_name, "B");
+                    assert_eq!(entries[2].as_field().unwrap().name, "extra");
+                }
+                ref other => panic!("expected record, got {other:?}"),
             }
         }
         other => panic!("expected type decl, got {other:?}"),

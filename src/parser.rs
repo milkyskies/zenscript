@@ -516,8 +516,8 @@ impl Parser {
 
         // Check if this is a record type (starts with `{`)
         if self.check(&TokenKind::LeftBrace) {
-            let fields = self.parse_record_fields()?;
-            return Ok(TypeDef::Record(fields));
+            let entries = self.parse_record_entries()?;
+            return Ok(TypeDef::Record(entries));
         }
 
         // Otherwise it's a type alias
@@ -588,11 +588,35 @@ impl Parser {
         })
     }
 
+    fn parse_record_entries(&mut self) -> Result<Vec<RecordEntry>, ParseError> {
+        self.expect(&TokenKind::LeftBrace)?;
+        let entries = self.parse_comma_separated(|p| p.parse_record_entry())?;
+        self.expect(&TokenKind::RightBrace)?;
+        Ok(entries)
+    }
+
     fn parse_record_fields(&mut self) -> Result<Vec<RecordField>, ParseError> {
         self.expect(&TokenKind::LeftBrace)?;
         let fields = self.parse_comma_separated(|p| p.parse_record_field())?;
         self.expect(&TokenKind::RightBrace)?;
         Ok(fields)
+    }
+
+    fn parse_record_entry(&mut self) -> Result<RecordEntry, ParseError> {
+        // Check for spread: `...TypeName`
+        if self.check(&TokenKind::DotDotDot) {
+            let start_span = self.current_span();
+            self.advance(); // consume `...`
+            let type_name = self.expect_identifier()?;
+            let end_span = self.previous_span();
+            return Ok(RecordEntry::Spread(RecordSpread {
+                type_name,
+                span: self.merge_spans(start_span, end_span),
+            }));
+        }
+
+        self.parse_record_field()
+            .map(|f| RecordEntry::Field(Box::new(f)))
     }
 
     fn parse_record_field(&mut self) -> Result<RecordField, ParseError> {

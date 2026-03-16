@@ -546,15 +546,28 @@ impl<'src> Lowerer<'src> {
     }
 
     fn lower_type_def_record(&mut self, node: &SyntaxNode) -> TypeDef {
-        let mut fields = Vec::new();
+        let mut entries = Vec::new();
         for child in node.children() {
-            if child.kind() == SyntaxKind::RECORD_FIELD
-                && let Some(field) = self.lower_record_field(&child)
-            {
-                fields.push(field);
+            match child.kind() {
+                SyntaxKind::RECORD_FIELD => {
+                    if let Some(field) = self.lower_record_field(&child) {
+                        entries.push(RecordEntry::Field(Box::new(field)));
+                    }
+                }
+                SyntaxKind::RECORD_SPREAD => {
+                    let span = self.node_span(&child);
+                    let idents = self.collect_idents_direct(&child);
+                    if let Some(type_name) = idents.first() {
+                        entries.push(RecordEntry::Spread(RecordSpread {
+                            type_name: type_name.clone(),
+                            span,
+                        }));
+                    }
+                }
+                _ => {}
             }
         }
-        TypeDef::Record(fields)
+        TypeDef::Record(entries)
     }
 
     fn lower_type_def_union(&mut self, node: &SyntaxNode) -> TypeDef {

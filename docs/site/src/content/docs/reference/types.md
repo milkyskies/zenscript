@@ -42,6 +42,32 @@ type User = {
 };
 ```
 
+### Record Type Composition
+
+Include fields from other record types using `...` spread:
+
+```floe
+type BaseProps = {
+  className: string,
+  disabled: boolean,
+}
+
+type ButtonProps = {
+  ...BaseProps,
+  onClick: () -> (),
+  label: string,
+}
+```
+
+Compiles to TypeScript intersection:
+
+```typescript
+type BaseProps = { className: string; disabled: boolean };
+type ButtonProps = BaseProps & { onClick: () => void; label: string };
+```
+
+Multiple spreads are allowed. Field name conflicts are compile errors.
+
 ## Union Types
 
 Tagged discriminated unions:

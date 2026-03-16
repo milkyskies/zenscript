@@ -387,8 +387,22 @@ impl<'src> CstParser<'src> {
     fn parse_record_fields(&mut self) {
         self.expect(TokenKind::LeftBrace);
         self.eat_trivia();
-        self.parse_comma_separated(Self::parse_record_field, TokenKind::RightBrace);
+        self.parse_comma_separated(Self::parse_record_entry, TokenKind::RightBrace);
         self.expect(TokenKind::RightBrace);
+    }
+
+    fn parse_record_entry(&mut self) {
+        // Check for spread: `...TypeName`
+        if self.at(TokenKind::DotDotDot) {
+            self.builder.start_node(SyntaxKind::RECORD_SPREAD.into());
+            self.bump(); // consume `...`
+            self.eat_trivia();
+            self.expect_ident(); // TypeName
+            self.builder.finish_node();
+            return;
+        }
+
+        self.parse_record_field();
     }
 
     fn parse_record_field(&mut self) {

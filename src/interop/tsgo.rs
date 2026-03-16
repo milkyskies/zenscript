@@ -673,16 +673,40 @@ fn type_decl_to_ts(decl: &TypeDecl) -> String {
     };
 
     match &decl.def {
-        TypeDef::Record(fields) => {
-            let fs: Vec<String> = fields
+        TypeDef::Record(entries) => {
+            let fs: Vec<String> = entries
                 .iter()
+                .filter_map(|e| e.as_field())
                 .map(|f| format!("  {}: {};", f.name, type_expr_to_ts(&f.type_ann)))
                 .collect();
-            format!(
-                "type {}{type_params} = {{\n{}\n}};",
-                decl.name,
-                fs.join("\n")
-            )
+            let spreads: Vec<String> = entries
+                .iter()
+                .filter_map(|e| e.as_spread())
+                .map(|s| s.type_name.clone())
+                .collect();
+            if spreads.is_empty() {
+                format!(
+                    "type {}{type_params} = {{\n{}\n}};",
+                    decl.name,
+                    fs.join("\n")
+                )
+            } else {
+                let spread_parts: Vec<String> = spreads.to_vec();
+                if fs.is_empty() {
+                    format!(
+                        "type {}{type_params} = {};",
+                        decl.name,
+                        spread_parts.join(" & ")
+                    )
+                } else {
+                    format!(
+                        "type {}{type_params} = {} & {{\n{}\n}};",
+                        decl.name,
+                        spread_parts.join(" & "),
+                        fs.join("\n")
+                    )
+                }
+            }
         }
         TypeDef::Alias(ty) => {
             format!("type {}{type_params} = {};", decl.name, type_expr_to_ts(ty))

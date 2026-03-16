@@ -205,9 +205,10 @@ impl TypeEnv {
             Type::Named(name) => {
                 if let Some(info) = self.lookup_type(name) {
                     match &info.def {
-                        crate::parser::ast::TypeDef::Record(fields) => {
-                            let field_types: Vec<_> = fields
+                        crate::parser::ast::TypeDef::Record(entries) => {
+                            let field_types: Vec<_> = entries
                                 .iter()
+                                .filter_map(|e| e.as_field())
                                 .map(|f| (f.name.clone(), resolve_type_fn(&f.type_ann)))
                                 .collect();
                             Type::Record(field_types)
