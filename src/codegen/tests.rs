@@ -908,3 +908,71 @@ export for User fn greet(self, greeting: string) -> string { greeting }
         "expected export function greet, got: {result}"
     );
 }
+
+// ── String Literal Unions ───────────────────────────────────
+
+#[test]
+fn string_literal_union_type() {
+    let result = emit(r#"type HttpMethod = "GET" | "POST" | "PUT" | "DELETE""#);
+    assert_eq!(
+        result,
+        r#"type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";"#
+    );
+}
+
+#[test]
+fn string_literal_union_match() {
+    let result = emit(
+        r#"
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE"
+
+fn describe(method: HttpMethod) -> string {
+    match method {
+        "GET" -> "fetching",
+        "POST" -> "creating",
+        "PUT" -> "updating",
+        "DELETE" -> "removing",
+    }
+}
+"#,
+    );
+    assert!(
+        result.contains(r#"method === "GET""#),
+        "expected string comparison, got: {result}"
+    );
+    assert!(
+        result.contains(r#""fetching""#),
+        "expected fetching branch, got: {result}"
+    );
+    assert!(
+        result.contains(r#"method === "DELETE""#),
+        "expected DELETE comparison, got: {result}"
+    );
+}
+
+#[test]
+fn string_literal_union_match_with_wildcard() {
+    let result = emit(
+        r#"
+type Status = "ok" | "error"
+fn handle(s: Status) -> number {
+    match s {
+        "ok" -> 1,
+        _ -> 0,
+    }
+}
+"#,
+    );
+    assert!(
+        result.contains(r#"s === "ok""#),
+        "expected string check, got: {result}"
+    );
+    assert!(result.contains("0"), "expected fallback, got: {result}");
+}
+
+#[test]
+fn string_literal_union_exported() {
+    let result = emit(r#"export type Direction = "north" | "south" | "east" | "west""#);
+    assert!(result.starts_with("export type Direction = "));
+    assert!(result.contains(r#""north" | "south" | "east" | "west""#));
+}

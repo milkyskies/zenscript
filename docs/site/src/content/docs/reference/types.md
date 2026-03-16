@@ -88,6 +88,33 @@ type Shape =
   | { _tag: "Point" };
 ```
 
+## String Literal Unions
+
+String literal unions for npm interop:
+
+```floe
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE"
+```
+
+Compiles to the same TypeScript type (pass-through):
+
+```typescript
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
+```
+
+Match arms use string comparisons instead of tag checks:
+
+```floe
+match method {
+    "GET" -> "fetching",
+    "POST" -> "creating",
+    "PUT" -> "updating",
+    "DELETE" -> "removing",
+}
+```
+
+Exhaustiveness is checked -- missing a variant is a compile error.
+
 ## Brand Types
 
 Types that are distinct at compile time but erase to their base type at runtime:

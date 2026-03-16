@@ -329,6 +329,9 @@ impl<'src> Lowerer<'src> {
                 SyntaxKind::TYPE_DEF_ALIAS => {
                     def = Some(self.lower_type_def_alias(&child)?);
                 }
+                SyntaxKind::TYPE_DEF_STRING_UNION => {
+                    def = Some(self.lower_type_def_string_literal_union(&child));
+                }
                 _ => {}
             }
         }
@@ -590,6 +593,18 @@ impl<'src> Lowerer<'src> {
             }
         }
         None
+    }
+
+    fn lower_type_def_string_literal_union(&mut self, node: &SyntaxNode) -> TypeDef {
+        let mut variants = Vec::new();
+        for token in node.children_with_tokens() {
+            if let Some(token) = token.as_token()
+                && token.kind() == SyntaxKind::STRING
+            {
+                variants.push(self.unquote_string(token.text()));
+            }
+        }
+        TypeDef::StringLiteralUnion(variants)
     }
 
     fn lower_variant(&mut self, node: &SyntaxNode) -> Option<Variant> {
@@ -1252,6 +1267,20 @@ mod tests {
             panic!("expected TypeDecl")
         };
         assert!(matches!(decl.def, TypeDef::Alias(_)));
+    }
+
+    #[test]
+    fn type_string_literal_union() {
+        let item = first_item(r#"type HttpMethod = "GET" | "POST" | "PUT" | "DELETE""#);
+        let ItemKind::TypeDecl(decl) = item else {
+            panic!("expected TypeDecl")
+        };
+        match decl.def {
+            TypeDef::StringLiteralUnion(ref variants) => {
+                assert_eq!(variants, &["GET", "POST", "PUT", "DELETE"]);
+            }
+            other => panic!("expected StringLiteralUnion, got {other:?}"),
+        }
     }
 
     // ── Match expressions ─────────────────────────────────────────

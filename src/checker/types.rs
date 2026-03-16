@@ -48,6 +48,11 @@ pub enum Type {
         name: String,
         variants: Vec<(String, Vec<Type>)>,
     },
+    /// String literal union: `"GET" | "POST" | "PUT" | "DELETE"`
+    StringLiteralUnion {
+        name: String,
+        variants: Vec<String>,
+    },
     /// Type variable (for inference)
     Var(usize),
     /// The unknown/any escape hatch
@@ -104,6 +109,7 @@ impl Type {
                 format!("{{ {} }}", f.join(", "))
             }
             Type::Union { name, .. } => name.clone(),
+            Type::StringLiteralUnion { name, .. } => name.clone(),
             Type::Var(id) => format!("?T{id}"),
             Type::Unknown => "unknown".to_string(),
             Type::Unit => "()".to_string(),
@@ -228,6 +234,12 @@ impl TypeEnv {
                             Type::Union {
                                 name: name.clone(),
                                 variants: var_types,
+                            }
+                        }
+                        crate::parser::ast::TypeDef::StringLiteralUnion(variants) => {
+                            Type::StringLiteralUnion {
+                                name: name.clone(),
+                                variants: variants.clone(),
                             }
                         }
                         crate::parser::ast::TypeDef::Alias(type_expr) => {

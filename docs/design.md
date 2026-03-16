@@ -68,6 +68,7 @@ All four of TypeScript's `?` uses (`?.`, `??`, `?:`, `? :`) are removed. `?` now
 | Branded types | `type UserId = Brand<string, "UserId">` | `string` at runtime |
 | Opaque types | `opaque type HashedPw = string` | `string`, but only the defining module can create/read |
 | Tagged unions | `type Route = Home \| Profile(id: string)` | discriminated union |
+| String literal unions | `type Method = "GET" \| "POST" \| "PUT"` | `"GET" \| "POST" \| "PUT"` (pass-through for npm interop) |
 | Nested unions | `type ApiError = Network(NetworkError) \| NotFound` | nested discriminated union (compiler generates tags) |
 | Multi-depth match | `Network(Timeout(ms)) -> ...` | nested if/else with tag checks |
 | Type constructors | `User(name: "Ryan", email: e)` | `{ name: "Ryan", email: e }` (compiler adds tags for unions) |
@@ -356,6 +357,9 @@ type Route =
   | Profile(id: string)
   | Settings(tab: string)
   | NotFound
+
+// String literal union (for npm interop)
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE"
 
 // Union types can contain other union types — nest as deep as you want
 type NetworkError =
@@ -1187,6 +1191,8 @@ Emits clean, readable `.tsx`. Zero runtime imports.
 | `Err(error)` | `{ ok: false, error }` |
 | `Some(value)` | `value` |
 | `None` | `undefined` |
+| `type Method = "GET" \| "POST"` | `type Method = "GET" \| "POST"` (pass-through) |
+| `match m { "GET" -> ... }` | `m === "GET" ? ...` (string comparison, no tag) |
 | `User(name: "Ry", email: e)` | `{ name: "Ry", email: e }` (+ tag for unions) |
 | `User(..user, name: "New")` | `{ ...user, name: "New" }` |
 | `f(name: "x", limit: 10)` | `f("x", 10)` (labels erased, reordered to match definition) |

@@ -540,6 +540,9 @@ impl Codegen {
             TypeDef::Union(variants) => {
                 self.emit_union_type(variants);
             }
+            TypeDef::StringLiteralUnion(variants) => {
+                self.emit_string_literal_union_type(variants);
+            }
             TypeDef::Alias(type_expr) => {
                 // Brand and opaque types erase to their underlying type
                 self.emit_type_expr(type_expr);
@@ -616,6 +619,15 @@ impl Codegen {
                 }
                 self.push(" }");
             }
+        }
+    }
+
+    fn emit_string_literal_union_type(&mut self, variants: &[String]) {
+        for (i, variant) in variants.iter().enumerate() {
+            if i > 0 {
+                self.push(" | ");
+            }
+            self.push(&format!("\"{}\"", escape_string(variant)));
         }
     }
 

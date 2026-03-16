@@ -102,6 +102,37 @@ match filter {
 }
 ```
 
+## String Literal Unions
+
+For npm interop with TypeScript libraries that use string literal unions:
+
+```floe
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE"
+type Status = "loading" | "error" | "success"
+```
+
+Match on them with exhaustiveness checking:
+
+```floe
+fn describe(method: HttpMethod) -> string {
+    match method {
+        "GET" -> "fetching",
+        "POST" -> "creating",
+        "PUT" -> "updating",
+        "DELETE" -> "removing",
+    }
+}
+// Compiler error if you miss a variant
+```
+
+String literal unions compile to the same TypeScript type:
+
+```typescript
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
+```
+
+For pure Floe code, prefer regular tagged unions (`| Get | Post`) since they work with constructors, for-blocks, and provide better type safety. String literal unions exist primarily for seamless npm interop.
+
 ## Result and Option
 
 ### Result

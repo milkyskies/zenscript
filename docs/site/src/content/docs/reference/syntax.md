@@ -54,6 +54,9 @@ type Shape =
   | Circle(radius: number)
   | Rectangle(width: number, height: number)
 
+// String literal union (for npm interop)
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE"
+
 // Alias
 type Name = string
 

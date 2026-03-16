@@ -81,6 +81,9 @@ type ApiError =
     | NotFound
     | ServerError(status: number)
 
+// String literal union (for npm interop)
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE"
+
 // Record type composition with spread
 type BaseProps = {
     className: string,
@@ -197,6 +200,15 @@ match status {
     200..299 -> Ok(response),
     404 -> Err(NotFound),
     _ -> Err(ServerError(status)),
+}
+
+// Match on string literal union (exhaustive)
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE"
+match method {
+    "GET" -> "fetching",
+    "POST" -> "creating",
+    "PUT" -> "updating",
+    "DELETE" -> "removing",
 }
 
 // Match with string patterns

@@ -332,6 +332,8 @@ impl<'src> CstParser<'src> {
     fn parse_type_def(&mut self) {
         if self.at_pipe_in_union() {
             self.parse_union_variants();
+        } else if self.at_string_literal_union() {
+            self.parse_string_literal_union();
         } else if self.at(TokenKind::LeftBrace) {
             self.builder.start_node(SyntaxKind::TYPE_DEF_RECORD.into());
             self.parse_record_fields();
@@ -362,6 +364,30 @@ impl<'src> CstParser<'src> {
             }
 
             self.builder.finish_node();
+        }
+
+        self.builder.finish_node();
+    }
+
+    fn parse_string_literal_union(&mut self) {
+        self.builder
+            .start_node(SyntaxKind::TYPE_DEF_STRING_UNION.into());
+
+        // First string literal
+        self.bump(); // string
+        self.eat_trivia();
+
+        // Parse remaining `| "string"` pairs
+        while self.at(TokenKind::VerticalBar) {
+            self.bump(); // |
+            self.eat_trivia();
+            if self.at(TokenKind::String("".into())) {
+                self.bump(); // string
+                self.eat_trivia();
+            } else {
+                self.error("expected string literal after `|` in string literal union");
+                break;
+            }
         }
 
         self.builder.finish_node();
@@ -1544,6 +1570,16 @@ impl<'src> CstParser<'src> {
         self.at(TokenKind::VerticalBar)
     }
 
+    /// Check if we're at a string literal union: `"A" | "B" | ...`
+    /// This is true when the current token is a string and the next non-trivia token is `|`.
+    fn at_string_literal_union(&self) -> bool {
+        self.at(TokenKind::String("".into()))
+            && matches!(
+                self.peek_nth_non_trivia_kind(1),
+                Some(TokenKind::VerticalBar)
+            )
+    }
+
     fn is_ident(&self) -> bool {
         matches!(self.current_kind(), Some(TokenKind::Identifier(_)))
     }
@@ -1982,6 +2018,16 @@ mod tests {
     #[test]
     fn type_union() {
         assert_no_errors("type Color = | Red | Green | Blue");
+    }
+
+    #[test]
+    fn type_string_literal_union() {
+        assert_no_errors(r#"type HttpMethod = "GET" | "POST" | "PUT" | "DELETE""#);
+    }
+
+    #[test]
+    fn type_string_literal_union_two() {
+        assert_no_errors(r#"type Status = "ok" | "error""#);
     }
 
     #[test]

@@ -514,6 +514,12 @@ impl Parser {
             return Ok(TypeDef::Union(variants));
         }
 
+        // Check if this is a string literal union (starts with `"..." |`)
+        if self.check_string_literal_union() {
+            let variants = self.parse_string_literal_union()?;
+            return Ok(TypeDef::StringLiteralUnion(variants));
+        }
+
         // Check if this is a record type (starts with `{`)
         if self.check(&TokenKind::LeftBrace) {
             let entries = self.parse_record_entries()?;
@@ -557,6 +563,21 @@ impl Parser {
 
         if variants.is_empty() {
             return Err(self.error("expected at least one variant in union type"));
+        }
+
+        Ok(variants)
+    }
+
+    fn parse_string_literal_union(&mut self) -> Result<Vec<String>, ParseError> {
+        let mut variants = Vec::new();
+
+        // First string literal
+        variants.push(self.expect_string()?);
+
+        // Parse remaining `| "string"` pairs
+        while self.check(&TokenKind::VerticalBar) {
+            self.advance(); // consume `|`
+            variants.push(self.expect_string()?);
         }
 
         Ok(variants)
@@ -1172,6 +1193,13 @@ impl Parser {
     /// Check if the current token is `|` used in union type declarations.
     fn check_pipe_in_union(&self) -> bool {
         self.check(&TokenKind::VerticalBar)
+    }
+
+    /// Check if we're at a string literal union: `"A" | "B" | ...`
+    fn check_string_literal_union(&self) -> bool {
+        self.check(&TokenKind::String("".into()))
+            && self.pos + 1 < self.tokens.len()
+            && self.tokens[self.pos + 1].kind == TokenKind::VerticalBar
     }
 
     fn is_at_end(&self) -> bool {

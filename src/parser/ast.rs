@@ -137,6 +137,8 @@ pub enum TypeDef {
     Union(Vec<Variant>),
     /// Type alias: `type X = SomeOtherType`
     Alias(TypeExpr),
+    /// String literal union: `"GET" | "POST" | "PUT" | "DELETE"`
+    StringLiteralUnion(Vec<String>),
 }
 
 /// An entry inside a record type definition — either a regular field or a spread.

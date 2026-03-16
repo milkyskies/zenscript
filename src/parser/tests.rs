@@ -1637,3 +1637,57 @@ fn pipe_chain_into_match() {
         other => panic!("expected match, got {other:?}"),
     }
 }
+
+// ── String Literal Unions ───────────────────────────────────
+
+#[test]
+fn string_literal_union() {
+    let input = r#"type HttpMethod = "GET" | "POST" | "PUT" | "DELETE""#;
+    match first_item(input) {
+        ItemKind::TypeDecl(decl) => {
+            assert_eq!(decl.name, "HttpMethod");
+            match decl.def {
+                TypeDef::StringLiteralUnion(variants) => {
+                    assert_eq!(variants, vec!["GET", "POST", "PUT", "DELETE"]);
+                }
+                other => panic!("expected string literal union, got {other:?}"),
+            }
+        }
+        other => panic!("expected type decl, got {other:?}"),
+    }
+}
+
+#[test]
+fn string_literal_union_two_variants() {
+    let input = r#"type Bool = "true" | "false""#;
+    match first_item(input) {
+        ItemKind::TypeDecl(decl) => {
+            assert_eq!(decl.name, "Bool");
+            match decl.def {
+                TypeDef::StringLiteralUnion(variants) => {
+                    assert_eq!(variants, vec!["true", "false"]);
+                }
+                other => panic!("expected string literal union, got {other:?}"),
+            }
+        }
+        other => panic!("expected type decl, got {other:?}"),
+    }
+}
+
+#[test]
+fn string_literal_union_exported() {
+    let input = r#"export type Status = "ok" | "error""#;
+    match first_item(input) {
+        ItemKind::TypeDecl(decl) => {
+            assert!(decl.exported);
+            assert_eq!(decl.name, "Status");
+            match decl.def {
+                TypeDef::StringLiteralUnion(variants) => {
+                    assert_eq!(variants, vec!["ok", "error"]);
+                }
+                other => panic!("expected string literal union, got {other:?}"),
+            }
+        }
+        other => panic!("expected type decl, got {other:?}"),
+    }
+}

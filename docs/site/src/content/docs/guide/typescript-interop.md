@@ -51,6 +51,35 @@ capitalize("hello")             // trusted, no try needed
 const data = try fetchData()    // not trusted, try required
 ```
 
+## String literal unions
+
+Many TypeScript libraries use string literal unions for configuration and options:
+
+```typescript
+// React
+type HTMLInputTypeAttribute = "text" | "password" | "email" | "number";
+
+// API clients
+type Method = "GET" | "POST" | "PUT" | "DELETE";
+```
+
+Floe supports these natively:
+
+```floe
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE"
+
+fn describe(method: HttpMethod) -> string {
+    match method {
+        "GET" -> "fetching",
+        "POST" -> "creating",
+        "PUT" -> "updating",
+        "DELETE" -> "removing",
+    }
+}
+```
+
+The match is exhaustive -- if you miss a variant, the compiler tells you. The type compiles directly to the same TypeScript string union (no tags, no wrapping).
+
 ## Nullable type conversion
 
 Floe has no `null` or `undefined`. When importing from TypeScript, the compiler converts nullable types automatically:

@@ -105,6 +105,7 @@ pub enum SyntaxKind {
     TYPE_DEF_RECORD,
     TYPE_DEF_UNION,
     TYPE_DEF_ALIAS,
+    TYPE_DEF_STRING_UNION,
     FOR_BLOCK,
     TRAIT_DECL,
     TEST_BLOCK,

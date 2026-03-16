@@ -2230,6 +2230,73 @@ fn test() -> Result<string, Error> {
     );
 }
 
+// ── String Literal Unions ───────────────────────────────────
+
+#[test]
+fn string_literal_union_exhaustive_match() {
+    let diags = check(
+        r#"
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE"
+
+fn _describe(method: HttpMethod) -> string {
+    match method {
+        "GET" -> "fetching",
+        "POST" -> "creating",
+        "PUT" -> "updating",
+        "DELETE" -> "removing",
+    }
+}
+"#,
+    );
+    assert!(
+        !has_error(&diags, "E004"),
+        "exhaustive match should not produce error, got: {:?}",
+        diags
+    );
+}
+
+#[test]
+fn string_literal_union_missing_variant() {
+    let diags = check(
+        r#"
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE"
+
+fn _describe(method: HttpMethod) -> string {
+    match method {
+        "GET" -> "fetching",
+        "POST" -> "creating",
+    }
+}
+"#,
+    );
+    assert!(
+        has_error(&diags, "E004"),
+        "missing variants should produce exhaustiveness error, got: {:?}",
+        diags
+    );
+}
+
+#[test]
+fn string_literal_union_with_wildcard() {
+    let diags = check(
+        r#"
+type Status = "ok" | "error" | "pending"
+
+fn _handle(s: Status) -> number {
+    match s {
+        "ok" -> 1,
+        _ -> 0,
+    }
+}
+"#,
+    );
+    assert!(
+        !has_error(&diags, "E004"),
+        "wildcard should satisfy exhaustiveness, got: {:?}",
+        diags
+    );
+}
+
 // ── Record type composition with spread ──────────────────────
 
 #[test]

@@ -70,6 +70,38 @@ impl Checker {
             }
         }
 
+        // For string literal union types, check that all variants are covered
+        if let Type::StringLiteralUnion { name, variants } = subject_ty {
+            let variant_set: HashSet<&str> = variants.iter().map(|s| s.as_str()).collect();
+            let mut covered: HashSet<&str> = HashSet::new();
+
+            for arm in arms {
+                if arm.guard.is_none()
+                    && let PatternKind::Literal(LiteralPattern::String(s)) = &arm.pattern.kind
+                {
+                    covered.insert(s.as_str());
+                }
+            }
+
+            let missing: Vec<_> = variant_set.difference(&covered).collect();
+            if !missing.is_empty() {
+                let missing_str = missing
+                    .iter()
+                    .map(|s| format!("`\"{s}\"`"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        format!("non-exhaustive match on `{name}`: missing {missing_str}"),
+                        span,
+                    )
+                    .with_label("not all variants covered")
+                    .with_help("add match arms for the missing variants, or add a `_ ->` catch-all")
+                    .with_code("E004"),
+                );
+            }
+        }
+
         // For Result types, check Ok and Err are covered
         if subject_ty.is_result() {
             let mut has_ok = false;

@@ -723,6 +723,10 @@ fn type_decl_to_ts(decl: &TypeDecl) -> String {
                 members.join(",\n")
             )
         }
+        TypeDef::StringLiteralUnion(variants) => {
+            let members: Vec<String> = variants.iter().map(|v| format!("\"{}\"", v)).collect();
+            format!("type {}{type_params} = {};", decl.name, members.join(" | "))
+        }
     }
 }
 

@@ -499,6 +499,13 @@ impl Checker {
                     self.env.define(vname, union_type.clone());
                 }
             }
+            TypeDef::StringLiteralUnion(variants) => {
+                let ty = Type::StringLiteralUnion {
+                    name: decl.name.clone(),
+                    variants: variants.clone(),
+                };
+                self.env.define(&decl.name, ty);
+            }
             TypeDef::Alias(type_expr) => {
                 let ty = self.resolve_type(type_expr);
                 self.env.define(&decl.name, ty);
@@ -590,11 +597,11 @@ impl Checker {
                                     .with_code("E032"),
                                 );
                             }
-                            TypeDef::Alias(_) => {
+                            TypeDef::Alias(_) | TypeDef::StringLiteralUnion(_) => {
                                 self.diagnostics.push(
                                     Diagnostic::error(
                                         format!(
-                                            "cannot spread type alias `{}` into record type `{}`; spread target must be a record type",
+                                            "cannot spread type `{}` into record type `{}`; spread target must be a record type",
                                             spread.type_name, type_name
                                         ),
                                         spread.span,
@@ -644,6 +651,9 @@ impl Checker {
                         self.resolve_type(&field.type_ann);
                     }
                 }
+            }
+            TypeDef::StringLiteralUnion(_) => {
+                // No type annotations to validate
             }
             TypeDef::Alias(type_expr) => {
                 self.resolve_type(type_expr);
