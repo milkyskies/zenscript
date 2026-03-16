@@ -4,6 +4,8 @@ use crate::parser::ast::*;
 
 use super::Codegen;
 
+const THROW_NON_EXHAUSTIVE: &str = "(() => { throw new Error(\"non-exhaustive match\"); })()";
+
 impl Codegen {
     // ── Match Lowering ───────────────────────────────────────────
 
@@ -15,7 +17,7 @@ impl Codegen {
     fn emit_match_arms(&mut self, subject: &Expr, arms: &[MatchArm], index: usize) {
         if index >= arms.len() {
             // Should be unreachable if match is exhaustive
-            self.push("(() => { throw new Error(\"non-exhaustive match\"); })()");
+            self.push(THROW_NON_EXHAUSTIVE);
             return;
         }
 
@@ -80,7 +82,7 @@ impl Codegen {
                 self.emit_match_body(subject, &arm.pattern, &arm.body);
                 self.push(" : ");
                 if is_last {
-                    self.push("(() => { throw new Error(\"non-exhaustive match\"); })()");
+                    self.push(THROW_NON_EXHAUSTIVE);
                 } else {
                     self.emit_match_arms(subject, arms, index + 1);
                 }
@@ -92,7 +94,7 @@ impl Codegen {
             self.push(" : ");
 
             if is_last {
-                self.push("(() => { throw new Error(\"non-exhaustive match\"); })()");
+                self.push(THROW_NON_EXHAUSTIVE);
             } else {
                 self.emit_match_arms(subject, arms, index + 1);
             }

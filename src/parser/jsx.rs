@@ -3,6 +3,72 @@ use crate::lexer::token::TokenKind;
 use super::ast::*;
 use super::{ParseError, Parser};
 
+impl TokenKind {
+    /// Map a keyword or operator token to its source text representation.
+    /// Used by `token_as_jsx_text` to avoid a large allowlist.
+    fn as_jsx_text_str(&self) -> Option<&'static str> {
+        match self {
+            // Keywords
+            TokenKind::Const => Some("const"),
+            TokenKind::Fn => Some("fn"),
+            TokenKind::Export => Some("export"),
+            TokenKind::Import => Some("import"),
+            TokenKind::From => Some("from"),
+            TokenKind::Return => Some("return"),
+            TokenKind::Match => Some("match"),
+            TokenKind::Type => Some("type"),
+            TokenKind::Opaque => Some("opaque"),
+            TokenKind::Async => Some("async"),
+            TokenKind::Await => Some("await"),
+            TokenKind::For => Some("for"),
+            TokenKind::SelfKw => Some("self"),
+            TokenKind::Try => Some("try"),
+            TokenKind::Trait => Some("trait"),
+            TokenKind::When => Some("when"),
+            TokenKind::Ok => Some("Ok"),
+            TokenKind::Err => Some("Err"),
+            TokenKind::Some => Some("Some"),
+            TokenKind::None => Some("None"),
+            TokenKind::Todo => Some("todo"),
+            TokenKind::Unreachable => Some("unreachable"),
+            TokenKind::Assert => Some("assert"),
+            // Operators and punctuation
+            TokenKind::Comma => Some(","),
+            TokenKind::Colon => Some(":"),
+            TokenKind::Dot => Some("."),
+            TokenKind::Plus => Some("+"),
+            TokenKind::Minus => Some("-"),
+            TokenKind::Star => Some("*"),
+            TokenKind::Slash => Some("/"),
+            TokenKind::Percent => Some("%"),
+            TokenKind::EqualEqual => Some("=="),
+            TokenKind::BangEqual => Some("!="),
+            TokenKind::Bang => Some("!"),
+            TokenKind::Equal => Some("="),
+            TokenKind::GreaterThan => Some(">"),
+            TokenKind::GreaterEqual => Some(">="),
+            TokenKind::LessEqual => Some("<="),
+            TokenKind::Pipe => Some("|>"),
+            TokenKind::VerticalBar => Some("|"),
+            TokenKind::ThinArrow => Some("->"),
+            TokenKind::FatArrow => Some("=>"),
+            TokenKind::Question => Some("?"),
+            TokenKind::Underscore => Some("_"),
+            TokenKind::DotDot => Some(".."),
+            TokenKind::AmpAmp => Some("&&"),
+            TokenKind::PipePipe => Some("||"),
+            TokenKind::Semicolon => Some(";"),
+            // Delimiters
+            TokenKind::LeftParen => Some("("),
+            TokenKind::RightParen => Some(")"),
+            TokenKind::LeftBracket => Some("["),
+            TokenKind::RightBracket => Some("]"),
+            TokenKind::RightBrace => Some("}"),
+            _ => Option::None,
+        }
+    }
+}
+
 impl Parser {
     // ── JSX ──────────────────────────────────────────────────────
 
@@ -178,87 +244,31 @@ impl Parser {
     }
 
     /// Try to interpret the current token as JSX text content.
-    /// In JSX children, almost everything that isn't `{`, `<`, or `</` is text.
+    /// In JSX children, almost everything that isn't `{`, `<`, or EOF is text.
+    /// Uses a small denylist instead of listing every allowed token.
     pub(super) fn token_as_jsx_text(&self) -> Option<String> {
-        match &self.tokens[self.pos].kind {
-            // These end text content — never treat as text
-            TokenKind::LeftBrace | TokenKind::LessThan | TokenKind::Eof => None,
+        let kind = &self.tokens[self.pos].kind;
+        match kind {
+            // Denylist: these tokens are never JSX text
+            TokenKind::LeftBrace
+            | TokenKind::LessThan
+            | TokenKind::Eof
+            | TokenKind::Whitespace
+            | TokenKind::Comment
+            | TokenKind::BlockComment
+            | TokenKind::TemplateLiteral(_) => None,
 
-            // Identifiers and literals
+            // Identifiers and literals carry their own text
             TokenKind::Identifier(s) | TokenKind::Number(s) | TokenKind::String(s) => {
                 Some(s.clone())
             }
             TokenKind::Bool(b) => Some(b.to_string()),
 
-            // Keywords — valid as JSX text
-            TokenKind::Const => Some("const".into()),
-            TokenKind::Fn => Some("fn".into()),
-            TokenKind::Export => Some("export".into()),
-            TokenKind::Import => Some("import".into()),
-            TokenKind::From => Some("from".into()),
-            TokenKind::Return => Some("return".into()),
-            TokenKind::Match => Some("match".into()),
-            TokenKind::Type => Some("type".into()),
-            TokenKind::Opaque => Some("opaque".into()),
-            TokenKind::Async => Some("async".into()),
-            TokenKind::Await => Some("await".into()),
-            TokenKind::For => Some("for".into()),
-            TokenKind::SelfKw => Some("self".into()),
-            TokenKind::Try => Some("try".into()),
-            TokenKind::Trait => Some("trait".into()),
-            TokenKind::When => Some("when".into()),
-            TokenKind::Ok => Some("Ok".into()),
-            TokenKind::Err => Some("Err".into()),
-            TokenKind::Some => Some("Some".into()),
-            TokenKind::None => Some("None".into()),
-            TokenKind::Todo => Some("todo".into()),
-            TokenKind::Unreachable => Some("unreachable".into()),
+            // Banned keywords — format as lowercase text
+            TokenKind::Banned(b) => Some(b.as_str().to_string()),
 
-            // Punctuation — valid in JSX text
-            TokenKind::Comma => Some(",".into()),
-            TokenKind::Colon => Some(":".into()),
-            TokenKind::Dot => Some(".".into()),
-            TokenKind::Plus => Some("+".into()),
-            TokenKind::Minus => Some("-".into()),
-            TokenKind::Star => Some("*".into()),
-            TokenKind::Slash => Some("/".into()),
-            TokenKind::Percent => Some("%".into()),
-            TokenKind::EqualEqual => Some("==".into()),
-            TokenKind::BangEqual => Some("!=".into()),
-            TokenKind::Bang => Some("!".into()),
-            TokenKind::Equal => Some("=".into()),
-            TokenKind::GreaterThan => Some(">".into()),
-            TokenKind::GreaterEqual => Some(">=".into()),
-            TokenKind::LessEqual => Some("<=".into()),
-            TokenKind::Pipe => Some("|>".into()),
-            TokenKind::VerticalBar => Some("|".into()),
-            TokenKind::ThinArrow => Some("->".into()),
-            TokenKind::FatArrow => Some("=>".into()),
-            TokenKind::Question => Some("?".into()),
-            TokenKind::Underscore => Some("_".into()),
-            TokenKind::DotDot => Some("..".into()),
-            TokenKind::AmpAmp => Some("&&".into()),
-            TokenKind::PipePipe => Some("||".into()),
-            TokenKind::Semicolon => Some(";".into()),
-
-            // Parens/brackets in text
-            TokenKind::LeftParen => Some("(".into()),
-            TokenKind::RightParen => Some(")".into()),
-            TokenKind::LeftBracket => Some("[".into()),
-            TokenKind::RightBracket => Some("]".into()),
-            TokenKind::RightBrace => Some("}".into()),
-
-            // Banned keywords — still valid as text content
-            TokenKind::Banned(b) => Some(format!("{b:?}").to_lowercase()),
-
-            // Template literals in JSX text — skip
-            TokenKind::TemplateLiteral(_) => None,
-
-            // Assert keyword as text
-            TokenKind::Assert => Some("assert".into()),
-
-            // Trivia tokens — skip (shouldn't appear in normal token stream)
-            TokenKind::Whitespace | TokenKind::Comment | TokenKind::BlockComment => None,
+            // Everything else: use the static text mapping
+            other => other.as_jsx_text_str().map(String::from),
         }
     }
 
