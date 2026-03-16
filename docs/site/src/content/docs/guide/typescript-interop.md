@@ -116,7 +116,7 @@ export fn Counter() -> JSX.Element {
     Console.log("count changed:", count)
   }, [count])
 
-  return <button onClick={|| setCount(count + 1)}>
+  <button onClick={|| setCount(count + 1)}>
     {`Count: ${count}`}
   </button>
 }
@@ -132,7 +132,7 @@ import trusted { Button, Dialog } from "@radix-ui/react"
 export fn MyPage() -> JSX.Element {
   const [open, setOpen] = useState(false)
 
-  return <div>
+  <div>
     <Button onClick={|| setOpen(true)}>Open</Button>
     <Dialog open={open} onOpenChange={setOpen}>
       <p>Dialog content</p>

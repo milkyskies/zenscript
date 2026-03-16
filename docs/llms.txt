@@ -377,7 +377,7 @@ export fn App() -> JSX.Element {
         setInput("")
     }
 
-    return <div>
+    <div>
         <h1>Todos</h1>
         <input
             value={input}
@@ -457,6 +457,7 @@ match key {
 | `function` keyword | `fn` |
 | `void` | Unit type `()` |
 | `as` (type assertion) | Type guards or `match` |
+| `return` | Implicit returns — last expression is the return value |
 
 ## Compilation Examples
 
@@ -493,3 +494,4 @@ match key {
 10. **Unused variables/imports are compile errors** (prefix with `_` to suppress)
 11. **`Console.log`** not `console.log` (capital C in Floe)
 12. **`Array<T>`** not `T[]` for array types
+13. **Implicit returns** — last expression in a block is the return value; `return` keyword is banned

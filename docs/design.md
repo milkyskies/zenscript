@@ -110,6 +110,7 @@ All four of TypeScript's `?` uses (`?.`, `??`, `?:`, `? :`) are removed. `?` now
 | `=>` | Two syntaxes for functions is one too many | `\|x\| expr` for anonymous functions |
 | `function` | Verbose keyword | `fn` |
 | `if`/`else` | Redundant control flow | `match` expression |
+| `return` | Implicit returns — last expression is the value | Omit `return`; the last expression in a block is the return value |
 
 ---
 
@@ -622,7 +623,7 @@ type ButtonProps = {
 }
 
 export fn Button(props: ButtonProps) {
-  return <button>{props.label}</button>
+  <button>{props.label}</button>
 }
 
 // .fl — only specify what matters
@@ -846,7 +847,7 @@ export fn Dashboard(userId: UserId) -> JSX.Element {
   const [tab, setTab] = useState<Tab>(Overview)
   const user = useAsync(|| fetchUser(userId))
 
-  return <Layout>
+  <Layout>
     <Sidebar>
       <NavItem
         active={match tab { Overview -> true, _ -> false }}
@@ -866,7 +867,7 @@ export fn Dashboard(userId: UserId) -> JSX.Element {
 }
 
 fn OverviewPanel(user: AsyncState<User, ApiError>) -> JSX.Element {
-  return match user {
+  match user {
     Idle         -> <EmptyState>Click to load</EmptyState>
     Loading      -> <Skeleton lines={6} />
     Failure(err) -> <ErrorCard>{describeError(err)}</ErrorCard>
@@ -911,9 +912,9 @@ These are enforced at compile time with clear error messages.
 | Array index returns `Option<T>` | — | Must handle `None` case |
 | No `==` between different types | `ERROR: cannot compare number with string` | Convert first |
 | IO functions must return `Result` | `ERROR: fetch can fail — return Result` | Declare error type |
-| Dead code after exhaustive return | `ERROR: unreachable code` | Remove dead code |
+| Dead code after exhaustive match | `ERROR: unreachable code` | Remove dead code |
 | String concat with `+` | `WARNING: use template literal` | Use `` `${x}` `` |
-| Non-unit function missing return | `ERROR: missing return value` | Add return expression |
+| Non-unit function body is empty or has no final expression | `ERROR: missing return value` | Add an expression as the last line of the block |
 | Spread with overlapping keys | `WARNING: 'y' from 'a' is overwritten by 'b'` | Reorder or remove duplicate |
 | `void` keyword | `ERROR: use () instead of void` | Replace with `()` |
 | `todo` usage | `WARNING: placeholder that will panic at runtime` | Replace with actual implementation |
@@ -1428,17 +1429,21 @@ const users = [u1, u2] |> Array.sortBy(.name)  // explicit comparator
 
 **Codegen:** compiles to `[...arr].sort((a, b) => a - b)` for numbers, `[...arr].sort(comparator)` for custom.
 
-### No Implicit Return
+### Implicit Returns
 
-JS functions without a return statement silently return `undefined`. Floe requires all non-unit functions to have an explicit return. Functions declared as returning `()` don't need one.
+Floe uses implicit returns — the last expression in a block is the return value. The `return` keyword is banned.
 
 ```floe
 fn getName(user: User) -> string {
-  // COMPILE ERROR: missing return value
+  user.name    // this is the return value
 }
 
 fn log(msg: string) -> () {
-  console.log(msg)    // OK — unit functions don't need explicit return
+  Console.log(msg)    // unit functions — last expression is discarded
+}
+
+// COMPILE ERROR: empty non-unit function body
+fn broken(user: User) -> string {
 }
 ```
 
@@ -1500,7 +1505,7 @@ const c = { ...a, ...b }    // WARNING: 'y' from 'a' is overwritten by 'b'
 | Array sort | Returns new array, numeric default | No mutation footgun, no lexicographic surprise |
 | Numeric parsing | `Number.parse` returns `Result` | No silent `NaN`, no partial parse, no octal weirdness |
 | Iteration | Own values only, no prototype chain | `for...in` prototype leakage is eliminated |
-| Implicit return | Non-unit functions must return explicitly | No silent `undefined` returns |
+| Implicit return | Last expression in a block is the return value; `return` keyword is banned | No silent `undefined` returns, less noise |
 | Spread overlap | Warning on statically-known key overlap | Catches silent overwrites at compile time |
 | Compiler language | Rust | Fast, WASM-ready for browser playground, good LSP story |
 | Inline tests | `test "name" { assert expr }` co-located with code | Gleam/Rust-inspired; type-checked always, stripped from production output |

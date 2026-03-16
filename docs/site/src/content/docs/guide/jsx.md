@@ -12,14 +12,14 @@ import trusted { useState } from "react"
 export fn Counter() -> JSX.Element {
   const [count, setCount] = useState(0)
 
-  return <div>
+  <div>
     <h1>Count: {count}</h1>
     <button onClick={|| setCount(count + 1)}>Increment</button>
   </div>
 }
 ```
 
-Components are exported `fn` declarations that return `JSX.Element`.
+Components are exported `fn` declarations with a `JSX.Element` return type. The last expression is the return value.
 
 ## Props
 
@@ -31,7 +31,7 @@ type ButtonProps = {
 }
 
 export fn Button(props: ButtonProps) -> JSX.Element {
-  return <button
+  <button
     onClick={props.onClick}
     disabled={props.disabled}
   >
@@ -45,7 +45,7 @@ export fn Button(props: ButtonProps) -> JSX.Element {
 Use `match` expressions:
 
 ```floe
-return <div>
+<div>
   {match isLoggedIn {
     true -> <UserProfile user={user} />,
     false -> <LoginForm />,
@@ -58,7 +58,7 @@ return <div>
 Use pipes with `map`:
 
 ```floe
-return <ul>
+<ul>
   {items |> map(|item| <li key={item.id}>{item.name}</li>)}
 </ul>
 ```
@@ -66,7 +66,7 @@ return <ul>
 ## Fragments
 
 ```floe
-return <>
+<>
   <Header />
   <Main />
   <Footer />
