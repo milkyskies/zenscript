@@ -309,6 +309,13 @@ impl<'src> CstParser<'src> {
             self.parse_comma_separated(Self::expect_ident_item, TokenKind::RightBrace);
             self.expect(TokenKind::RightBrace);
             self.eat_trivia();
+        } else if self.at(TokenKind::LeftParen) {
+            // Tuple destructured param: (a, b)
+            self.bump(); // (
+            self.eat_trivia();
+            self.parse_comma_separated(Self::expect_ident_item, TokenKind::RightParen);
+            self.expect(TokenKind::RightParen);
+            self.eat_trivia();
         } else if self.at(TokenKind::SelfKw) {
             self.bump(); // self
             self.eat_trivia();
