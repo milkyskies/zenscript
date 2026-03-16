@@ -75,6 +75,9 @@ pub struct Checker {
     trait_defs: HashMap<String, Vec<TraitMethodSig>>,
     /// Tracks which (type, trait) pairs have been implemented.
     trait_impls: HashSet<(String, String)>,
+    /// Maps function names to their required (non-default) parameter count.
+    /// Functions not in this map require all parameters.
+    fn_required_params: HashMap<String, usize>,
 }
 
 /// Signature of a trait method (for checking implementations).
@@ -250,6 +253,7 @@ impl Checker {
             defined_sources: HashMap::new(),
             trait_defs: HashMap::new(),
             trait_impls: HashSet::new(),
+            fn_required_params: HashMap::new(),
         }
     }
 
@@ -340,6 +344,13 @@ impl Checker {
                 self.env.define(&func.name, fn_type);
                 self.defined_sources
                     .insert(func.name.clone(), format!("function from \"{}\"", source));
+
+                // Track required (non-default) parameter count
+                let required_params = func.params.iter().filter(|p| p.default.is_none()).count();
+                if required_params < func.params.len() {
+                    self.fn_required_params
+                        .insert(func.name.clone(), required_params);
+                }
             }
         }
 
@@ -1034,6 +1045,13 @@ impl Checker {
                 func.name.clone(),
                 format!("for-block function from \"{}\"", source),
             );
+
+            // Track required (non-default) parameter count
+            let required_params = func.params.iter().filter(|p| p.default.is_none()).count();
+            if required_params < func.params.len() {
+                self.fn_required_params
+                    .insert(func.name.clone(), required_params);
+            }
         }
     }
 
@@ -1288,6 +1306,14 @@ impl Checker {
         self.env.define(&decl.name, fn_type);
         self.defined_sources
             .insert(decl.name.clone(), "function".to_string());
+
+        // Track required (non-default) parameter count
+        let required_params = decl.params.iter().filter(|p| p.default.is_none()).count();
+        if required_params < decl.params.len() {
+            self.fn_required_params
+                .insert(decl.name.clone(), required_params);
+        }
+
         if decl.exported {
             self.used_names.insert(decl.name.clone());
         }
@@ -1305,6 +1331,28 @@ impl Checker {
                 self.check_no_redefinition(&param.name, span);
             }
             self.env.define(&param.name, ty.clone());
+        }
+
+        // Type-check default parameter values
+        for (param, ty) in decl.params.iter().zip(param_types.iter()) {
+            if let Some(default_expr) = &param.default {
+                let default_ty = self.check_expr(default_expr);
+                if !self.types_compatible(ty, &default_ty) {
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            format!(
+                                "default value for `{}`: expected `{}`, found `{}`",
+                                param.name,
+                                ty.display_name(),
+                                default_ty.display_name()
+                            ),
+                            param.span,
+                        )
+                        .with_label(format!("expected `{}`", ty.display_name()))
+                        .with_code("E001"),
+                    );
+                }
+            }
         }
 
         // Check body
@@ -1408,6 +1456,14 @@ impl Checker {
             self.env.define(&func.name, fn_type);
             self.defined_sources
                 .insert(func.name.clone(), "for-block function".to_string());
+
+            // Track required (non-default) parameter count
+            let required_params = func.params.iter().filter(|p| p.default.is_none()).count();
+            if required_params < func.params.len() {
+                self.fn_required_params
+                    .insert(func.name.clone(), required_params);
+            }
+
             if func.exported {
                 self.used_names.insert(func.name.clone());
             }
@@ -1421,6 +1477,28 @@ impl Checker {
 
             for (param, ty) in func.params.iter().zip(param_types.iter()) {
                 self.env.define(&param.name, ty.clone());
+            }
+
+            // Type-check default parameter values
+            for (param, ty) in func.params.iter().zip(param_types.iter()) {
+                if let Some(default_expr) = &param.default {
+                    let default_ty = self.check_expr(default_expr);
+                    if !self.types_compatible(ty, &default_ty) {
+                        self.diagnostics.push(
+                            Diagnostic::error(
+                                format!(
+                                    "default value for `{}`: expected `{}`, found `{}`",
+                                    param.name,
+                                    ty.display_name(),
+                                    default_ty.display_name()
+                                ),
+                                param.span,
+                            )
+                            .with_label(format!("expected `{}`", ty.display_name()))
+                            .with_code("E001"),
+                        );
+                    }
+                }
             }
 
             let body_type = self.check_expr(&func.body);

@@ -2629,3 +2629,124 @@ fn type_alias_still_works() {
         diags.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
 }
+
+// ── Default parameter values ────────────────────────────────
+
+#[test]
+fn default_params_all_defaults_omitted() {
+    let diags = check(
+        r#"
+fn greet(name: string, greeting: string = "Hello") -> string {
+    `${greeting}, ${name}!`
+}
+const x = greet("Ryan")
+"#,
+    );
+    assert!(
+        diags.iter().all(|d| d.severity != Severity::Error),
+        "calling with defaults omitted should work, got errors: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn default_params_some_defaults_omitted() {
+    let diags = check(
+        r#"
+fn make(a: string, b: string = "x", c: number = 0) -> string {
+    `${a}${b}`
+}
+const x = make("hello", "world")
+"#,
+    );
+    assert!(
+        diags.iter().all(|d| d.severity != Severity::Error),
+        "calling with some defaults omitted should work, got errors: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn default_params_all_explicit() {
+    let diags = check(
+        r#"
+fn make(a: string, b: string = "x", c: number = 0) -> string {
+    `${a}${b}`
+}
+const x = make("hello", "world", 42)
+"#,
+    );
+    assert!(
+        diags.iter().all(|d| d.severity != Severity::Error),
+        "calling with all args explicit should work, got errors: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn default_params_too_few_args_error() {
+    let diags = check(
+        r#"
+fn make(a: string, b: string = "x", c: number = 0) -> string {
+    `${a}${b}`
+}
+const x = make()
+"#,
+    );
+    assert!(
+        has_error_containing(&diags, "expects"),
+        "missing required param should error, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn default_params_too_many_args_error() {
+    let diags = check(
+        r#"
+fn make(a: string, b: string = "x") -> string {
+    `${a}${b}`
+}
+const x = make("a", "b", "c")
+"#,
+    );
+    assert!(
+        has_error_containing(&diags, "expects"),
+        "too many args should error, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn default_params_type_mismatch_error() {
+    let diags = check(
+        r#"
+fn greet(name: string, count: number = "oops") -> string {
+    name
+}
+"#,
+    );
+    assert!(
+        has_error_containing(&diags, "default value for `count`"),
+        "default value type mismatch should error, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn default_params_only_required_param() {
+    let diags = check(
+        r#"
+fn greet(name: string, greeting: string = "Hello") -> string {
+    `${greeting}, ${name}!`
+}
+const x = greet("Ryan")
+"#,
+    );
+    // Verify the error message format says "1 to 2 arguments" not just "2 arguments"
+    assert!(
+        !has_error_containing(&diags, "expects"),
+        "should not produce argument count error, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
