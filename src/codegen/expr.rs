@@ -492,6 +492,7 @@ impl Codegen {
         match ty {
             Type::Array(_) => Some("Array"),
             Type::Map { .. } => Some("Map"),
+            Type::Set { .. } => Some("Set"),
             Type::String => Some("String"),
             Type::Number => Some("Number"),
             Type::Option(_) => Some("Option"),

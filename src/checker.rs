@@ -1676,6 +1676,7 @@ impl Checker {
             (Type::Map { key: k1, value: v1 }, Type::Map { key: k2, value: v2 }) => {
                 self.types_compatible(k1, k2) && self.types_compatible(v1, v2)
             }
+            (Type::Set { element: e1 }, Type::Set { element: e2 }) => self.types_compatible(e1, e2),
             (Type::Tuple(a), Type::Tuple(b)) => {
                 a.len() == b.len()
                     && a.iter()

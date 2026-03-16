@@ -88,6 +88,7 @@ All four of TypeScript's `?` uses (`?.`, `??`, `?:`, `? :`) are removed. `?` now
 | tap | `x \|> tap(Console.log)` | IIFE: calls fn, returns value unchanged |
 | Immutable sort | `Array.sort` returns new array | sorted copy, no mutation |
 | Immutable maps | `Map.set`, `Map.remove` return new maps | `new Map([...old, [k, v]])` |
+| Immutable sets | `Set.add`, `Set.remove` return new sets | `new Set([...old, val])` |
 | Strict parse | `Number.parse("123")` returns `Result` | no silent `NaN` or partial parse |
 | Number separators | `1_000_000`, `3.141_592`, `0xFF_FF` | underscores stripped in output |
 
