@@ -82,6 +82,53 @@ for User: Display {
 function display(self: User): string { return self.name; }
 ```
 
+## Deriving Traits
+
+Record types can auto-derive trait implementations with `deriving`. This generates the same code as a handwritten `for` block with no runtime cost:
+
+```floe
+type User = {
+  id: string,
+  name: string,
+  email: string,
+} deriving (Display)
+```
+
+This generates:
+
+- `display(self) -> string` - string representation like `User(id: abc, name: Ryan, email: r@t.com)`
+
+:::note
+`Eq` is not derivable — structural equality is built-in for all types via `==`. You do not need to derive or implement equality.
+:::
+
+### Derivable traits
+
+| Trait | Generated implementation |
+|---|---|
+| `Display` | `TypeName(field1: val1, field2: val2)` format |
+
+### Compiled output
+
+```floe
+type User = { name: string, age: number } deriving (Display)
+```
+
+```typescript
+// Generated TypeScript
+type User = { name: string; age: number };
+
+function display(self: User): string {
+  return `User(name: ${self.name}, age: ${self.age})`;
+}
+```
+
+### Deriving rules
+
+1. `deriving` only works on record types (not unions)
+2. A handwritten `for` block overrides a derived implementation
+3. Only `Display` is derivable — `Eq` is built-in via `==`
+
 ## Rules
 
 1. All required methods (those without default bodies) must be implemented

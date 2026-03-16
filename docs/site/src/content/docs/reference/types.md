@@ -42,6 +42,32 @@ type User = {
 };
 ```
 
+### Record Type Composition
+
+Include fields from other record types using `...` spread:
+
+```floe
+type BaseProps = {
+  className: string,
+  disabled: boolean,
+}
+
+type ButtonProps = {
+  ...BaseProps,
+  onClick: () -> (),
+  label: string,
+}
+```
+
+Compiles to TypeScript intersection:
+
+```typescript
+type BaseProps = { className: string; disabled: boolean };
+type ButtonProps = BaseProps & { onClick: () => void; label: string };
+```
+
+Multiple spreads are allowed. Field name conflicts are compile errors.
+
 ## Union Types
 
 Tagged discriminated unions:
@@ -61,6 +87,33 @@ type Shape =
   | { _tag: "Rectangle"; width: number; height: number }
   | { _tag: "Point" };
 ```
+
+## String Literal Unions
+
+String literal unions for npm interop:
+
+```floe
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE"
+```
+
+Compiles to the same TypeScript type (pass-through):
+
+```typescript
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
+```
+
+Match arms use string comparisons instead of tag checks:
+
+```floe
+match method {
+    "GET" -> "fetching",
+    "POST" -> "creating",
+    "PUT" -> "updating",
+    "DELETE" -> "removing",
+}
+```
+
+Exhaustiveness is checked -- missing a variant is a compile error.
 
 ## Brand Types
 

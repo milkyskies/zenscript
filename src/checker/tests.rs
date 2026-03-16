@@ -98,7 +98,7 @@ fn unwrap_in_result_function() {
 fn tryFetch(url: string) -> Result<string, string> {
     const result = Ok("data")
     const value = result?
-    return Ok(value)
+    Ok(value)
 }
 "#,
     );
@@ -116,7 +116,7 @@ fn unwrap_not_on_result_or_option() {
 fn process() -> Result<number, string> {
     const x = 42
     const y = x?
-    return Ok(y)
+    Ok(y)
 }
 "#,
     );
@@ -195,13 +195,13 @@ fn unused_import_error() {
 
 #[test]
 fn exported_function_needs_return_type() {
-    let diags = check("export fn add(a: number, b: number) { return a }");
+    let diags = check("export fn add(a: number, b: number) { a }");
     assert!(has_error_containing(&diags, "must declare a return type"));
 }
 
 #[test]
 fn exported_function_with_return_type_ok() {
-    let diags = check("export fn add(a: number, b: number) -> number { return a }");
+    let diags = check("export fn add(a: number, b: number) -> number { a }");
     assert!(!has_error(&diags, "E010"));
 }
 
@@ -285,21 +285,6 @@ fn mixed_array_string_and_number() {
     // e.g. TanStack Query's queryKey: ["user", props.userId]
     let diags = check(r#"const _x = ["user", 42]"#);
     assert!(!has_error(&diags, "E004"));
-}
-
-// ── Dead code detection ─────────────────────────────────────
-
-#[test]
-fn dead_code_after_return() {
-    let diags = check(
-        r#"
-fn test() -> number {
-    return 1
-    const x = 2
-}
-"#,
-    );
-    assert!(has_error_containing(&diags, "unreachable code"));
 }
 
 // ── Opaque type enforcement ─────────────────────────────────
@@ -1935,7 +1920,7 @@ fn cross_file_trait_resolution() {
         opaque: false,
         name: "User".to_string(),
         type_params: vec![],
-        def: TypeDef::Record(vec![RecordField {
+        def: TypeDef::Record(vec![RecordEntry::Field(Box::new(RecordField {
             name: "name".to_string(),
             type_ann: TypeExpr {
                 kind: TypeExprKind::Named {
@@ -1947,7 +1932,8 @@ fn cross_file_trait_resolution() {
             },
             default: None,
             span: dummy_span,
-        }]),
+        }))]),
+        deriving: vec![],
     });
     imports.insert("./types".to_string(), resolved);
 
@@ -2164,7 +2150,7 @@ fn fetch_returns_promise_response() {
 fn test() -> Result<string, Error> {
     const res = try fetch("url")?
     const j = res.json()
-    return Ok("done")
+    Ok("done")
 }
 "#,
     );
@@ -2189,7 +2175,7 @@ fn await_unwraps_promise() {
 fn test() -> Result<string, Error> {
     const res = try await fetch("url")?
     const j = res.json()
-    return Ok("done")
+    Ok("done")
 }
 "#,
     );
@@ -2215,7 +2201,7 @@ fn test() -> Result<string, Error> {
         Ok(promise) -> "got promise",
         Err(e) -> e.message,
     }
-    return Ok(val)
+    Ok(val)
 }
 "#,
     );
@@ -2227,5 +2213,349 @@ fn test() -> Result<string, Error> {
             .filter(|d| d.severity == Severity::Error)
             .map(|d| &d.message)
             .collect::<Vec<_>>()
+    );
+}
+
+// ── String Literal Unions ───────────────────────────────────
+
+#[test]
+fn string_literal_union_exhaustive_match() {
+    let diags = check(
+        r#"
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE"
+
+fn _describe(method: HttpMethod) -> string {
+    match method {
+        "GET" -> "fetching",
+        "POST" -> "creating",
+        "PUT" -> "updating",
+        "DELETE" -> "removing",
+    }
+}
+"#,
+    );
+    assert!(
+        !has_error(&diags, "E004"),
+        "exhaustive match should not produce error, got: {:?}",
+        diags
+    );
+}
+
+#[test]
+fn string_literal_union_missing_variant() {
+    let diags = check(
+        r#"
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE"
+
+fn _describe(method: HttpMethod) -> string {
+    match method {
+        "GET" -> "fetching",
+        "POST" -> "creating",
+    }
+}
+"#,
+    );
+    assert!(
+        has_error(&diags, "E004"),
+        "missing variants should produce exhaustiveness error, got: {:?}",
+        diags
+    );
+}
+
+#[test]
+fn string_literal_union_with_wildcard() {
+    let diags = check(
+        r#"
+type Status = "ok" | "error" | "pending"
+
+fn _handle(s: Status) -> number {
+    match s {
+        "ok" -> 1,
+        _ -> 0,
+    }
+}
+"#,
+    );
+    assert!(
+        !has_error(&diags, "E004"),
+        "wildcard should satisfy exhaustiveness, got: {:?}",
+        diags
+    );
+}
+
+// ── Record type composition with spread ──────────────────────
+
+#[test]
+fn record_spread_basic() {
+    let diags = check(
+        r#"
+type BaseProps = {
+    className: string,
+    disabled: boolean,
+}
+
+type ButtonProps = {
+    ...BaseProps,
+    onClick: () -> (),
+    label: string,
+}
+
+const btn = ButtonProps(className: "btn", disabled: false, onClick: || (), label: "Click")
+"#,
+    );
+    assert!(
+        !diags.iter().any(|d| d.severity == Severity::Error),
+        "expected no errors, got: {:?}",
+        diags
+    );
+}
+
+#[test]
+fn record_spread_multiple() {
+    let diags = check(
+        r#"
+type A = {
+    x: number,
+}
+
+type B = {
+    y: string,
+}
+
+type C = {
+    ...A,
+    ...B,
+    z: boolean,
+}
+
+const c = C(x: 1, y: "hello", z: true)
+"#,
+    );
+    assert!(
+        !diags.iter().any(|d| d.severity == Severity::Error),
+        "expected no errors, got: {:?}",
+        diags
+    );
+}
+
+#[test]
+fn record_spread_conflict_error() {
+    let diags = check(
+        r#"
+type A = {
+    name: string,
+}
+
+type B = {
+    ...A,
+    name: number,
+}
+"#,
+    );
+    assert!(
+        has_error(&diags, "E030"),
+        "expected duplicate field error E030, got: {:?}",
+        diags
+    );
+}
+
+#[test]
+fn record_spread_union_error() {
+    let diags = check(
+        r#"
+type Status = | Active | Inactive
+
+type Bad = {
+    ...Status,
+    extra: string,
+}
+"#,
+    );
+    assert!(
+        has_error(&diags, "E032"),
+        "expected spread-of-non-record error E032, got: {:?}",
+        diags
+    );
+}
+
+#[test]
+fn record_spread_nested() {
+    let diags = check(
+        r#"
+type A = {
+    x: number,
+}
+
+type B = {
+    ...A,
+    y: string,
+}
+
+type C = {
+    ...B,
+    z: boolean,
+}
+
+const c = C(x: 1, y: "hello", z: true)
+"#,
+    );
+    assert!(
+        !diags.iter().any(|d| d.severity == Severity::Error),
+        "expected no errors for nested spread, got: {:?}",
+        diags
+    );
+}
+
+#[test]
+fn record_spread_conflict_between_spreads() {
+    let diags = check(
+        r#"
+type A = {
+    name: string,
+}
+
+type B = {
+    name: string,
+}
+
+type C = {
+    ...A,
+    ...B,
+}
+"#,
+    );
+    assert!(
+        has_error(&diags, "E031"),
+        "expected conflict error E031 between spreads, got: {:?}",
+        diags
+    );
+}
+
+// ── Collect Block ───────────────────────────────────────────
+
+#[test]
+fn collect_allows_question_without_result_return() {
+    // ? inside collect doesn't require the enclosing function to return Result
+    let diags = check(
+        r#"
+fn validate(x: number) -> Result<number, string> { Ok(x) }
+fn f() -> Result<number, Array<string>> {
+    collect {
+        const a = validate(1)?
+        const b = validate(2)?
+        a + b
+    }
+}
+"#,
+    );
+    let errors: Vec<_> = diags
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "expected no errors in collect block, got: {errors:?}"
+    );
+}
+
+#[test]
+fn collect_question_on_non_result_still_errors() {
+    let diags = check(
+        r#"
+fn f() -> Result<number, Array<string>> {
+    collect {
+        const a = (42)?
+        a
+    }
+}
+"#,
+    );
+    assert!(
+        has_error(&diags, "E005"),
+        "expected E005 for ? on non-Result, got: {diags:?}"
+    );
+}
+
+// ── Deriving ────────────────────────────────────────────────
+
+#[test]
+fn deriving_eq_is_error() {
+    let diags = check(
+        r#"
+type Point = {
+  x: number,
+  y: number,
+} deriving (Eq)
+"#,
+    );
+    assert!(
+        has_error_containing(&diags, "structural equality is built-in"),
+        "deriving Eq should error: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn deriving_display_on_record_type() {
+    let diags = check(
+        r#"
+type User = {
+  name: string,
+  age: number,
+} deriving (Display)
+"#,
+    );
+    assert!(
+        diags.iter().all(|d| d.severity != Severity::Error),
+        "deriving Display on record should not error: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn deriving_eq_and_display_errors_on_eq() {
+    let diags = check(
+        r#"
+type User = {
+  name: string,
+  age: number,
+} deriving (Eq, Display)
+"#,
+    );
+    assert!(
+        has_error_containing(&diags, "structural equality is built-in"),
+        "deriving Eq should error even when combined with Display: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn deriving_on_union_type_is_error() {
+    let diags = check(
+        r#"
+type Shape = | Circle(radius: number) | Square(side: number) deriving (Display)
+"#,
+    );
+    assert!(
+        has_error_containing(&diags, "can only be used on record types"),
+        "deriving on union should error: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn deriving_unknown_trait_is_error() {
+    let diags = check(
+        r#"
+type Point = {
+  x: number,
+  y: number,
+} deriving (Hash)
+"#,
+    );
+    assert!(
+        has_error_containing(&diags, "cannot be derived"),
+        "deriving unknown trait should error: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
 }

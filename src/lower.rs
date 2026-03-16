@@ -54,6 +54,7 @@ impl<'src> Lowerer<'src> {
                     self.errors.push(ParseError {
                         message: format!("parse error: {text}"),
                         span: self.node_span(&child),
+                        kind: crate::parser::ParseErrorKind::General,
                     });
                 }
                 _ => {}
@@ -317,6 +318,7 @@ impl<'src> Lowerer<'src> {
         let type_params = idents[1..].to_vec();
 
         let mut def = None;
+        let mut deriving = Vec::new();
         for child in node.children() {
             match child.kind() {
                 SyntaxKind::TYPE_DEF_RECORD => {
@@ -328,6 +330,12 @@ impl<'src> Lowerer<'src> {
                 SyntaxKind::TYPE_DEF_ALIAS => {
                     def = Some(self.lower_type_def_alias(&child)?);
                 }
+                SyntaxKind::TYPE_DEF_STRING_UNION => {
+                    def = Some(self.lower_type_def_string_literal_union(&child));
+                }
+                SyntaxKind::DERIVING_CLAUSE => {
+                    deriving = self.collect_idents_direct(&child);
+                }
                 _ => {}
             }
         }
@@ -338,6 +346,7 @@ impl<'src> Lowerer<'src> {
             name,
             type_params,
             def: def?,
+            deriving,
         })
     }
 
@@ -545,15 +554,28 @@ impl<'src> Lowerer<'src> {
     }
 
     fn lower_type_def_record(&mut self, node: &SyntaxNode) -> TypeDef {
-        let mut fields = Vec::new();
+        let mut entries = Vec::new();
         for child in node.children() {
-            if child.kind() == SyntaxKind::RECORD_FIELD
-                && let Some(field) = self.lower_record_field(&child)
-            {
-                fields.push(field);
+            match child.kind() {
+                SyntaxKind::RECORD_FIELD => {
+                    if let Some(field) = self.lower_record_field(&child) {
+                        entries.push(RecordEntry::Field(Box::new(field)));
+                    }
+                }
+                SyntaxKind::RECORD_SPREAD => {
+                    let span = self.node_span(&child);
+                    let idents = self.collect_idents_direct(&child);
+                    if let Some(type_name) = idents.first() {
+                        entries.push(RecordEntry::Spread(RecordSpread {
+                            type_name: type_name.clone(),
+                            span,
+                        }));
+                    }
+                }
+                _ => {}
             }
         }
-        TypeDef::Record(fields)
+        TypeDef::Record(entries)
     }
 
     fn lower_type_def_union(&mut self, node: &SyntaxNode) -> TypeDef {
@@ -576,6 +598,18 @@ impl<'src> Lowerer<'src> {
             }
         }
         None
+    }
+
+    fn lower_type_def_string_literal_union(&mut self, node: &SyntaxNode) -> TypeDef {
+        let mut variants = Vec::new();
+        for token in node.children_with_tokens() {
+            if let Some(token) = token.as_token()
+                && token.kind() == SyntaxKind::STRING
+            {
+                variants.push(self.unquote_string(token.text()));
+            }
+        }
+        TypeDef::StringLiteralUnion(variants)
     }
 
     fn lower_variant(&mut self, node: &SyntaxNode) -> Option<Variant> {
@@ -859,6 +893,38 @@ impl<'src> Lowerer<'src> {
             .any(|t| t.as_token().is_some_and(|t| t.kind() == kind))
     }
 
+    /// Check if a MATCH_EXPR node has no subject expression (used for pipe-into-match).
+    /// A subjectless match has `match` keyword followed directly by `{`, with no
+    /// expression child nodes before the first MATCH_ARM.
+    fn is_subjectless_match(&self, node: &SyntaxNode) -> bool {
+        // A subjectless match has no child expression nodes — only MATCH_ARM children
+        for child in node.children() {
+            if child.kind() == SyntaxKind::MATCH_ARM {
+                continue;
+            }
+            // Any other child node means there's a subject expression
+            return false;
+        }
+        // Also check: no token-level expressions (identifiers, numbers, etc.)
+        // between `match` keyword and `{`
+        let mut past_match_kw = false;
+        for tok in node.children_with_tokens() {
+            if let Some(token) = tok.as_token() {
+                if token.kind() == SyntaxKind::KW_MATCH {
+                    past_match_kw = true;
+                    continue;
+                }
+                if past_match_kw && token.kind() == SyntaxKind::L_BRACE {
+                    return true; // No expression between `match` and `{`
+                }
+                if past_match_kw && !token.kind().is_trivia() {
+                    return false; // Found a token that could be a subject
+                }
+            }
+        }
+        true
+    }
+
     fn unquote_string(&self, text: &str) -> String {
         // Remove surrounding quotes
         if text.len() >= 2 && text.starts_with('"') && text.ends_with('"') {
@@ -952,5 +1018,449 @@ impl<'src> Lowerer<'src> {
             }
         }
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::cst::CstParser;
+    use crate::lexer::Lexer;
+    use crate::lower::lower_program;
+    use crate::parser::ast::*;
+
+    /// Helper: parse source through CST then lower to AST.
+    fn lower(source: &str) -> Program {
+        let tokens = Lexer::new(source).tokenize_with_trivia();
+        let parse = CstParser::new(source, tokens).parse();
+        assert!(parse.errors.is_empty(), "CST errors: {:?}", parse.errors);
+        let root = parse.syntax();
+        lower_program(&root, source).unwrap_or_else(|errs| {
+            panic!(
+                "lower failed:\n{}",
+                errs.iter()
+                    .map(|e| e.to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            )
+        })
+    }
+
+    fn first_item(source: &str) -> ItemKind {
+        lower(source).items.into_iter().next().unwrap().kind
+    }
+
+    fn first_expr(source: &str) -> ExprKind {
+        match first_item(source) {
+            ItemKind::Expr(e) => e.kind,
+            other => panic!("expected Expr, got {other:?}"),
+        }
+    }
+
+    // ── Const declarations ────────────────────────────────────────
+
+    #[test]
+    fn const_simple() {
+        let item = first_item("const x = 42");
+        let ItemKind::Const(decl) = item else {
+            panic!("expected Const")
+        };
+        assert_eq!(decl.binding, ConstBinding::Name("x".into()));
+        assert!(!decl.exported);
+        assert!(decl.type_ann.is_none());
+    }
+
+    #[test]
+    fn const_typed() {
+        let item = first_item("const x: number = 42");
+        let ItemKind::Const(decl) = item else {
+            panic!("expected Const")
+        };
+        assert!(decl.type_ann.is_some());
+    }
+
+    #[test]
+    fn const_exported() {
+        let item = first_item("export const x = 1");
+        let ItemKind::Const(decl) = item else {
+            panic!("expected Const")
+        };
+        assert!(decl.exported);
+    }
+
+    #[test]
+    fn const_array_destructuring() {
+        let item = first_item("const [a, b] = pair");
+        let ItemKind::Const(decl) = item else {
+            panic!("expected Const")
+        };
+        assert!(matches!(decl.binding, ConstBinding::Array(_)));
+    }
+
+    // ── Function declarations ─────────────────────────────────────
+
+    #[test]
+    fn function_basic() {
+        let item = first_item("fn greet() { 1 }");
+        let ItemKind::Function(decl) = item else {
+            panic!("expected Function")
+        };
+        assert_eq!(decl.name, "greet");
+        assert!(decl.params.is_empty());
+        assert!(!decl.exported);
+        assert!(!decl.async_fn);
+    }
+
+    #[test]
+    fn function_with_params_and_return() {
+        let item = first_item("fn add(a: number, b: number) -> number { a + b }");
+        let ItemKind::Function(decl) = item else {
+            panic!("expected Function")
+        };
+        assert_eq!(decl.params.len(), 2);
+        assert_eq!(decl.params[0].name, "a");
+        assert!(decl.return_type.is_some());
+    }
+
+    #[test]
+    fn function_async() {
+        let item = first_item("async fn fetch(url: string) -> string { url }");
+        let ItemKind::Function(decl) = item else {
+            panic!("expected Function")
+        };
+        assert!(decl.async_fn);
+    }
+
+    #[test]
+    fn function_exported() {
+        let item = first_item("export fn hello() { 1 }");
+        let ItemKind::Function(decl) = item else {
+            panic!("expected Function")
+        };
+        assert!(decl.exported);
+    }
+
+    #[test]
+    fn function_param_default() {
+        let item = first_item("fn greet(name: string = \"world\") { name }");
+        let ItemKind::Function(decl) = item else {
+            panic!("expected Function")
+        };
+        assert!(decl.params[0].default.is_some());
+    }
+
+    // ── Literals ──────────────────────────────────────────────────
+
+    #[test]
+    fn literal_number() {
+        assert_eq!(first_expr("42"), ExprKind::Number("42".into()));
+    }
+
+    #[test]
+    fn literal_string() {
+        assert_eq!(first_expr("\"hello\""), ExprKind::String("hello".into()));
+    }
+
+    #[test]
+    fn literal_bool() {
+        assert_eq!(first_expr("true"), ExprKind::Bool(true));
+        assert_eq!(first_expr("false"), ExprKind::Bool(false));
+    }
+
+    #[test]
+    fn literal_none() {
+        assert_eq!(first_expr("None"), ExprKind::None);
+    }
+
+    #[test]
+    fn literal_todo() {
+        assert_eq!(first_expr("todo"), ExprKind::Todo);
+    }
+
+    // ── Binary / unary operations ─────────────────────────────────
+
+    #[test]
+    fn binary_add() {
+        let ExprKind::Binary { op, .. } = first_expr("1 + 2") else {
+            panic!("expected Binary")
+        };
+        assert_eq!(op, BinOp::Add);
+    }
+
+    #[test]
+    fn binary_eq() {
+        let ExprKind::Binary { op, .. } = first_expr("1 == 2") else {
+            panic!("expected Binary")
+        };
+        assert_eq!(op, BinOp::Eq);
+    }
+
+    #[test]
+    fn unary_not() {
+        let ExprKind::Unary { op, .. } = first_expr("!flag") else {
+            panic!("expected Unary")
+        };
+        assert_eq!(op, UnaryOp::Not);
+    }
+
+    #[test]
+    fn unary_neg() {
+        let ExprKind::Unary { op, .. } = first_expr("-42") else {
+            panic!("expected Unary")
+        };
+        assert_eq!(op, UnaryOp::Neg);
+    }
+
+    // ── Function calls ────────────────────────────────────────────
+
+    #[test]
+    fn call_basic() {
+        let ExprKind::Call { callee, args, .. } = first_expr("f(1, 2)") else {
+            panic!("expected Call")
+        };
+        assert!(matches!(callee.kind, ExprKind::Identifier(ref n) if n == "f"));
+        assert_eq!(args.len(), 2);
+    }
+
+    // ── Imports ───────────────────────────────────────────────────
+
+    #[test]
+    fn import_named() {
+        let item = first_item("import { foo, bar } from \"./mod\"");
+        let ItemKind::Import(decl) = item else {
+            panic!("expected Import")
+        };
+        assert_eq!(decl.specifiers.len(), 2);
+        assert_eq!(decl.specifiers[0].name, "foo");
+        assert_eq!(decl.source, "./mod");
+    }
+
+    #[test]
+    fn import_aliased() {
+        // "as" is banned but contextually used; test that the specifier still lowers
+        let tokens = Lexer::new("import { foo as f } from \"./mod\"").tokenize_with_trivia();
+        let parse = CstParser::new("import { foo as f } from \"./mod\"", tokens).parse();
+        let root = parse.syntax();
+        // Even if there's a banned keyword error, lowering should extract specifiers
+        let _ = lower_program(&root, "import { foo as f } from \"./mod\"");
+    }
+
+    // ── Type declarations ─────────────────────────────────────────
+
+    #[test]
+    fn type_record() {
+        let item = first_item("type User = { name: string, age: number }");
+        let ItemKind::TypeDecl(decl) = item else {
+            panic!("expected TypeDecl")
+        };
+        assert_eq!(decl.name, "User");
+        assert!(matches!(decl.def, TypeDef::Record(ref fields) if fields.len() == 2));
+    }
+
+    #[test]
+    fn type_union() {
+        let item = first_item("type Color = | Red | Green | Blue");
+        let ItemKind::TypeDecl(decl) = item else {
+            panic!("expected TypeDecl")
+        };
+        assert!(matches!(decl.def, TypeDef::Union(ref variants) if variants.len() == 3));
+    }
+
+    #[test]
+    fn type_alias() {
+        let item = first_item("type Name = string");
+        let ItemKind::TypeDecl(decl) = item else {
+            panic!("expected TypeDecl")
+        };
+        assert!(matches!(decl.def, TypeDef::Alias(_)));
+    }
+
+    #[test]
+    fn type_string_literal_union() {
+        let item = first_item(r#"type HttpMethod = "GET" | "POST" | "PUT" | "DELETE""#);
+        let ItemKind::TypeDecl(decl) = item else {
+            panic!("expected TypeDecl")
+        };
+        match decl.def {
+            TypeDef::StringLiteralUnion(ref variants) => {
+                assert_eq!(variants, &["GET", "POST", "PUT", "DELETE"]);
+            }
+            other => panic!("expected StringLiteralUnion, got {other:?}"),
+        }
+    }
+
+    // ── Match expressions ─────────────────────────────────────────
+
+    #[test]
+    fn match_basic() {
+        let ExprKind::Match { arms, .. } = first_expr("match x { Ok(v) -> v, Err(e) -> e }") else {
+            panic!("expected Match")
+        };
+        assert_eq!(arms.len(), 2);
+    }
+
+    #[test]
+    fn match_wildcard() {
+        let ExprKind::Match { arms, .. } = first_expr("match x { _ -> 0 }") else {
+            panic!("expected Match")
+        };
+        assert!(matches!(arms[0].pattern.kind, PatternKind::Wildcard));
+    }
+
+    #[test]
+    fn match_with_guard() {
+        let ExprKind::Match { arms, .. } = first_expr("match x { n when n > 0 -> n, _ -> 0 }")
+        else {
+            panic!("expected Match")
+        };
+        assert!(arms[0].guard.is_some());
+    }
+
+    // ── Pipe expressions ──────────────────────────────────────────
+
+    #[test]
+    fn pipe_basic() {
+        // Pipe expressions are lowered correctly through the full parser path
+        let prog = crate::parser::Parser::new("1 |> f(_)")
+            .parse_program()
+            .unwrap();
+        let ItemKind::Expr(ref expr) = prog.items[0].kind else {
+            panic!("expected Expr")
+        };
+        assert!(matches!(expr.kind, ExprKind::Pipe { .. }));
+    }
+
+    // ── Lambda / arrow functions ──────────────────────────────────
+
+    #[test]
+    fn lambda_basic() {
+        let ExprKind::Arrow { params, .. } = first_expr("|x| x + 1") else {
+            panic!("expected Arrow")
+        };
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0].name, "x");
+    }
+
+    #[test]
+    fn lambda_zero_arg() {
+        let ExprKind::Arrow { params, .. } = first_expr("|| 42") else {
+            panic!("expected Arrow")
+        };
+        assert!(params.is_empty());
+    }
+
+    // ── JSX ───────────────────────────────────────────────────────
+
+    #[test]
+    fn jsx_self_closing() {
+        let ExprKind::Jsx(ref el) = first_expr("<Input />") else {
+            panic!("expected Jsx")
+        };
+        match &el.kind {
+            JsxElementKind::Element {
+                name, self_closing, ..
+            } => {
+                assert_eq!(name, "Input");
+                assert!(self_closing);
+            }
+            _ => panic!("expected Element"),
+        }
+    }
+
+    #[test]
+    fn jsx_with_children() {
+        let ExprKind::Jsx(ref el) = first_expr("<div>hello</div>") else {
+            panic!("expected Jsx")
+        };
+        match &el.kind {
+            JsxElementKind::Element { children, .. } => {
+                assert!(!children.is_empty());
+            }
+            _ => panic!("expected Element"),
+        }
+    }
+
+    // ── Array, return, member ─────────────────────────────────────
+
+    #[test]
+    fn array_literal() {
+        let ExprKind::Array(ref elts) = first_expr("[1, 2, 3]") else {
+            panic!("expected Array")
+        };
+        assert_eq!(elts.len(), 3);
+    }
+
+    #[test]
+    fn implicit_return_last_expr() {
+        let item = first_item("fn f() { 42 }");
+        let ItemKind::Function(decl) = item else {
+            panic!("expected Function")
+        };
+        let ExprKind::Block(ref items) = decl.body.kind else {
+            panic!("expected Block")
+        };
+        assert!(!items.is_empty());
+    }
+
+    #[test]
+    fn member_access() {
+        let ExprKind::Member { field, .. } = first_expr("user.name") else {
+            panic!("expected Member")
+        };
+        assert_eq!(field, "name");
+    }
+
+    // ── Ok / Err / Some constructors ──────────────────────────────
+
+    #[test]
+    fn ok_constructor() {
+        assert!(matches!(first_expr("Ok(42)"), ExprKind::Ok(_)));
+    }
+
+    #[test]
+    fn err_constructor() {
+        assert!(matches!(first_expr("Err(\"fail\")"), ExprKind::Err(_)));
+    }
+
+    #[test]
+    fn some_constructor() {
+        assert!(matches!(first_expr("Some(1)"), ExprKind::Some(_)));
+    }
+
+    // ── For blocks ────────────────────────────────────────────────
+
+    #[test]
+    fn for_block_basic() {
+        let item = first_item("for User { fn greet(self) -> string { self.name } }");
+        let ItemKind::ForBlock(block) = item else {
+            panic!("expected ForBlock")
+        };
+        assert_eq!(block.functions.len(), 1);
+        assert_eq!(block.functions[0].name, "greet");
+    }
+
+    // ── Test blocks ───────────────────────────────────────────────
+
+    #[test]
+    fn test_block_basic() {
+        let item = first_item("test \"adds\" { assert true }");
+        let ItemKind::TestBlock(block) = item else {
+            panic!("expected TestBlock")
+        };
+        assert_eq!(block.name, "adds");
+        assert!(!block.body.is_empty());
+    }
+
+    // ── Empty program / multiple items ────────────────────────────
+
+    #[test]
+    fn empty_program() {
+        let prog = lower("");
+        assert!(prog.items.is_empty());
+    }
+
+    #[test]
+    fn multiple_items() {
+        let prog = lower("const x = 1\nconst y = 2");
+        assert_eq!(prog.items.len(), 2);
     }
 }

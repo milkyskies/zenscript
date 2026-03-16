@@ -188,6 +188,52 @@ impl<'src> Lowerer<'src> {
                             span,
                         });
                     }
+                    SyntaxKind::L_BRACKET => {
+                        // Array pattern: [], [a, b], [first, ..rest]
+                        let child_patterns: Vec<Pattern> = node
+                            .children()
+                            .filter(|c| c.kind() == SyntaxKind::PATTERN)
+                            .filter_map(|c| self.lower_pattern(&c))
+                            .collect();
+
+                        // Check for rest pattern (..name) by looking for DOT_DOT token
+                        let rest = if self.has_token(node, SyntaxKind::DOT_DOT) {
+                            // Find the identifier after ..
+                            let mut found_dotdot = false;
+                            let mut rest_name = None;
+                            for child_or_token in node.children_with_tokens() {
+                                if let Some(token) = child_or_token.as_token() {
+                                    if token.kind() == SyntaxKind::DOT_DOT {
+                                        found_dotdot = true;
+                                        continue;
+                                    }
+                                    if found_dotdot && !token.kind().is_trivia() {
+                                        match token.kind() {
+                                            SyntaxKind::IDENT => {
+                                                rest_name = Some(token.text().to_string());
+                                            }
+                                            SyntaxKind::UNDERSCORE => {
+                                                rest_name = Some("_".to_string());
+                                            }
+                                            _ => {}
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                            rest_name
+                        } else {
+                            None
+                        };
+
+                        return Some(Pattern {
+                            kind: PatternKind::Array {
+                                elements: child_patterns,
+                                rest,
+                            },
+                            span,
+                        });
+                    }
                     SyntaxKind::L_PAREN => {
                         // Tuple pattern: (x, y)
                         let patterns: Vec<Pattern> = node

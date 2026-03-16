@@ -4,6 +4,11 @@ pub mod token;
 use span::Span;
 use token::{Token, TokenKind};
 
+/// Bytes >= this value are non-ASCII (multi-byte UTF-8 lead or continuation bytes).
+const UTF8_MULTIBYTE_FLAG: u8 = 0x80;
+/// Minimum value for a UTF-8 lead byte (starts a new character).
+const UTF8_LEAD_BYTE_MIN: u8 = 0xC0;
+
 /// The Floe lexer. Converts source text into a sequence of tokens.
 pub struct Lexer<'src> {
     /// The full source text being lexed.
@@ -83,22 +88,7 @@ impl<'src> Lexer<'src> {
             }
             Some(b'/') if self.peek_at(1) == Some(b'*') => {
                 let start = self.pos;
-                self.advance(); // /
-                self.advance(); // *
-                let mut depth = 1;
-                while !self.is_at_end() && depth > 0 {
-                    if self.peek() == Some(b'*') && self.peek_at(1) == Some(b'/') {
-                        self.advance();
-                        self.advance();
-                        depth -= 1;
-                    } else if self.peek() == Some(b'/') && self.peek_at(1) == Some(b'*') {
-                        self.advance();
-                        self.advance();
-                        depth += 1;
-                    } else {
-                        self.advance();
-                    }
-                }
+                self.consume_block_comment();
                 return self.make_token(TokenKind::BlockComment, start);
             }
             _ => {}
@@ -140,11 +130,16 @@ impl<'src> Lexer<'src> {
             b'*' => TokenKind::Star,
             b'%' => TokenKind::Percent,
 
-            // Dot or DotDot
+            // Dot, DotDot, or DotDotDot
             b'.' => {
                 if self.peek() == Some(b'.') {
                     self.advance();
-                    TokenKind::DotDot
+                    if self.peek() == Some(b'.') {
+                        self.advance();
+                        TokenKind::DotDotDot
+                    } else {
+                        TokenKind::DotDot
+                    }
                 } else {
                     TokenKind::Dot
                 }
@@ -232,10 +227,10 @@ impl<'src> Lexer<'src> {
             b'/' => TokenKind::Slash,
 
             // String literals
-            b'"' => self.scan_string(start),
+            b'"' => self.scan_string(),
 
             // Template literals
-            b'`' => self.scan_template_literal(start),
+            b'`' => self.scan_template_literal(),
 
             // Numbers
             b'0'..=b'9' => self.scan_number(start),
@@ -245,7 +240,7 @@ impl<'src> Lexer<'src> {
             b'a'..=b'z' | b'A'..=b'Z' | b'_' | b'$' => self.scan_identifier(start),
 
             // Non-ASCII — consume full UTF-8 character(s) as an identifier
-            0x80..=0xFF => self.scan_unicode_text(start),
+            UTF8_MULTIBYTE_FLAG..=0xFF => self.scan_unicode_text(start),
 
             other => {
                 // Unknown ASCII character — emit as identifier for error recovery
@@ -258,34 +253,24 @@ impl<'src> Lexer<'src> {
 
     // -- Scanning helpers --
 
-    fn scan_string(&mut self, _start: usize) -> TokenKind {
+    fn scan_string(&mut self) -> TokenKind {
         let mut value = String::new();
         while !self.is_at_end() && self.peek() != Some(b'"') {
             let ch = self.advance();
             if ch == b'\\' && !self.is_at_end() {
                 let escaped = self.advance();
-                match escaped {
-                    b'n' => value.push('\n'),
-                    b't' => value.push('\t'),
-                    b'r' => value.push('\r'),
-                    b'\\' => value.push('\\'),
-                    b'"' => value.push('"'),
-                    b'0' => value.push('\0'),
+                match self.process_escape(escaped) {
+                    Some(c) => value.push(c),
+                    // String-specific escape: \"
+                    _ if escaped == b'"' => value.push('"'),
                     _ => {
                         value.push('\\');
                         value.push(escaped as char);
                     }
                 }
-            } else if ch >= 0x80 {
-                // Multi-byte UTF-8: extract the full character from source
+            } else if ch >= UTF8_MULTIBYTE_FLAG {
                 let char_start = self.pos - 1;
-                while !self.is_at_end()
-                    && self.bytes[self.pos] >= 0x80
-                    && self.bytes[self.pos] < 0xC0
-                {
-                    self.advance();
-                }
-                value.push_str(&self.source[char_start..self.pos]);
+                value.push_str(self.consume_utf8_continuation_bytes(char_start));
             } else {
                 value.push(ch as char);
             }
@@ -297,7 +282,7 @@ impl<'src> Lexer<'src> {
         TokenKind::String(value)
     }
 
-    fn scan_template_literal(&mut self, _start: usize) -> TokenKind {
+    fn scan_template_literal(&mut self) -> TokenKind {
         let mut parts = Vec::new();
         let mut current_raw = String::new();
 
@@ -332,13 +317,11 @@ impl<'src> Lexer<'src> {
                 self.advance();
                 if !self.is_at_end() {
                     let escaped = self.advance();
-                    match escaped {
-                        b'n' => current_raw.push('\n'),
-                        b't' => current_raw.push('\t'),
-                        b'r' => current_raw.push('\r'),
-                        b'\\' => current_raw.push('\\'),
-                        b'`' => current_raw.push('`'),
-                        b'$' => current_raw.push('$'),
+                    match self.process_escape(escaped) {
+                        Some(c) => current_raw.push(c),
+                        // Template-specific escapes: backtick and $
+                        _ if escaped == b'`' => current_raw.push('`'),
+                        _ if escaped == b'$' => current_raw.push('$'),
                         _ => {
                             current_raw.push('\\');
                             current_raw.push(escaped as char);
@@ -347,15 +330,9 @@ impl<'src> Lexer<'src> {
                 }
             } else {
                 let ch = self.advance();
-                if ch >= 0x80 {
+                if ch >= UTF8_MULTIBYTE_FLAG {
                     let char_start = self.pos - 1;
-                    while !self.is_at_end()
-                        && self.bytes[self.pos] >= 0x80
-                        && self.bytes[self.pos] < 0xC0
-                    {
-                        self.advance();
-                    }
-                    current_raw.push_str(&self.source[char_start..self.pos]);
+                    current_raw.push_str(self.consume_utf8_continuation_bytes(char_start));
                 } else {
                     current_raw.push(ch as char);
                 }
@@ -389,21 +366,27 @@ impl<'src> Lexer<'src> {
                     {
                         self.advance();
                     }
-                    return TokenKind::Number(self.source[start..self.pos].to_string());
+                    return TokenKind::Number(Self::strip_underscores(
+                        &self.source[start..self.pos],
+                    ));
                 }
                 Some(b'b' | b'B') => {
                     self.advance();
                     while !self.is_at_end() && matches!(self.peek(), Some(b'0' | b'1' | b'_')) {
                         self.advance();
                     }
-                    return TokenKind::Number(self.source[start..self.pos].to_string());
+                    return TokenKind::Number(Self::strip_underscores(
+                        &self.source[start..self.pos],
+                    ));
                 }
                 Some(b'o' | b'O') => {
                     self.advance();
                     while !self.is_at_end() && matches!(self.peek(), Some(b'0'..=b'7' | b'_')) {
                         self.advance();
                     }
-                    return TokenKind::Number(self.source[start..self.pos].to_string());
+                    return TokenKind::Number(Self::strip_underscores(
+                        &self.source[start..self.pos],
+                    ));
                 }
                 _ => {}
             }
@@ -422,7 +405,17 @@ impl<'src> Lexer<'src> {
             }
         }
 
-        TokenKind::Number(self.source[start..self.pos].to_string())
+        TokenKind::Number(Self::strip_underscores(&self.source[start..self.pos]))
+    }
+
+    /// Strip underscore separators from a number literal.
+    /// `1_000` becomes `1000`, `0xFF_FF` becomes `0xFFFF`.
+    fn strip_underscores(raw: &str) -> String {
+        if raw.contains('_') {
+            raw.chars().filter(|&c| c != '_').collect()
+        } else {
+            raw.to_string()
+        }
     }
 
     fn scan_identifier(&mut self, start: usize) -> TokenKind {
@@ -436,11 +429,60 @@ impl<'src> Lexer<'src> {
     /// Consume a run of non-ASCII (UTF-8 multi-byte) characters as an identifier.
     /// This handles emoji, unicode symbols, and non-Latin text in JSX content.
     fn scan_unicode_text(&mut self, start: usize) -> TokenKind {
-        while !self.is_at_end() && self.bytes[self.pos] >= 0x80 {
+        while !self.is_at_end() && self.bytes[self.pos] >= UTF8_MULTIBYTE_FLAG {
             self.advance();
         }
         let text = &self.source[start..self.pos];
         TokenKind::Identifier(text.to_string())
+    }
+
+    // -- Extracted helpers --
+
+    /// Consume a `/* ... */` block comment, supporting nesting.
+    /// Assumes the lexer is positioned at the opening `/`.
+    fn consume_block_comment(&mut self) {
+        self.advance(); // /
+        self.advance(); // *
+        let mut depth = 1;
+        while !self.is_at_end() && depth > 0 {
+            if self.peek() == Some(b'*') && self.peek_at(1) == Some(b'/') {
+                self.advance();
+                self.advance();
+                depth -= 1;
+            } else if self.peek() == Some(b'/') && self.peek_at(1) == Some(b'*') {
+                self.advance();
+                self.advance();
+                depth += 1;
+            } else {
+                self.advance();
+            }
+        }
+    }
+
+    /// Process a common escape sequence byte, returning the unescaped char.
+    /// Returns `None` for context-specific escapes (e.g. `"`, `` ` ``, `$`),
+    /// which must be handled at the call site.
+    fn process_escape(&self, escaped: u8) -> Option<char> {
+        match escaped {
+            b'n' => Some('\n'),
+            b't' => Some('\t'),
+            b'r' => Some('\r'),
+            b'\\' => Some('\\'),
+            b'0' => Some('\0'),
+            _ => None,
+        }
+    }
+
+    /// Consume UTF-8 continuation bytes starting from a position where the lead
+    /// byte has already been advanced past. Returns the full character as a `&str`.
+    fn consume_utf8_continuation_bytes(&mut self, start_pos: usize) -> &str {
+        while !self.is_at_end()
+            && self.bytes[self.pos] >= UTF8_MULTIBYTE_FLAG
+            && self.bytes[self.pos] < UTF8_LEAD_BYTE_MIN
+        {
+            self.advance();
+        }
+        &self.source[start_pos..self.pos]
     }
 
     // -- Low-level helpers --
@@ -462,22 +504,7 @@ impl<'src> Lexer<'src> {
                 }
                 // Block comment
                 Some(b'/') if self.peek_at(1) == Some(b'*') => {
-                    self.advance(); // /
-                    self.advance(); // *
-                    let mut depth = 1;
-                    while !self.is_at_end() && depth > 0 {
-                        if self.peek() == Some(b'*') && self.peek_at(1) == Some(b'/') {
-                            self.advance();
-                            self.advance();
-                            depth -= 1;
-                        } else if self.peek() == Some(b'/') && self.peek_at(1) == Some(b'*') {
-                            self.advance();
-                            self.advance();
-                            depth += 1;
-                        } else {
-                            self.advance();
-                        }
-                    }
+                    self.consume_block_comment();
                 }
                 _ => break,
             }
@@ -621,6 +648,15 @@ mod tests {
     }
 
     #[test]
+    fn dot_dot_dot() {
+        assert_eq!(lex("..."), vec![TokenKind::DotDotDot, TokenKind::Eof]);
+        assert_eq!(
+            lex(".. ."),
+            vec![TokenKind::DotDot, TokenKind::Dot, TokenKind::Eof]
+        );
+    }
+
+    #[test]
     fn underscore_standalone_vs_identifier() {
         assert_eq!(
             lex("_ _name"),
@@ -635,7 +671,7 @@ mod tests {
     #[test]
     fn keywords() {
         assert_eq!(
-            lex("const fn export import match type opaque return"),
+            lex("const fn export import match type opaque"),
             vec![
                 TokenKind::Const,
                 TokenKind::Fn,
@@ -644,7 +680,6 @@ mod tests {
                 TokenKind::Match,
                 TokenKind::Type,
                 TokenKind::Opaque,
-                TokenKind::Return,
                 TokenKind::Eof,
             ]
         );
@@ -676,7 +711,7 @@ mod tests {
 
     #[test]
     fn banned_keywords() {
-        let tokens = lex("let class throw null undefined any as enum function if else");
+        let tokens = lex("let class throw null undefined any as enum function if else return");
         assert_eq!(
             tokens,
             vec![
@@ -691,6 +726,7 @@ mod tests {
                 TokenKind::Banned(BannedKeyword::Function),
                 TokenKind::Banned(BannedKeyword::If),
                 TokenKind::Banned(BannedKeyword::Else),
+                TokenKind::Banned(BannedKeyword::Return),
                 TokenKind::Eof,
             ]
         );
@@ -719,9 +755,33 @@ mod tests {
                 TokenKind::Number("0xFF".to_string()),
                 TokenKind::Number("0b1010".to_string()),
                 TokenKind::Number("0o77".to_string()),
-                TokenKind::Number("1_000".to_string()),
+                TokenKind::Number("1000".to_string()),
                 TokenKind::Eof,
             ]
+        );
+    }
+
+    #[test]
+    fn number_underscore_separators() {
+        // Underscores are stripped from the token value
+        assert_eq!(
+            lex("1_000_000 3.141_592 0xFF_FF 0b1010_0101 0o77_77"),
+            vec![
+                TokenKind::Number("1000000".to_string()),
+                TokenKind::Number("3.141592".to_string()),
+                TokenKind::Number("0xFFFF".to_string()),
+                TokenKind::Number("0b10100101".to_string()),
+                TokenKind::Number("0o7777".to_string()),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn number_without_underscores_unchanged() {
+        assert_eq!(
+            lex("42"),
+            vec![TokenKind::Number("42".to_string()), TokenKind::Eof]
         );
     }
 

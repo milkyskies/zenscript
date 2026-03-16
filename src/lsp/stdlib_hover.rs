@@ -30,6 +30,8 @@ fn format_type(ty: &crate::checker::Type) -> String {
         Type::Named(n) => n.clone(),
         Type::Var(id) => type_var_name(*id).to_string(),
         Type::Array(inner) => format!("Array<{}>", format_type(inner)),
+        Type::Map { key, value } => format!("Map<{}, {}>", format_type(key), format_type(value)),
+        Type::Set { element } => format!("Set<{}>", format_type(element)),
         Type::Option(inner) => format!("Option<{}>", format_type(inner)),
         Type::Result { ok, err } => {
             format!("Result<{}, {}>", format_type(ok), format_type(err))
@@ -55,6 +57,7 @@ fn format_type(ty: &crate::checker::Type) -> String {
         Type::Brand { tag, .. } => tag.clone(),
         Type::Opaque { name, .. } => name.clone(),
         Type::Union { name, .. } => name.clone(),
+        Type::StringLiteralUnion { name, .. } => name.clone(),
         Type::Never => "never".to_string(),
     }
 }
@@ -204,6 +207,29 @@ mod tests {
         assert!(text.contains("module Number"));
         assert!(text.contains("parse"));
         assert!(text.contains("clamp"));
+    }
+
+    #[test]
+    fn hover_map_module() {
+        let result = hover_stdlib_module("Map");
+        assert!(result.is_some());
+        let text = result.unwrap();
+        assert!(text.contains("module Map"));
+        assert!(text.contains("get"));
+        assert!(text.contains("set"));
+        assert!(text.contains("keys"));
+        assert!(text.contains("merge"));
+    }
+
+    #[test]
+    fn hover_set_module() {
+        let result = hover_stdlib_module("Set");
+        assert!(result.is_some());
+        let text = result.unwrap();
+        assert!(text.contains("module Set"));
+        assert!(text.contains("add"));
+        assert!(text.contains("union"));
+        assert!(text.contains("intersect"));
     }
 
     #[test]

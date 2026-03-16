@@ -39,6 +39,15 @@ pub enum Type {
     },
     /// Array type
     Array(Box<Type>),
+    /// Map type: Map<K, V>
+    Map {
+        key: Box<Type>,
+        value: Box<Type>,
+    },
+    /// Set type: Set<T>
+    Set {
+        element: Box<Type>,
+    },
     /// Tuple type
     Tuple(Vec<Type>),
     /// Record/struct type
@@ -47,6 +56,11 @@ pub enum Type {
     Union {
         name: String,
         variants: Vec<(String, Vec<Type>)>,
+    },
+    /// String literal union: `"GET" | "POST" | "PUT" | "DELETE"`
+    StringLiteralUnion {
+        name: String,
+        variants: Vec<String>,
     },
     /// Type variable (for inference)
     Var(usize),
@@ -92,6 +106,10 @@ impl Type {
                 format!("({}) -> {}", p.join(", "), return_type.display_name())
             }
             Type::Array(inner) => format!("Array<{}>", inner.display_name()),
+            Type::Map { key, value } => {
+                format!("Map<{}, {}>", key.display_name(), value.display_name())
+            }
+            Type::Set { element } => format!("Set<{}>", element.display_name()),
             Type::Tuple(types) => {
                 let t: Vec<_> = types.iter().map(|t| t.display_name()).collect();
                 format!("({})", t.join(", "))
@@ -104,6 +122,7 @@ impl Type {
                 format!("{{ {} }}", f.join(", "))
             }
             Type::Union { name, .. } => name.clone(),
+            Type::StringLiteralUnion { name, .. } => name.clone(),
             Type::Var(id) => format!("?T{id}"),
             Type::Unknown => "unknown".to_string(),
             Type::Unit => "()".to_string(),
@@ -205,9 +224,10 @@ impl TypeEnv {
             Type::Named(name) => {
                 if let Some(info) = self.lookup_type(name) {
                     match &info.def {
-                        crate::parser::ast::TypeDef::Record(fields) => {
-                            let field_types: Vec<_> = fields
+                        crate::parser::ast::TypeDef::Record(entries) => {
+                            let field_types: Vec<_> = entries
                                 .iter()
+                                .filter_map(|e| e.as_field())
                                 .map(|f| (f.name.clone(), resolve_type_fn(&f.type_ann)))
                                 .collect();
                             Type::Record(field_types)
@@ -227,6 +247,12 @@ impl TypeEnv {
                             Type::Union {
                                 name: name.clone(),
                                 variants: var_types,
+                            }
+                        }
+                        crate::parser::ast::TypeDef::StringLiteralUnion(variants) => {
+                            Type::StringLiteralUnion {
+                                name: name.clone(),
+                                variants: variants.clone(),
                             }
                         }
                         crate::parser::ast::TypeDef::Alias(type_expr) => {

@@ -38,6 +38,11 @@ const y = x + 1
 const name = "Ryan"
 const count = 42
 
+// Number literal separators (underscores for readability)
+const million = 1_000_000
+const pi = 3.141_592
+const hex = 0xFF_FF
+
 // Type annotations
 const names: Array<string> = ["a", "b", "c"]
 ```
@@ -75,6 +80,27 @@ type ApiError =
     | Network(NetworkError)
     | NotFound
     | ServerError(status: number)
+
+// String literal union (for npm interop)
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE"
+
+// Record type composition with spread
+type BaseProps = {
+    className: string,
+    disabled: boolean,
+}
+
+type ButtonProps = {
+    ...BaseProps,
+    onClick: () -> (),
+    label: string,
+}
+// ButtonProps has: className, disabled, onClick, label
+
+// Multiple spreads
+type A = { x: number }
+type B = { y: string }
+type C = { ...A, ...B, z: boolean }
 
 // Branded types
 type UserId = Brand<string, "UserId">
@@ -128,6 +154,22 @@ users
     |> filter(.active)
     |> tap(Console.log)    // logs value, passes it through
     |> map(.name)
+
+// Pipe into match — pipe a value directly into pattern matching
+const label = price |> match {
+    _ when _ < 10 -> "cheap",
+    _ when _ < 100 -> "moderate",
+    _ -> "expensive",
+}
+// Equivalent to: match price { ... }
+
+// Chain into match
+const message = response.status
+    |> match {
+        200..299 -> "success",
+        404 -> "not found",
+        _ -> "error",
+    }
 ```
 
 ## Match Expressions
@@ -160,6 +202,15 @@ match status {
     _ -> Err(ServerError(status)),
 }
 
+// Match on string literal union (exhaustive)
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE"
+match method {
+    "GET" -> "fetching",
+    "POST" -> "creating",
+    "PUT" -> "updating",
+    "DELETE" -> "removing",
+}
+
 // Match with string patterns
 match url {
     "/users/{id}" -> fetchUser(id),
@@ -172,6 +223,20 @@ match appError {
     User(Http(Network(Timeout(ms)))) -> `Timed out after ${ms}ms`,
     Payment(CardDeclined(reason)) -> `Card declined: ${reason}`,
     _ -> showGenericError(appError),
+}
+
+// Array pattern matching
+match items {
+    [] -> "empty",
+    [only] -> `just ${only}`,
+    [first, second] -> "exactly two",
+    [first, ..rest] -> `first is ${first}, rest has ${rest |> Array.length}`,
+}
+
+// Exhaustive array matching ([] + [_, ..rest] covers all cases)
+match items {
+    [] -> "empty",
+    [head, ..tail] -> `head: ${head}`,
 }
 
 // Inline match in JSX
@@ -221,6 +286,45 @@ match user.nickname {
 // Option helpers
 user.nickname |> Option.unwrapOr(user.name)
 user.nickname |> Option.map(|n| toUpper(n))
+
+// collect block — accumulate all errors instead of short-circuiting
+fn validateForm(input: FormInput) -> Result<ValidForm, Array<ValidationError>> {
+    collect {
+        const name = input.name |> validateName?
+        const email = input.email |> validateEmail?
+        const age = input.age |> validateAge?
+
+        ValidForm(name, email, age)
+    }
+}
+// Inside collect, ? records errors and continues. Returns Err(Array<E>) if any failed.
+
+// parse<T> — compiler built-in for runtime type validation
+// No runtime library needed — the compiler inlines the checks
+const user = json |> parse<User>?
+const items = data |> parse<Array<Product>>?
+const point = raw |> parse<{ x: number, y: number }>?
+// parse<T> returns Result<T, Error> — validates unknown data matches the type
+
+// Map<K, V> — immutable key-value maps
+const config = Map.fromArray([("host", "localhost"), ("port", "8080")])
+const updated = config |> Map.set("port", "3000")
+const port = Map.get(config, "port")     // Option<string>
+const keys = config |> Map.keys          // Array<string>
+const merged = Map.merge(defaults, config)
+
+// Http — pipe-friendly fetch with Result (no try needed)
+const data = await Http.get("https://api.example.com/users")? |> Http.json?
+const result = await Http.post(url, { name: "Alice" })?
+const body = await Http.get(url)? |> Http.text?
+
+// Set<T> — immutable unique collections
+const tags = Set.fromArray(["urgent", "bug", "frontend"])
+const updated = tags |> Set.add("backend")
+const isUrgent = tags |> Set.has("urgent")    // boolean
+const teamAll = Set.union(teamA, teamB)
+const overlap = Set.intersect(teamA, teamB)
+const diff = Set.diff(teamA, teamB)
 ```
 
 ## Imports
@@ -304,6 +408,13 @@ for User: Display {
         `${self.name} (${self.age})`
     }
 }
+
+// Auto-derive traits for record types (only Display — Eq is built-in via ==)
+type Point = {
+    x: number,
+    y: number,
+} deriving (Display)
+// Generates display(self) -> string
 ```
 
 ## JSX / React Components
@@ -326,7 +437,7 @@ export fn App() -> JSX.Element {
         setInput("")
     }
 
-    return <div>
+    <div>
         <h1>Todos</h1>
         <input
             value={input}
@@ -406,6 +517,7 @@ match key {
 | `function` keyword | `fn` |
 | `void` | Unit type `()` |
 | `as` (type assertion) | Type guards or `match` |
+| `return` | Implicit returns — last expression is the return value |
 
 ## Compilation Examples
 
@@ -414,6 +526,7 @@ match key {
 | `fn f(x: number) -> number { x }` | `function f(x: number): number { return x; }` |
 | `a \|> f(b)` | `f(a, b)` |
 | `a \|> f(b, _, c)` | `f(b, a, c)` |
+| `a \|> match { 1 -> "one", _ -> "other" }` | `match a { ... }` (desugared) |
 | `\|x\| x + 1` | `(x) => x + 1` |
 | `.name` (in callback) | `(x) => x.name` |
 | `Ok(value)` | `{ ok: true, value }` |
@@ -441,3 +554,5 @@ match key {
 10. **Unused variables/imports are compile errors** (prefix with `_` to suppress)
 11. **`Console.log`** not `console.log` (capital C in Floe)
 12. **`Array<T>`** not `T[]` for array types
+13. **Implicit returns** — last expression in a block is the return value; `return` keyword is banned
+14. **Blank line before final expression** — `floe fmt` inserts a blank line before the last expression in multi-statement blocks (2+ statements) to visually separate the return value

@@ -17,7 +17,8 @@ impl Token {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
     // -- Literals --
-    /// Integer or float literal: `42`, `3.14`, `0xFF`, `0b1010`, `1_000`
+    /// Integer or float literal: `42`, `3.14`, `0xFF`, `0b1010`
+    /// Underscore separators (e.g. `1_000`) are stripped during lexing.
     Number(String),
     /// Double-quoted string literal: `"hello"`
     String(String),
@@ -37,7 +38,6 @@ pub enum TokenKind {
     Export,
     Import,
     From,
-    Return,
     Match,
     Type,
     Opaque,
@@ -55,6 +55,10 @@ pub enum TokenKind {
     Assert,
     /// `when` — match arm guard
     When,
+    /// `collect` — error accumulation block
+    Collect,
+    /// `deriving` — auto-derive trait implementations for record types
+    Deriving,
 
     // Built-in type constructors
     Ok,
@@ -63,6 +67,8 @@ pub enum TokenKind {
     None,
 
     // Built-in expressions
+    /// `parse` — compiler built-in for runtime type validation
+    Parse,
     /// `todo` — placeholder that panics at runtime, type `never`
     Todo,
     /// `unreachable` — asserts unreachable code path, type `never`
@@ -83,6 +89,8 @@ pub enum TokenKind {
     Underscore,
     /// `..` — spread in constructors
     DotDot,
+    /// `...` — spread in type definitions (record type composition)
+    DotDotDot,
 
     // Arithmetic
     /// `+`
@@ -191,6 +199,7 @@ pub enum BannedKeyword {
     Function,
     If,
     Else,
+    Return,
 }
 
 impl BannedKeyword {
@@ -210,6 +219,9 @@ impl BannedKeyword {
             Self::Function => "Use `fn` instead of `function`",
             Self::If => "Use `match` instead of `if`",
             Self::Else => "Use `match` instead of `else`",
+            Self::Return => {
+                "Floe uses implicit returns — the last expression in a block is the return value"
+            }
         }
     }
 
@@ -228,6 +240,7 @@ impl BannedKeyword {
             Self::Function => "function",
             Self::If => "if",
             Self::Else => "else",
+            Self::Return => "return",
         }
     }
 }
@@ -241,7 +254,6 @@ pub fn lookup_keyword(word: &str) -> Option<TokenKind> {
         "export" => Some(TokenKind::Export),
         "import" => Some(TokenKind::Import),
         "from" => Some(TokenKind::From),
-        "return" => Some(TokenKind::Return),
         "match" => Some(TokenKind::Match),
         "type" => Some(TokenKind::Type),
         "opaque" => Some(TokenKind::Opaque),
@@ -253,6 +265,8 @@ pub fn lookup_keyword(word: &str) -> Option<TokenKind> {
         "trait" => Some(TokenKind::Trait),
         "assert" => Some(TokenKind::Assert),
         "when" => Some(TokenKind::When),
+        "collect" => Some(TokenKind::Collect),
+        "deriving" => Some(TokenKind::Deriving),
         "true" => Some(TokenKind::Bool(true)),
         "false" => Some(TokenKind::Bool(false)),
 
@@ -263,6 +277,7 @@ pub fn lookup_keyword(word: &str) -> Option<TokenKind> {
         "None" => Some(TokenKind::None),
 
         // Built-in expressions
+        "parse" => Some(TokenKind::Parse),
         "todo" => Some(TokenKind::Todo),
         "unreachable" => Some(TokenKind::Unreachable),
 
@@ -279,8 +294,9 @@ pub fn lookup_keyword(word: &str) -> Option<TokenKind> {
         "function" => Some(TokenKind::Banned(BannedKeyword::Function)),
         "if" => Some(TokenKind::Banned(BannedKeyword::If)),
         "else" => Some(TokenKind::Banned(BannedKeyword::Else)),
+        "return" => Some(TokenKind::Banned(BannedKeyword::Return)),
 
-        _ => Option::None,
+        _ => None,
     }
 }
 
@@ -303,6 +319,7 @@ mod tests {
         assert_eq!(lookup_keyword("for"), Some(TokenKind::For));
         assert_eq!(lookup_keyword("self"), Some(TokenKind::SelfKw));
         assert_eq!(lookup_keyword("when"), Some(TokenKind::When));
+        assert_eq!(lookup_keyword("collect"), Some(TokenKind::Collect));
         assert_eq!(lookup_keyword("true"), Some(TokenKind::Bool(true)));
         assert_eq!(lookup_keyword("false"), Some(TokenKind::Bool(false)));
     }
@@ -335,9 +352,9 @@ mod tests {
 
     #[test]
     fn lookup_identifiers_return_none() {
-        assert_eq!(lookup_keyword("myVar"), Option::None);
-        assert_eq!(lookup_keyword("Component"), Option::None);
-        assert_eq!(lookup_keyword("fetch"), Option::None);
+        assert_eq!(lookup_keyword("myVar"), None);
+        assert_eq!(lookup_keyword("Component"), None);
+        assert_eq!(lookup_keyword("fetch"), None);
     }
 
     #[test]

@@ -184,6 +184,9 @@ impl LanguageServer for FloeLsp {
             }
             "Some" => "```floe\nSome(value: T) -> Option<T>\n```\nWrap a value in an Option.",
             "None" => "```floe\nNone -> Option<T>\n```\nRepresents the absence of a value.",
+            "parse" => {
+                "```floe\nparse<T>(value: unknown) -> Result<T, Error>\n```\nCompiler built-in: validates a value matches type T at runtime."
+            }
             "match" => {
                 "```floe\nmatch expr { pattern -> body, ... }\n```\nExhaustive pattern matching expression."
             }

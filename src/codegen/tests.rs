@@ -152,6 +152,54 @@ fn pipe_chained() {
     assert_eq!(emit("a |> f |> g"), "g(f(a));");
 }
 
+// ── Pipe into Match ─────────────────────────────────────────
+
+#[test]
+fn pipe_into_match_simple() {
+    // x |> match { 1 -> true, _ -> false } -> same as match x { ... }
+    let result = emit("x |> match { 1 -> true, _ -> false }");
+    assert!(
+        result.contains("=== 1"),
+        "expected literal check, got: {result}"
+    );
+    assert!(
+        result.contains("true"),
+        "expected true branch, got: {result}"
+    );
+    assert!(
+        result.contains("false"),
+        "expected false branch, got: {result}"
+    );
+}
+
+#[test]
+fn pipe_chain_into_match() {
+    // a |> f |> match { 1 -> true, _ -> false }
+    // desugars to: match (f(a)) { 1 -> true, _ -> false }
+    let result = emit("a |> f |> match { 1 -> true, _ -> false }");
+    assert!(
+        result.contains("f(a)"),
+        "expected f(a) as match subject, got: {result}"
+    );
+    assert!(
+        result.contains("=== 1"),
+        "expected literal check, got: {result}"
+    );
+}
+
+#[test]
+fn pipe_into_match_with_guard() {
+    let result = emit(r#"price |> match { _ when price < 10 -> "cheap", _ -> "expensive" }"#);
+    assert!(
+        result.contains("price < 10"),
+        "expected guard condition, got: {result}"
+    );
+    assert!(
+        result.contains("cheap"),
+        "expected cheap branch, got: {result}"
+    );
+}
+
 // ── Partial Application ──────────────────────────────────────
 
 #[test]
@@ -371,12 +419,24 @@ fn await_expr() {
     assert_eq!(emit("await fetchData()"), "await fetchData();");
 }
 
-// ── Return ───────────────────────────────────────────────────
+// ── Implicit Return ──────────────────────────────────────────
 
 #[test]
-fn return_expr() {
-    let result = emit("fn f() { return 42 }");
+fn implicit_return_single_expr() {
+    let result = emit("fn f() -> number { 42 }");
     assert!(result.contains("return 42"));
+}
+
+#[test]
+fn implicit_return_multi_statement() {
+    let result = emit("fn f() -> number { const x = 1\nx + 1 }");
+    assert!(result.contains("return x + 1"));
+}
+
+#[test]
+fn unit_function_no_return() {
+    let result = emit("fn f() -> () { Console.log(\"hi\") }");
+    assert!(!result.contains("return"));
 }
 
 // ── Array ────────────────────────────────────────────────────
@@ -453,6 +513,54 @@ fn stdlib_array_contains() {
     let result = emit("Array.contains([1, 2], 2)");
     assert!(result.contains("__zenEq"));
     assert!(result.contains(".some("));
+}
+
+#[test]
+fn stdlib_array_any() {
+    assert_eq!(
+        emit("Array.any([1, 2, 3], |n| n > 2)"),
+        "[1, 2, 3].some((n) => n > 2);"
+    );
+}
+
+#[test]
+fn stdlib_array_all() {
+    assert_eq!(
+        emit("Array.all([1, 2, 3], |n| n > 0)"),
+        "[1, 2, 3].every((n) => n > 0);"
+    );
+}
+
+#[test]
+fn stdlib_array_sum() {
+    assert_eq!(
+        emit("Array.sum([1, 2, 3])"),
+        "[1, 2, 3].reduce((a, b) => a + b, 0);"
+    );
+}
+
+#[test]
+fn stdlib_array_join() {
+    assert_eq!(
+        emit(r#"Array.join(["a", "b"], ", ")"#),
+        r#"["a", "b"].join(", ");"#
+    );
+}
+
+#[test]
+fn stdlib_array_is_empty() {
+    assert_eq!(emit("Array.isEmpty([])"), "[].length === 0;");
+}
+
+#[test]
+fn stdlib_array_unique() {
+    assert_eq!(emit("Array.unique([1, 2, 2])"), "[...new Set([1, 2, 2])];");
+}
+
+#[test]
+fn stdlib_array_chunk() {
+    let result = emit("Array.chunk([1, 2, 3, 4], 2)");
+    assert!(result.contains("slice"));
 }
 
 // ── Stdlib: Option ───────────────────────────────────────────
@@ -704,6 +812,98 @@ fn stdlib_pipe_tap_with_lambda() {
     assert!(result.contains("return _v"), "output: {result}");
 }
 
+// ── Http Stdlib ─────────────────────────────────────────────
+
+#[test]
+fn stdlib_http_get() {
+    let result = emit(r#"Http.get("https://api.example.com")"#);
+    assert!(
+        result.contains("fetch(\"https://api.example.com\")"),
+        "expected fetch call, got: {result}"
+    );
+    assert!(
+        result.contains("async"),
+        "expected async IIFE, got: {result}"
+    );
+    assert!(
+        result.contains("ok: true as const"),
+        "expected Result ok branch, got: {result}"
+    );
+    assert!(
+        result.contains("ok: false as const"),
+        "expected Result err branch, got: {result}"
+    );
+}
+
+#[test]
+fn stdlib_http_post() {
+    let result = emit(r#"Http.post("https://api.example.com", data)"#);
+    assert!(
+        result.contains("\"POST\""),
+        "expected POST method, got: {result}"
+    );
+    assert!(
+        result.contains("JSON.stringify(data)"),
+        "expected JSON.stringify body, got: {result}"
+    );
+    assert!(
+        result.contains("Content-Type"),
+        "expected Content-Type header, got: {result}"
+    );
+}
+
+#[test]
+fn stdlib_http_put() {
+    let result = emit(r#"Http.put("https://api.example.com", data)"#);
+    assert!(
+        result.contains("\"PUT\""),
+        "expected PUT method, got: {result}"
+    );
+    assert!(
+        result.contains("JSON.stringify(data)"),
+        "expected JSON.stringify body, got: {result}"
+    );
+}
+
+#[test]
+fn stdlib_http_delete() {
+    let result = emit(r#"Http.delete("https://api.example.com")"#);
+    assert!(
+        result.contains("\"DELETE\""),
+        "expected DELETE method, got: {result}"
+    );
+    assert!(
+        result.contains("fetch(\"https://api.example.com\""),
+        "expected fetch call, got: {result}"
+    );
+}
+
+#[test]
+fn stdlib_http_json() {
+    let result = emit("Http.json(response)");
+    assert!(
+        result.contains("response.json()"),
+        "expected .json() call, got: {result}"
+    );
+    assert!(
+        result.contains("async"),
+        "expected async IIFE, got: {result}"
+    );
+}
+
+#[test]
+fn stdlib_http_text() {
+    let result = emit("Http.text(response)");
+    assert!(
+        result.contains("response.text()"),
+        "expected .text() call, got: {result}"
+    );
+    assert!(
+        result.contains("async"),
+        "expected async IIFE, got: {result}"
+    );
+}
+
 // ── Test Blocks ─────────────────────────────────────────────
 
 fn emit_test_mode(input: &str) -> String {
@@ -810,5 +1010,341 @@ export for User fn greet(self, greeting: string) -> string { greeting }
     assert!(
         result.contains("export function greet(self: "),
         "expected export function greet, got: {result}"
+    );
+}
+
+// ── String Literal Unions ───────────────────────────────────
+
+#[test]
+fn string_literal_union_type() {
+    let result = emit(r#"type HttpMethod = "GET" | "POST" | "PUT" | "DELETE""#);
+    assert_eq!(
+        result,
+        r#"type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";"#
+    );
+}
+
+#[test]
+fn string_literal_union_match() {
+    let result = emit(
+        r#"
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE"
+
+fn describe(method: HttpMethod) -> string {
+    match method {
+        "GET" -> "fetching",
+        "POST" -> "creating",
+        "PUT" -> "updating",
+        "DELETE" -> "removing",
+    }
+}
+"#,
+    );
+    assert!(
+        result.contains(r#"method === "GET""#),
+        "expected string comparison, got: {result}"
+    );
+    assert!(
+        result.contains(r#""fetching""#),
+        "expected fetching branch, got: {result}"
+    );
+    assert!(
+        result.contains(r#"method === "DELETE""#),
+        "expected DELETE comparison, got: {result}"
+    );
+}
+
+#[test]
+fn string_literal_union_match_with_wildcard() {
+    let result = emit(
+        r#"
+type Status = "ok" | "error"
+fn handle(s: Status) -> number {
+    match s {
+        "ok" -> 1,
+        _ -> 0,
+    }
+}
+"#,
+    );
+    assert!(
+        result.contains(r#"s === "ok""#),
+        "expected string check, got: {result}"
+    );
+    assert!(result.contains("0"), "expected fallback, got: {result}");
+}
+
+#[test]
+fn string_literal_union_exported() {
+    let result = emit(r#"export type Direction = "north" | "south" | "east" | "west""#);
+    assert!(result.starts_with("export type Direction = "));
+    assert!(result.contains(r#""north" | "south" | "east" | "west""#));
+}
+
+// ── Array Pattern Matching ──────────────────────────────────
+
+#[test]
+fn match_array_empty() {
+    let result = emit(r#"match items { [] -> "empty", _ -> "other" }"#);
+    assert!(
+        result.contains(".length === 0"),
+        "expected empty array check, got: {result}"
+    );
+    assert!(
+        result.contains("\"empty\""),
+        "expected empty branch, got: {result}"
+    );
+}
+
+#[test]
+fn match_array_single() {
+    let result = emit(r#"match items { [a] -> a, _ -> "none" }"#);
+    assert!(
+        result.contains(".length === 1"),
+        "expected single element check, got: {result}"
+    );
+    assert!(
+        result.contains("[0]"),
+        "expected index access for binding, got: {result}"
+    );
+}
+
+#[test]
+fn match_array_two_elements() {
+    let result = emit(r#"match items { [a, b] -> a, _ -> "none" }"#);
+    assert!(
+        result.contains(".length === 2"),
+        "expected two element check, got: {result}"
+    );
+}
+
+#[test]
+fn match_array_rest() {
+    let result = emit("match items { [first, ..rest] -> first, _ -> 0 }");
+    assert!(
+        result.contains(".length >= 1"),
+        "expected length >= 1 check, got: {result}"
+    );
+    assert!(
+        result.contains("[0]"),
+        "expected index access for first, got: {result}"
+    );
+    assert!(
+        result.contains(".slice(1)"),
+        "expected slice for rest, got: {result}"
+    );
+}
+
+#[test]
+fn match_array_two_plus_rest() {
+    let result = emit("match items { [a, b, ..rest] -> a, _ -> 0 }");
+    assert!(
+        result.contains(".length >= 2"),
+        "expected length >= 2 check, got: {result}"
+    );
+    assert!(
+        result.contains(".slice(2)"),
+        "expected slice(2) for rest, got: {result}"
+    );
+}
+
+#[test]
+fn match_array_empty_and_rest_exhaustive() {
+    // [] + [_, ..rest] covers all cases — should not add non-exhaustive throw
+    let result = emit(r#"match items { [] -> "empty", [first, ..rest] -> first }"#);
+    assert!(
+        result.contains(".length === 0"),
+        "expected empty check, got: {result}"
+    );
+    assert!(
+        result.contains(".length >= 1"),
+        "expected non-empty check, got: {result}"
+    );
+}
+
+#[test]
+fn match_array_wildcard_rest() {
+    // [_, ..rest] with underscore as first element
+    let result = emit("match items { [_, ..rest] -> rest, _ -> items }");
+    assert!(
+        result.contains(".length >= 1"),
+        "expected length >= 1, got: {result}"
+    );
+    assert!(
+        result.contains(".slice(1)"),
+        "expected slice(1) for rest, got: {result}"
+    );
+}
+
+#[test]
+fn match_array_literal_element() {
+    // Pattern with literal sub-pattern
+    let result = emit(r#"match items { [1] -> "one", _ -> "other" }"#);
+    assert!(
+        result.contains(".length === 1"),
+        "expected length check, got: {result}"
+    );
+    assert!(
+        result.contains("[0] === 1"),
+        "expected literal element check, got: {result}"
+    );
+}
+
+// ── Collect Block ───────────────────────────────────────────
+
+#[test]
+fn collect_basic_structure() {
+    let result = emit(
+        r#"
+fn validate(x: number) -> Result<number, string> { Ok(x) }
+fn f() -> Result<number, Array<string>> {
+    collect {
+        const a = validate(1)?
+        const b = validate(2)?
+        a + b
+    }
+}
+"#,
+    );
+    assert!(
+        result.contains("__errors"),
+        "expected error accumulator, got: {result}"
+    );
+    assert!(result.contains("(() => {"), "expected IIFE, got: {result}");
+    assert!(
+        result.contains("ok: true as const"),
+        "expected ok result, got: {result}"
+    );
+    assert!(
+        result.contains("ok: false as const"),
+        "expected err result, got: {result}"
+    );
+}
+
+#[test]
+fn collect_no_unwrap() {
+    // collect with no ? just wraps in Ok
+    let result = emit(
+        r#"
+fn f() -> Result<number, Array<string>> {
+    collect {
+        42
+    }
+}
+"#,
+    );
+    assert!(
+        result.contains("ok: true as const, value: 42"),
+        "expected Ok(42) result, got: {result}"
+    );
+}
+
+// ── Deriving ────────────────────────────────────────────────
+
+#[test]
+fn deriving_display_generates_string() {
+    let result = emit(
+        r#"
+type User = {
+  name: string,
+  age: number,
+} deriving (Display)
+"#,
+    );
+    assert!(
+        result.contains("function display(self: User): string"),
+        "should generate display function, got: {result}"
+    );
+    assert!(
+        result.contains("User(name: ${self.name}, age: ${self.age})"),
+        "should format all fields, got: {result}"
+    );
+}
+
+// ── Parse<T> Built-in ────────────────────────────────────────
+
+#[test]
+fn parse_string_type() {
+    let result = emit("parse<string>(x)");
+    assert!(
+        result.contains("typeof __v !== \"string\""),
+        "should check typeof for string, got: {result}"
+    );
+    assert!(
+        result.contains("ok: true as const"),
+        "should return ok on success, got: {result}"
+    );
+    assert!(
+        result.contains("ok: false as const"),
+        "should return error on failure, got: {result}"
+    );
+}
+
+#[test]
+fn parse_number_type() {
+    let result = emit("parse<number>(x)");
+    assert!(
+        result.contains("typeof __v !== \"number\""),
+        "should check typeof for number, got: {result}"
+    );
+}
+
+#[test]
+fn parse_boolean_type() {
+    let result = emit("parse<boolean>(x)");
+    assert!(
+        result.contains("typeof __v !== \"boolean\""),
+        "should check typeof for boolean, got: {result}"
+    );
+}
+
+#[test]
+fn parse_record_type_codegen() {
+    let result = emit("parse<{ name: string, age: number }>(data)");
+    assert!(
+        result.contains("typeof __v !== \"object\""),
+        "should check for object, got: {result}"
+    );
+    assert!(
+        result.contains("(__v as any).name"),
+        "should check field 'name', got: {result}"
+    );
+    assert!(
+        result.contains("(__v as any).age"),
+        "should check field 'age', got: {result}"
+    );
+    assert!(
+        result.contains("\"string\""),
+        "should validate string field, got: {result}"
+    );
+    assert!(
+        result.contains("\"number\""),
+        "should validate number field, got: {result}"
+    );
+}
+
+#[test]
+fn parse_array_type_codegen() {
+    let result = emit("parse<Array<number>>(items)");
+    assert!(
+        result.contains("Array.isArray"),
+        "should check Array.isArray, got: {result}"
+    );
+    assert!(
+        result.contains("typeof"),
+        "should validate element types, got: {result}"
+    );
+}
+
+#[test]
+fn parse_in_pipe() {
+    let result = emit("x |> parse<string>");
+    assert!(
+        result.contains("const __v = x"),
+        "should use piped value, got: {result}"
+    );
+    assert!(
+        result.contains("typeof __v !== \"string\""),
+        "should validate type, got: {result}"
     );
 }

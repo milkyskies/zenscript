@@ -126,17 +126,30 @@ pub struct TypeDecl {
     pub name: String,
     pub type_params: Vec<String>,
     pub def: TypeDef,
+    /// `deriving (Display)` — auto-derive trait implementations for record types.
+    pub deriving: Vec<String>,
 }
 
 /// The right-hand side of a type declaration.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeDef {
-    /// Record type: `{ field: Type, ... }`
-    Record(Vec<RecordField>),
+    /// Record type: `{ field: Type, ...OtherType, ... }`
+    Record(Vec<RecordEntry>),
     /// Union type: `| Variant1 | Variant2(field: Type)`
     Union(Vec<Variant>),
     /// Type alias: `type X = SomeOtherType`
     Alias(TypeExpr),
+    /// String literal union: `"GET" | "POST" | "PUT" | "DELETE"`
+    StringLiteralUnion(Vec<String>),
+}
+
+/// An entry inside a record type definition — either a regular field or a spread.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RecordEntry {
+    /// A regular field: `name: Type`
+    Field(Box<RecordField>),
+    /// A spread: `...OtherType` — includes all fields from the referenced record type
+    Spread(RecordSpread),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -145,6 +158,49 @@ pub struct RecordField {
     pub type_ann: TypeExpr,
     pub default: Option<Expr>,
     pub span: Span,
+}
+
+/// A spread entry in a record type: `...TypeName`
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecordSpread {
+    pub type_name: String,
+    pub span: Span,
+}
+
+impl RecordEntry {
+    /// Returns the field if this is a `RecordEntry::Field`, otherwise `None`.
+    pub fn as_field(&self) -> Option<&RecordField> {
+        match self {
+            RecordEntry::Field(f) => Some(f),
+            RecordEntry::Spread(_) => None,
+        }
+    }
+
+    /// Returns the spread if this is a `RecordEntry::Spread`, otherwise `None`.
+    pub fn as_spread(&self) -> Option<&RecordSpread> {
+        match self {
+            RecordEntry::Spread(s) => Some(s),
+            RecordEntry::Field(_) => None,
+        }
+    }
+}
+
+impl TypeDef {
+    /// Returns only the direct fields (excluding spreads) from a record type definition.
+    pub fn record_fields(&self) -> Vec<&RecordField> {
+        match self {
+            TypeDef::Record(entries) => entries.iter().filter_map(RecordEntry::as_field).collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Returns the spread entries from a record type definition.
+    pub fn record_spreads(&self) -> Vec<&RecordSpread> {
+        match self {
+            TypeDef::Record(entries) => entries.iter().filter_map(RecordEntry::as_spread).collect(),
+            _ => Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -318,8 +374,6 @@ pub enum ExprKind {
         subject: Box<Expr>,
         arms: Vec<MatchArm>,
     },
-    /// Return: `return expr`
-    Return(Option<Box<Expr>>),
     /// Await: `await expr`
     Await(Box<Expr>),
     /// Try: `try expr` — wraps a throwing expression in Result
@@ -334,6 +388,11 @@ pub enum ExprKind {
     Some(Box<Expr>),
     /// `None`
     None,
+    /// `parse<T>(value)` — compiler built-in for runtime type validation
+    Parse {
+        type_arg: TypeExpr,
+        value: Box<Expr>,
+    },
     /// `todo` — placeholder that panics at runtime, type `never`
     Todo,
     /// `unreachable` — asserts unreachable code path, type `never`
@@ -348,6 +407,8 @@ pub enum ExprKind {
     // -- Blocks --
     /// Block expression: `{ stmt1; stmt2; expr }`
     Block(Vec<Item>),
+    /// Collect block: `collect { ... }` — accumulates errors from `?` instead of short-circuiting
+    Collect(Vec<Item>),
 
     // -- Grouping --
     /// Parenthesized expression: `(a + b)`
@@ -462,6 +523,13 @@ pub enum PatternKind {
     Wildcard,
     /// Tuple pattern: `(x, y)`, `(_, 0)`
     Tuple(Vec<Pattern>),
+    /// Array pattern: `[]`, `[a]`, `[a, b]`, `[first, ..rest]`
+    Array {
+        /// Fixed element patterns (before any rest pattern)
+        elements: Vec<Pattern>,
+        /// Optional rest binding: `..rest` captures the remaining tail
+        rest: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

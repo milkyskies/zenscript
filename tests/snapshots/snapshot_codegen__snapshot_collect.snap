@@ -1,0 +1,32 @@
+---
+source: tests/snapshot_codegen.rs
+expression: output
+---
+function validateName(name: string): { ok: true; value: string } | { ok: false; error: string } {
+  return { ok: true as const, value: name };
+}
+
+function validateEmail(email: string): { ok: true; value: string } | { ok: false; error: string } {
+  return { ok: true as const, value: email };
+}
+
+function validateAge(age: number): { ok: true; value: number } | { ok: false; error: string } {
+  return { ok: true as const, value: age };
+}
+
+function validateForm(input: { name: string; email: string; age: number }): { ok: true; value: { name: string; email: string; age: number } } | { ok: false; error: Array<string> } {
+  return (() => {
+    const __errors: Array<any> = [];
+    const _r0 = validateName(input.name);
+    if (!_r0.ok) __errors.push(_r0.error);
+    const name = _r0.ok ? _r0.value : undefined as any;
+    const _r1 = validateEmail(input.email);
+    if (!_r1.ok) __errors.push(_r1.error);
+    const email = _r1.ok ? _r1.value : undefined as any;
+    const _r2 = validateAge(input.age);
+    if (!_r2.ok) __errors.push(_r2.error);
+    const age = _r2.ok ? _r2.value : undefined as any;
+    if (__errors.length > 0) return { ok: false as const, error: __errors };
+    return { ok: true as const, value: { name: name, email: email, age: age } };
+  })();
+}

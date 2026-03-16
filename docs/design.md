@@ -54,6 +54,7 @@ All four of TypeScript's `?` uses (`?.`, `??`, `?:`, `? :`) are removed. `?` now
 |---------|--------|-------------|
 | Pipe operator | `a \|> b \|> c` | `c(b(a))` |
 | Pipe w/ placeholder | `a \|> f(x, _, y)` | `f(x, a, y)` |
+| Pipe into match | `a \|> match { ... }` | `match a { ... }` (syntax sugar) |
 | Partial application | `add(10, _)` | `(x) => add(10, x)` |
 | Match expression | `match x { ... }` | exhaustive if/else chain |
 | Match with ranges | `match n { 1..10 -> ... }` | range check |
@@ -67,6 +68,7 @@ All four of TypeScript's `?` uses (`?.`, `??`, `?:`, `? :`) are removed. `?` now
 | Branded types | `type UserId = Brand<string, "UserId">` | `string` at runtime |
 | Opaque types | `opaque type HashedPw = string` | `string`, but only the defining module can create/read |
 | Tagged unions | `type Route = Home \| Profile(id: string)` | discriminated union |
+| String literal unions | `type Method = "GET" \| "POST" \| "PUT"` | `"GET" \| "POST" \| "PUT"` (pass-through for npm interop) |
 | Nested unions | `type ApiError = Network(NetworkError) \| NotFound` | nested discriminated union (compiler generates tags) |
 | Multi-depth match | `Network(Timeout(ms)) -> ...` | nested if/else with tag checks |
 | Type constructors | `User(name: "Ryan", email: e)` | `{ name: "Ryan", email: e }` (compiler adds tags for unions) |
@@ -82,9 +84,14 @@ All four of TypeScript's `?` uses (`?.`, `??`, `?:`, `? :`) are removed. `?` now
 | Tuple types | `(number, string)`, `(1, "a")` | `readonly [number, string]`, `[1, "a"] as const` |
 | Tuple destructuring | `const (x, y) = pair` | `const [x, y] = pair` |
 | Tuple match patterns | `(0, _) -> ...` | index-based match conditions |
+| Array match patterns | `[first, ..rest] -> ...` | length check + index/slice access |
 | tap | `x \|> tap(Console.log)` | IIFE: calls fn, returns value unchanged |
 | Immutable sort | `Array.sort` returns new array | sorted copy, no mutation |
+| Immutable maps | `Map.set`, `Map.remove` return new maps | `new Map([...old, [k, v]])` |
+| Immutable sets | `Set.add`, `Set.remove` return new sets | `new Set([...old, val])` |
 | Strict parse | `Number.parse("123")` returns `Result` | no silent `NaN` or partial parse |
+| Http module | `Http.get(url)`, `Http.post(url, body)` | async IIFE wrapping `fetch` in `Result` |
+| Number separators | `1_000_000`, `3.141_592`, `0xFF_FF` | underscores stripped in output |
 
 ### What's Removed (compile errors)
 
@@ -107,6 +114,7 @@ All four of TypeScript's `?` uses (`?.`, `??`, `?:`, `? :`) are removed. `?` now
 | `=>` | Two syntaxes for functions is one too many | `\|x\| expr` for anonymous functions |
 | `function` | Verbose keyword | `fn` |
 | `if`/`else` | Redundant control flow | `match` expression |
+| `return` | Implicit returns — last expression is the value | Omit `return`; the last expression in a block is the return value |
 
 ---
 
@@ -159,6 +167,26 @@ Pipe rules:
 2. Has `_` → replace `_` with piped value: `a |> f(b, _, c)` → `f(b, a, c)`
 3. `_` outside a pipe → create partial function: `f(b, _, c)` → `(x) => f(b, x, c)`
 4. Only ONE `_` allowed per call — compile error on `f(_, _)`
+5. `match` as pipe target → `a |> match { ... }` desugars to `match a { ... }`
+
+```floe
+// Pipe into match — pipe the value directly into pattern matching
+const label = product
+    |> effectivePrice
+    |> match {
+        _ when _ < 10 -> "cheap",
+        _ when _ < 100 -> "moderate",
+        _ -> "expensive",
+    }
+
+// Equivalent to:
+const price = product |> effectivePrice
+const label = match price {
+    _ when price < 10 -> "cheap",
+    _ when price < 100 -> "moderate",
+    _ -> "expensive",
+}
+```
 
 ### Match Expressions
 
@@ -211,6 +239,51 @@ match url {
 ```
 
 Match uses `->` for arms (not `|x|`), so it's visually distinct from lambdas.
+
+### Array Pattern Matching
+
+Match on array structure with head/tail destructuring:
+
+```floe
+match items {
+    [] -> "empty",
+    [only] -> `just one: ${only}`,
+    [first, second] -> "exactly two",
+    [first, ..rest] -> `first is ${first}, ${rest |> Array.length} more`,
+}
+```
+
+| Pattern | Matches | Binds |
+|---|---|---|
+| `[]` | Empty array | Nothing |
+| `[a]` | Exactly 1 element | `a` |
+| `[a, b]` | Exactly 2 elements | `a`, `b` |
+| `[first, ..rest]` | 1 or more elements | `first` (head), `rest` (tail array) |
+| `[first, second, ..rest]` | 2 or more elements | `first`, `second`, `rest` |
+| `[_, ..rest]` | 1 or more, ignore head | `rest` |
+
+**Exhaustiveness:** `[]` + `[_, ..rest]` covers all cases (empty + non-empty). `[a]` alone is not exhaustive.
+
+**Codegen:**
+
+```floe
+match items {
+    [] -> "empty",
+    [first, ..rest] -> first,
+}
+```
+
+Emits:
+
+```typescript
+items.length === 0 ? "empty" : items.length >= 1 ? (() => { const first = items[0]; const rest = items.slice(1); return first; })() : (() => { throw new Error("non-exhaustive match"); })()
+```
+
+- Empty pattern `[]` checks `subject.length === 0`
+- Exact patterns `[a, b]` check `subject.length === N`
+- Rest patterns `[a, ..rest]` check `subject.length >= N` where N is the count of fixed elements
+- Element bindings use index access: `subject[0]`, `subject[1]`
+- Rest bindings use slice: `subject.slice(N)`
 
 ### Match Arm Guards
 
@@ -271,7 +344,43 @@ if (!_r0.ok) return _r0
 const user = _r0.value
 ```
 
-### Option<T> — No Null, No Undefined
+### The `collect` Block (Error Accumulation)
+
+Inside a `collect {}` block, `?` does NOT short-circuit. Each `?` that hits an Err records the error and continues. If any failed, the block returns `Err(Array<E>)` with all collected errors. If all succeeded, returns `Ok(last_expression)`.
+
+```floe
+fn validateForm(input: FormInput) -> Result<ValidForm, Array<ValidationError>> {
+    collect {
+        const name = input.name |> validateName?
+        const email = input.email |> validateEmail?
+        const age = input.age |> validateAge?
+
+        ValidForm(name, email, age)
+    }
+}
+```
+
+Compiles to an IIFE with error accumulation:
+
+```typescript
+(() => {
+    const __errors: Array<ValidationError> = [];
+    const _r0 = validateName(input.name);
+    if (!_r0.ok) __errors.push(_r0.error);
+    const name = _r0.ok ? _r0.value : undefined as any;
+    const _r1 = validateEmail(input.email);
+    if (!_r1.ok) __errors.push(_r1.error);
+    const email = _r1.ok ? _r1.value : undefined as any;
+    if (__errors.length > 0) return { ok: false, error: __errors };
+    return { ok: true, value: { name, email } };
+})()
+```
+
+The return type of `collect { ... }` is `Result<T, Array<E>>` where:
+- `T` is the type of the last expression in the block
+- `E` is the error type from `?` operations in the block
+
+### Option<T> - No Null, No Undefined
 
 ```floe
 type User = {
@@ -309,12 +418,34 @@ type User = {
   email: Email
 }
 
+// Record type composition with spread
+type BaseProps = {
+  className: string,
+  disabled: boolean,
+}
+
+type ButtonProps = {
+  ...BaseProps,
+  onClick: () -> (),
+  label: string,
+}
+// ButtonProps has: className, disabled, onClick, label
+
+// Multiple spreads
+type A = { x: number }
+type B = { y: string }
+type C = { ...A, ...B, z: boolean }
+// C has: x, y, z
+
 // Simple union type (has |)
 type Route =
   | Home
   | Profile(id: string)
   | Settings(tab: string)
   | NotFound
+
+// String literal union (for npm interop)
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE"
 
 // Union types can contain other union types — nest as deep as you want
 type NetworkError =
@@ -577,7 +708,7 @@ type ButtonProps = {
 }
 
 export fn Button(props: ButtonProps) {
-  return <button>{props.label}</button>
+  <button>{props.label}</button>
 }
 
 // .fl — only specify what matters
@@ -715,6 +846,42 @@ Trait rules:
 6. No associated types — generics + structural typing cover those cases
 7. No trait objects / dynamic dispatch — traits are a static checking tool
 
+### Deriving Traits
+
+Record types can auto-derive trait implementations with `deriving`:
+
+```floe
+type User = {
+  id: string,
+  name: string,
+  email: string,
+} deriving (Display)
+```
+
+This generates the same code as a handwritten `for` block with no runtime cost.
+
+**Note:** `Eq` is not derivable — structural equality is built-in for all types via `==` (emits `__zenEq` deep comparison). Writing `deriving (Eq)` is a compile error.
+
+**Derivable traits:**
+
+| Trait | Generated implementation |
+|---|---|
+| `Display` | String representation: `fn display(self) -> string` producing `TypeName(field1: val1, field2: val2)` |
+
+**Codegen output** for `deriving (Display)`:
+
+```typescript
+function display(self: User): string {
+  return `User(id: ${self.id}, name: ${self.name}, email: ${self.email})`;
+}
+```
+
+Deriving rules:
+
+1. `deriving` only works on record types — compile error on unions, aliases, or string literal unions
+2. A handwritten `for` block overrides a derived implementation
+3. Only `Display` is derivable — attempting to derive anything else (including `Eq`) is a compile error
+
 ### Inline Test Blocks
 
 `test` blocks let you write tests co-located with the code they test. They are type-checked but stripped from production output.
@@ -801,7 +968,7 @@ export fn Dashboard(userId: UserId) -> JSX.Element {
   const [tab, setTab] = useState<Tab>(Overview)
   const user = useAsync(|| fetchUser(userId))
 
-  return <Layout>
+  <Layout>
     <Sidebar>
       <NavItem
         active={match tab { Overview -> true, _ -> false }}
@@ -821,7 +988,7 @@ export fn Dashboard(userId: UserId) -> JSX.Element {
 }
 
 fn OverviewPanel(user: AsyncState<User, ApiError>) -> JSX.Element {
-  return match user {
+  match user {
     Idle         -> <EmptyState>Click to load</EmptyState>
     Loading      -> <Skeleton lines={6} />
     Failure(err) -> <ErrorCard>{describeError(err)}</ErrorCard>
@@ -866,12 +1033,72 @@ These are enforced at compile time with clear error messages.
 | Array index returns `Option<T>` | — | Must handle `None` case |
 | No `==` between different types | `ERROR: cannot compare number with string` | Convert first |
 | IO functions must return `Result` | `ERROR: fetch can fail — return Result` | Declare error type |
-| Dead code after exhaustive return | `ERROR: unreachable code` | Remove dead code |
+| Dead code after exhaustive match | `ERROR: unreachable code` | Remove dead code |
 | String concat with `+` | `WARNING: use template literal` | Use `` `${x}` `` |
-| Non-unit function missing return | `ERROR: missing return value` | Add return expression |
+| Non-unit function body is empty or has no final expression | `ERROR: missing return value` | Add an expression as the last line of the block |
 | Spread with overlapping keys | `WARNING: 'y' from 'a' is overwritten by 'b'` | Reorder or remove duplicate |
 | `void` keyword | `ERROR: use () instead of void` | Replace with `()` |
 | `todo` usage | `WARNING: placeholder that will panic at runtime` | Replace with actual implementation |
+
+---
+
+## `parse<T>` - Compiler Built-in for Runtime Type Validation
+
+`parse<T>` is a compiler built-in that generates runtime type validators directly from Floe type definitions. No runtime library (e.g., Zod) is needed - the compiler inlines the validation code.
+
+### Syntax
+
+```floe
+// Direct call
+const user = parse<User>(json)
+
+// Pipe usage (most common)
+const user = json |> parse<User>?
+
+// With array types
+const items = data |> parse<Array<Product>>?
+
+// With inline record types
+const point = raw |> parse<{ x: number, y: number }>?
+```
+
+### Return Type
+
+`parse<T>(value)` always returns `Result<T, Error>`. Use `?` to unwrap.
+
+### Codegen
+
+For `parse<{ name: string, age: number }>(json)`, the compiler emits:
+
+```typescript
+(() => {
+  const __v = json;
+  if (typeof __v !== "object" || __v === null) return { ok: false as const, error: new Error("expected object, got " + typeof __v) };
+  if (typeof (__v as any).name !== "string") return { ok: false as const, error: new Error("field 'name': expected string, got " + typeof (__v as any).name) };
+  if (typeof (__v as any).age !== "number") return { ok: false as const, error: new Error("field 'age': expected number, got " + typeof (__v as any).age) };
+  return { ok: true as const, value: __v as { name: string; age: number } };
+})()
+```
+
+### Supported Types
+
+| Type | Validation emitted |
+|---|---|
+| `string` | `typeof x === "string"` |
+| `number` | `typeof x === "number"` |
+| `boolean` | `typeof x === "boolean"` |
+| Record types | `typeof x === "object"` + recursive field checks |
+| `Array<T>` | `Array.isArray(x)` + element validation loop |
+| `Option<T>` | Allow `undefined` or validate inner type |
+| Named types | `typeof x === "object"` (structural check) |
+
+### AST Node
+
+```
+ExprKind::Parse { type_arg: TypeExpr, value: Box<Expr> }
+```
+
+In pipe context (`json |> parse<T>`), value is a `Placeholder` that gets substituted with the piped expression.
 
 ---
 
@@ -920,6 +1147,9 @@ Key tokens beyond standard TypeScript:
 | `SelfKw` | `self` keyword (explicit receiver in for blocks) |
 | `Trait` | `trait` keyword (trait declarations) |
 | `Assert` | `assert` keyword (only valid inside test blocks) |
+| `Collect` | `collect` keyword (error accumulation block) |
+
+Number literals support underscore separators for readability: `1_000_000`, `3.141_592`, `0xFF_FF`. Underscores can appear between any two digits but not at the start, end, or adjacent to a decimal point. The lexer strips underscores before emitting the token value.
 
 Banned tokens (immediate compile errors with helpful messages):
 
@@ -954,6 +1184,7 @@ enum Expr {
     Pipe { left: Box<Expr>, right: Box<Expr> },
     Match { subject: Box<Expr>, arms: Vec<MatchArm> },
     Unwrap(Box<Expr>),         // the ? operator
+    Collect(Vec<Item>),        // collect { ... } error accumulation
     Construct {                 // Type(field: value, ..spread)
         type_name: String,
         spread: Option<Box<Expr>>,
@@ -1144,6 +1375,8 @@ Emits clean, readable `.tsx`. Zero runtime imports.
 | `Err(error)` | `{ ok: false, error }` |
 | `Some(value)` | `value` |
 | `None` | `undefined` |
+| `type Method = "GET" \| "POST"` | `type Method = "GET" \| "POST"` (pass-through) |
+| `match m { "GET" -> ... }` | `m === "GET" ? ...` (string comparison, no tag) |
 | `User(name: "Ry", email: e)` | `{ name: "Ry", email: e }` (+ tag for unions) |
 | `User(..user, name: "New")` | `{ ...user, name: "New" }` |
 | `f(name: "x", limit: 10)` | `f("x", 10)` (labels erased, reordered to match definition) |
@@ -1152,6 +1385,14 @@ Emits clean, readable `.tsx`. Zero runtime imports.
 | `()` (unit value) | `undefined` |
 | `fn f() -> ()` (unit return) | `function f(): void` |
 | `Array.sort(arr)` | `[...arr].sort((a, b) => a - b)` |
+| `Array.any(arr, pred)` | `arr.some(pred)` |
+| `Array.all(arr, pred)` | `arr.every(pred)` |
+| `Array.sum(arr)` | `arr.reduce((a, b) => a + b, 0)` |
+| `Array.join(arr, sep)` | `arr.join(sep)` |
+| `Array.isEmpty(arr)` | `arr.length === 0` |
+| `Array.chunk(arr, n)` | slice loop |
+| `Array.unique(arr)` | `[...new Set(arr)]` |
+| `Array.groupBy(arr, fn)` | `Object.groupBy(arr, fn)` |
 | `Number.parse("123")` | strict parse returning `Result` |
 | `Brand<string, "UserId">` | `string` (erased) |
 | `opaque type X = T` | `T` (erased, access controlled at compile time) |
@@ -1236,11 +1477,36 @@ export default function floe(): Plugin {
 ```bash
 floe build src/           # compile all .fl → .tsx
 floe check src/           # type-check only, no output
+floe fmt src/             # format .fl files in place
 floe test src/            # run inline test blocks
 floe watch src/           # watch mode
 floe init                 # scaffold new project
 floe migrate file.tsx     # attempt to convert .tsx to .fl
 ```
+
+### Formatter (`floe fmt`)
+
+The formatter enforces a canonical style. Key conventions:
+
+- **Blank line before final expression:** In multi-statement blocks (2+ statements/expressions), the formatter inserts a blank line before the last expression (the implicit return value). Single-expression bodies are unaffected.
+
+```floe
+// Multi-statement: blank line before final expression
+fn loadProfile(id: string) -> Result<Profile, ApiError> {
+    const user = fetchUser(id)?
+    const posts = fetchPosts(user.id)?
+    const stats = computeStats(posts)
+
+    Profile(user, posts, stats)
+}
+
+// Single expression: no blank line
+fn add(a: number, b: number) -> number {
+    a + b
+}
+```
+
+This applies to `fn` bodies, `for`-block functions, match arms with block bodies, and lambdas with block bodies.
 
 ---
 
@@ -1371,17 +1637,21 @@ const users = [u1, u2] |> Array.sortBy(.name)  // explicit comparator
 
 **Codegen:** compiles to `[...arr].sort((a, b) => a - b)` for numbers, `[...arr].sort(comparator)` for custom.
 
-### No Implicit Return
+### Implicit Returns
 
-JS functions without a return statement silently return `undefined`. Floe requires all non-unit functions to have an explicit return. Functions declared as returning `()` don't need one.
+Floe uses implicit returns — the last expression in a block is the return value. The `return` keyword is banned.
 
 ```floe
 fn getName(user: User) -> string {
-  // COMPILE ERROR: missing return value
+  user.name    // this is the return value
 }
 
 fn log(msg: string) -> () {
-  console.log(msg)    // OK — unit functions don't need explicit return
+  Console.log(msg)    // unit functions — last expression is discarded
+}
+
+// COMPILE ERROR: empty non-unit function body
+fn broken(user: User) -> string {
 }
 ```
 
@@ -1443,7 +1713,7 @@ const c = { ...a, ...b }    // WARNING: 'y' from 'a' is overwritten by 'b'
 | Array sort | Returns new array, numeric default | No mutation footgun, no lexicographic surprise |
 | Numeric parsing | `Number.parse` returns `Result` | No silent `NaN`, no partial parse, no octal weirdness |
 | Iteration | Own values only, no prototype chain | `for...in` prototype leakage is eliminated |
-| Implicit return | Non-unit functions must return explicitly | No silent `undefined` returns |
+| Implicit return | Last expression in a block is the return value; `return` keyword is banned | No silent `undefined` returns, less noise |
 | Spread overlap | Warning on statically-known key overlap | Catches silent overwrites at compile time |
 | Compiler language | Rust | Fast, WASM-ready for browser playground, good LSP story |
 | Inline tests | `test "name" { assert expr }` co-located with code | Gleam/Rust-inspired; type-checked always, stripped from production output |

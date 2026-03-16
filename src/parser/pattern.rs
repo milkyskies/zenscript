@@ -34,6 +34,38 @@ impl Parser {
         })
     }
 
+    /// Parse `match { arms }` without a subject — used for `x |> match { ... }`.
+    /// The caller provides the subject from the pipe's left side.
+    /// Returns a Match expr with a Placeholder subject (caller replaces it).
+    pub(super) fn parse_subjectless_match(&mut self) -> Result<Expr, ParseError> {
+        let start_span = self.current_span();
+        self.expect(&TokenKind::Match)?;
+        self.expect(&TokenKind::LeftBrace)?;
+
+        let mut arms = Vec::new();
+        while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+            let arm = self.parse_match_arm()?;
+            arms.push(arm);
+            if self.check(&TokenKind::Comma) {
+                self.advance();
+            }
+        }
+
+        self.expect(&TokenKind::RightBrace)?;
+        let end_span = self.previous_span();
+
+        Ok(Expr {
+            kind: ExprKind::Match {
+                subject: Box::new(Expr {
+                    kind: ExprKind::Placeholder,
+                    span: start_span,
+                }),
+                arms,
+            },
+            span: self.merge_spans(start_span, end_span),
+        })
+    }
+
     fn parse_match_arm(&mut self) -> Result<MatchArm, ParseError> {
         let start_span = self.current_span();
         let pattern = self.parse_pattern()?;
@@ -177,6 +209,56 @@ impl Parser {
                 let end_span = self.previous_span();
                 Ok(Pattern {
                     kind: PatternKind::Variant { name, fields },
+                    span: self.merge_spans(start_span, end_span),
+                })
+            }
+
+            // Array pattern: `[]`, `[a, b]`, `[first, ..rest]`
+            TokenKind::LeftBracket => {
+                self.advance(); // [
+                let mut elements = Vec::new();
+                let mut rest = None;
+
+                while !self.check(&TokenKind::RightBracket) && !self.is_at_end() {
+                    // Check for rest pattern: `..name`
+                    if self.check(&TokenKind::DotDot) {
+                        self.advance(); // ..
+                        // The rest binding name
+                        match self.current_kind() {
+                            TokenKind::Identifier(name) => {
+                                rest = Some(name.clone());
+                                self.advance();
+                            }
+                            TokenKind::Underscore => {
+                                rest = Some("_".to_string());
+                                self.advance();
+                            }
+                            _ => {
+                                return Err(
+                                    self.error("expected identifier after '..' in array pattern")
+                                );
+                            }
+                        }
+                        // After rest, only comma and ] are allowed
+                        if self.check(&TokenKind::Comma) {
+                            self.advance();
+                        }
+                        break;
+                    }
+
+                    elements.push(self.parse_pattern()?);
+
+                    if self.check(&TokenKind::Comma) {
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+
+                self.expect(&TokenKind::RightBracket)?;
+                let end_span = self.previous_span();
+                Ok(Pattern {
+                    kind: PatternKind::Array { elements, rest },
                     span: self.merge_spans(start_span, end_span),
                 })
             }

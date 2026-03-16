@@ -20,6 +20,11 @@ module.exports = grammar({
     [$.const_declaration, $.index_expression],
     [$.primary_expression, $.construct_expression],
     [$.primary_expression, $.construct_expression, $.variant_expression],
+    [$.for_block],
+    [$.assert_statement, $.call_expression],
+    [$.assert_statement, $.member_expression],
+    [$.assert_statement, $.binary_expression],
+    [$.assert_statement, $.index_expression],
   ],
 
   precedences: ($) => [
@@ -172,7 +177,11 @@ module.exports = grammar({
         optional($.type_parameters),
         "=",
         field("definition", $._type_definition),
+        optional($.deriving_clause),
       ),
+
+    deriving_clause: ($) =>
+      seq("deriving", "(", commaSep1($.type_identifier), ")"),
 
     _type_definition: ($) =>
       choice($.union_type_definition, $.record_type, $._type_expression),
@@ -289,6 +298,7 @@ module.exports = grammar({
         $.assignment_expression,
         $.await_expression,
         $.try_expression,
+        $.collect_expression,
         $.return_statement,
       ),
 
@@ -621,6 +631,9 @@ module.exports = grammar({
 
     try_expression: ($) =>
       prec.right(seq("try", $._expression)),
+
+    collect_expression: ($) =>
+      seq("collect", $.block),
 
     // ── Comments ────────────────────────────────────────────
 

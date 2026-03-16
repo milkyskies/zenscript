@@ -54,6 +54,9 @@ type Shape =
   | Circle(radius: number)
   | Rectangle(width: number, height: number)
 
+// String literal union (for npm interop)
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE"
+
 // Alias
 type Name = string
 
@@ -62,6 +65,12 @@ type UserId = Brand<string, "UserId">
 
 // Opaque
 opaque type Email = string
+
+// Deriving traits
+type Point = {
+  x: number,
+  y: number,
+} deriving (Display)
 ```
 
 ### For Block
@@ -93,12 +102,17 @@ for Array<User> {
 ```floe
 42              // number
 3.14            // number
+1_000_000       // number with separators (underscores for readability)
+3.141_592       // float with separators
+0xFF_FF         // hex with separators
 "hello"         // string
 `hello ${name}` // template literal
 true            // boolean
 false           // boolean
 [1, 2, 3]      // array
 ```
+
+Underscores in number literals are purely visual — they are stripped during compilation. They can appear between any two digits but not at the start, end, or adjacent to a decimal point.
 
 ### Operators
 
@@ -117,6 +131,7 @@ expr?                                         // unwrap
 value |> transform
 value |> f(other_arg, _)   // placeholder
 a |> b |> c                // chaining
+value |> match { ... }     // pipe into match
 ```
 
 ### Match
@@ -125,6 +140,12 @@ a |> b |> c                // chaining
 match expr {
   pattern -> body,
   pattern when guard -> body,
+  _ -> default,
+}
+
+// Pipe into match
+expr |> match {
+  pattern -> body,
   _ -> default,
 }
 ```
@@ -139,6 +160,17 @@ Constructor(a: 1)  // record constructor
 Constructor(..existing, a: 2)  // spread + update
 ```
 
+### Collect Block
+
+```floe
+collect {
+    const name = validateName(input.name)?
+    const email = validateEmail(input.email)?
+    ValidForm(name, email)
+}
+// Returns Result<T, Array<E>> — accumulates all errors from ?
+```
+
 ### Constructors
 
 ```floe
@@ -151,8 +183,11 @@ None          // Option absent
 ### Builtins
 
 ```floe
-todo          // placeholder, type never, emits warning
-unreachable   // assert unreachable, type never
+todo                              // placeholder, type never, emits warning
+unreachable                       // assert unreachable, type never
+parse<T>(value)                   // runtime type validation, returns Result<T, Error>
+json |> parse<User>?              // pipe form (most common)
+data |> parse<Array<Product>>?    // validates arrays
 ```
 
 ### Qualified Variants

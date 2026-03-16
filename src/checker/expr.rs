@@ -1,4 +1,5 @@
 use super::*;
+use crate::type_names;
 
 // ── Expression Checking ──────────────────────────────────────
 
@@ -75,34 +76,46 @@ impl Checker {
 
             ExprKind::Unwrap(inner) => {
                 let ty = self.check_expr(inner);
-                // Rule 5: ? only allowed in functions returning Result/Option
-                match &self.current_return_type {
-                    Some(ret) if ret.is_result() || ret.is_option() => {}
-                    Some(_) => {
-                        self.diagnostics.push(
-                            Diagnostic::error(
-                                "`?` operator requires function to return `Result` or `Option`",
-                                expr.span,
-                            )
-                            .with_label("enclosing function does not return `Result` or `Option`")
-                            .with_help("change the function's return type to `Result` or `Option`")
-                            .with_code("E005"),
-                        );
-                    }
-                    None => {
-                        self.diagnostics.push(
-                            Diagnostic::error(
-                                "`?` operator can only be used inside a function",
-                                expr.span,
-                            )
-                            .with_label("not inside a function")
-                            .with_code("E005"),
-                        );
+                // Rule 5: ? only allowed in functions returning Result/Option,
+                // OR inside a collect block (where ? accumulates errors)
+                if !self.inside_collect {
+                    match &self.current_return_type {
+                        Some(ret) if ret.is_result() || ret.is_option() => {}
+                        Some(_) => {
+                            self.diagnostics.push(
+                                Diagnostic::error(
+                                    "`?` operator requires function to return `Result` or `Option`",
+                                    expr.span,
+                                )
+                                .with_label(
+                                    "enclosing function does not return `Result` or `Option`",
+                                )
+                                .with_help(
+                                    "change the function's return type to `Result` or `Option`",
+                                )
+                                .with_code("E005"),
+                            );
+                        }
+                        None => {
+                            self.diagnostics.push(
+                                Diagnostic::error(
+                                    "`?` operator can only be used inside a function",
+                                    expr.span,
+                                )
+                                .with_label("not inside a function")
+                                .with_code("E005"),
+                            );
+                        }
                     }
                 }
                 // Unwrap the inner type
                 match ty {
-                    Type::Result { ok, .. } => *ok,
+                    Type::Result { ok, err } => {
+                        if self.inside_collect {
+                            self.collect_err_type = Some(*err);
+                        }
+                        *ok
+                    }
                     Type::Option(inner) => *inner,
                     _ => {
                         self.diagnostics.push(
@@ -313,9 +326,13 @@ impl Checker {
                 // Collect valid field names for this type
                 let valid_fields: Option<Vec<String>> = if let Some(ref info) = type_info {
                     match &info.def {
-                        TypeDef::Record(fields) => {
-                            Some(fields.iter().map(|f| f.name.clone()).collect())
-                        }
+                        TypeDef::Record(entries) => Some(
+                            entries
+                                .iter()
+                                .filter_map(|e| e.as_field())
+                                .map(|f| f.name.clone())
+                                .collect(),
+                        ),
                         _ => None,
                     }
                 } else {
@@ -378,9 +395,10 @@ impl Checker {
                     // Check for missing required fields (only when no spread)
                     if spread.is_none() {
                         let has_defaults: Vec<String> = if let Some(ref info) = type_info {
-                            if let TypeDef::Record(record_fields) = &info.def {
-                                record_fields
+                            if let TypeDef::Record(record_entries) = &info.def {
+                                record_entries
                                     .iter()
+                                    .filter_map(|e| e.as_field())
                                     .filter(|f| f.default.is_some())
                                     .map(|f| f.name.clone())
                                     .collect()
@@ -448,9 +466,10 @@ impl Checker {
                 let field_type_map: Option<Vec<(String, Type)>> = if let Some(ref info) = type_info
                 {
                     match &info.def {
-                        TypeDef::Record(fields) => Some(
-                            fields
+                        TypeDef::Record(entries) => Some(
+                            entries
                                 .iter()
+                                .filter_map(|e| e.as_field())
                                 .map(|f| (f.name.clone(), self.resolve_type(&f.type_ann)))
                                 .collect(),
                         ),
@@ -509,35 +528,6 @@ impl Checker {
 
             ExprKind::Member { object, field } => {
                 let obj_ty = self.check_expr(object);
-                // Rule 6: No property access on unnarrowed unions
-                if let Type::Result { .. } = obj_ty {
-                    self.diagnostics.push(
-                        Diagnostic::error(
-                            format!(
-                                "cannot access `.{field}` on `Result` - use `match` or `?` first"
-                            ),
-                            expr.span,
-                        )
-                        .with_label("`Result` must be narrowed first")
-                        .with_help("use `match result { Ok(v) -> ..., Err(e) -> ... }`")
-                        .with_code("E006"),
-                    );
-                    return Type::Unknown;
-                }
-                if let Type::Union { name, .. } = &obj_ty {
-                    self.diagnostics.push(
-                        Diagnostic::error(
-                            format!(
-                                "cannot access `.{field}` on union `{name}` - use `match` first"
-                            ),
-                            expr.span,
-                        )
-                        .with_label("union must be narrowed first")
-                        .with_help("use `match` to narrow the union first")
-                        .with_code("E006"),
-                    );
-                    return Type::Unknown;
-                }
 
                 // Check for npm member access via tsgo probes (e.g. z.object, z.string)
                 if let ExprKind::Identifier(name) = &object.kind {
@@ -551,94 +541,16 @@ impl Checker {
                     }
                 }
 
-                // Error on member access on Promise — must await first
-                if let Type::Named(name) = &obj_ty
-                    && name.starts_with("Promise<")
+                // Allow stdlib module access (e.g. JSON.parse) before unknown check
+                if matches!(obj_ty, Type::Unknown)
+                    && let ExprKind::Identifier(name) = &object.kind
+                    && self.stdlib.is_module(name)
+                    && let Some(stdlib_fn) = self.stdlib.lookup(name, field)
                 {
-                    self.diagnostics.push(
-                        Diagnostic::error(
-                            format!("cannot access `.{field}` on `{name}` — use `await` first"),
-                            expr.span,
-                        )
-                        .with_label("must `await` the Promise before accessing members")
-                        .with_code("E021"),
-                    );
-                    return Type::Unknown;
+                    return stdlib_fn.return_type.clone();
                 }
 
-                // Error on member access on `unknown` — must narrow first
-                if matches!(obj_ty, Type::Unknown) {
-                    // Allow stdlib module access (e.g. JSON.parse) — those are handled elsewhere
-                    if let ExprKind::Identifier(name) = &object.kind
-                        && self.stdlib.is_module(name)
-                        && let Some(stdlib_fn) = self.stdlib.lookup(name, field)
-                    {
-                        return stdlib_fn.return_type.clone();
-                    }
-                    self.diagnostics.push(
-                        Diagnostic::error(
-                            format!("cannot access `.{field}` on `unknown`"),
-                            expr.span,
-                        )
-                        .with_label("`unknown` must be narrowed before member access")
-                        .with_help("use `match`, type validation (e.g. Zod), or pattern matching")
-                        .with_code("E020"),
-                    );
-                    return Type::Unknown;
-                }
-
-                // Resolve Named types to their concrete definition
-                let concrete = self.resolve_type_to_concrete(&obj_ty);
-
-                if let Type::Record(fields) = &concrete {
-                    if let Some((_, ty)) = fields.iter().find(|(n, _)| n == field) {
-                        return ty.clone();
-                    }
-                    // Field not found on a known record type
-                    let type_name = if let Type::Named(name) = &obj_ty {
-                        format!("`{name}`")
-                    } else {
-                        format!("`{}`", obj_ty.display_name())
-                    };
-                    self.diagnostics.push(
-                        Diagnostic::error(
-                            format!("type {type_name} has no field `{field}`"),
-                            expr.span,
-                        )
-                        .with_label("unknown field")
-                        .with_help(format!(
-                            "available fields: {}",
-                            fields
-                                .iter()
-                                .map(|(n, _)| format!("`{n}`"))
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        ))
-                        .with_code("E017"),
-                    );
-                    return Type::Unknown;
-                }
-
-                // Error on member access on primitive types
-                match &obj_ty {
-                    Type::Number | Type::String | Type::Bool | Type::Unit => {
-                        self.diagnostics.push(
-                            Diagnostic::error(
-                                format!(
-                                    "cannot access `.{field}` on type `{}`",
-                                    obj_ty.display_name()
-                                ),
-                                expr.span,
-                            )
-                            .with_label("not a record type")
-                            .with_code("E017"),
-                        );
-                        return Type::Unknown;
-                    }
-                    _ => {}
-                }
-
-                Type::Unknown
+                self.resolve_member_type(&obj_ty, field, expr.span)
             }
 
             ExprKind::Index { object, index } => {
@@ -681,7 +593,7 @@ impl Checker {
                                     for field in fields {
                                         // Infer type for well-known field names
                                         let field_ty = match field.as_str() {
-                                            "error" => Type::Named("Error".to_string()),
+                                            "error" => Type::Named(type_names::ERROR.to_string()),
                                             _ => Type::Unknown,
                                         };
                                         self.env.define(field, field_ty);
@@ -740,14 +652,6 @@ impl Checker {
                 result_type.unwrap_or(Type::Unit)
             }
 
-            ExprKind::Return(value) => {
-                if let Some(e) = value {
-                    self.check_expr(e)
-                } else {
-                    Type::Unit
-                }
-            }
-
             ExprKind::Await(inner) => {
                 let ty = self.check_expr(inner);
                 // Unwrap Promise<T> to T
@@ -769,7 +673,20 @@ impl Checker {
                 self.inside_try = prev_inside_try;
                 Type::Result {
                     ok: Box::new(inner_ty),
-                    err: Box::new(Type::Named("Error".to_string())),
+                    err: Box::new(Type::Named(type_names::ERROR.to_string())),
+                }
+            }
+
+            ExprKind::Parse { type_arg, value } => {
+                // parse<T>(value) returns Result<T, Error>
+                let t = self.resolve_type(type_arg);
+                // Check the value expression (should be unknown/any at runtime)
+                if !matches!(value.kind, ExprKind::Placeholder) {
+                    self.check_expr(value);
+                }
+                Type::Result {
+                    ok: Box::new(t),
+                    err: Box::new(Type::Named(type_names::ERROR.to_string())),
                 }
             }
 
@@ -828,27 +745,54 @@ impl Checker {
                 Type::Named("JSX.Element".to_string())
             }
 
+            ExprKind::Collect(items) => {
+                // collect { ... } — accumulates errors from ? instead of short-circuiting
+                // The block returns Result<T, Array<E>> where T is the last expression type
+                // and E is the error type from ? operations
+                self.env.push_scope();
+                let prev_inside_collect = self.inside_collect;
+                self.inside_collect = true;
+                let mut last_type = Type::Unit;
+                let mut err_type: Option<Type> = None;
+
+                for (i, item) in items.iter().enumerate() {
+                    let is_last = i == items.len() - 1;
+                    if is_last {
+                        if let ItemKind::Expr(e) = &item.kind {
+                            last_type = self.check_expr(e);
+                        } else {
+                            self.check_item(item);
+                        }
+                    } else {
+                        self.check_item(item);
+                    }
+                    // Collect error types from ? operations within
+                    // (The checker tracks them via collect_err_type)
+                    if let Some(ref et) = self.collect_err_type
+                        && err_type.is_none()
+                    {
+                        err_type = Some(et.clone());
+                    }
+                }
+
+                self.inside_collect = prev_inside_collect;
+                self.collect_err_type = None;
+                self.env.pop_scope();
+
+                let e = err_type.unwrap_or(Type::Unknown);
+                Type::Result {
+                    ok: Box::new(last_type),
+                    err: Box::new(Type::Array(Box::new(e))),
+                }
+            }
+
             ExprKind::Block(items) => {
                 self.env.push_scope();
                 let mut last_type = Type::Unit;
-                let mut found_return = false;
                 for (i, item) in items.iter().enumerate() {
-                    if found_return {
-                        // Rule 10: Dead code detection
-                        self.diagnostics.push(
-                            Diagnostic::error("unreachable code after `return`", item.span)
-                                .with_label("this code will never execute")
-                                .with_help("remove this code or move it before the `return`")
-                                .with_code("E011"),
-                        );
-                        break;
-                    }
                     let is_last = i == items.len() - 1;
                     if is_last {
                         if let ItemKind::Expr(expr) = &item.kind {
-                            if matches!(expr.kind, ExprKind::Return(_)) {
-                                found_return = true;
-                            }
                             // Check last expression once and use its type as block type
                             last_type = self.check_expr(expr);
                         } else {
@@ -856,11 +800,6 @@ impl Checker {
                         }
                     } else {
                         self.check_item(item);
-                        if let ItemKind::Expr(expr) = &item.kind
-                            && matches!(expr.kind, ExprKind::Return(_))
-                        {
-                            found_return = true;
-                        }
                     }
                 }
                 self.env.pop_scope();
@@ -1020,37 +959,11 @@ impl Checker {
         };
 
         if let Some((module, func_name)) = member_info
-            && let Some(stdlib_fn) = self.stdlib.lookup(module, func_name)
+            && let Some(stdlib_fn) = self.stdlib.lookup(module, func_name).cloned()
         {
             self.used_names.insert(module.to_string());
-            // Resolve generic return type from piped value
-            // e.g. Array.append returns Array<T> → resolve T from left_ty's element
-            let ret = match (&stdlib_fn.return_type, left_ty) {
-                (Type::Array(_), Type::Array(elem)) => Type::Array(elem.clone()),
-                _ => stdlib_fn.return_type.clone(),
-            };
-            if let Some(first_param) = stdlib_fn.params.first()
-                && !self.types_compatible(first_param, left_ty)
-            {
-                self.diagnostics.push(
-                    Diagnostic::error(
-                        format!(
-                            "argument 1 to `{module}.{func_name}`: expected `{}`, found `{}`",
-                            first_param.display_name(),
-                            left_ty.display_name()
-                        ),
-                        right.span,
-                    )
-                    .with_label(format!("expected `{}`", first_param.display_name()))
-                    .with_code("E001"),
-                );
-            }
-            if let Type::Array(elem) = left_ty {
-                self.lambda_param_hint = Some((**elem).clone());
-            }
-            self.check_pipe_right_args(right);
-            self.lambda_param_hint = None;
-            return ret;
+            let display = format!("{module}.{func_name}");
+            return self.validate_stdlib_pipe_call(&stdlib_fn, &display, left_ty, right);
         }
 
         // Extract the bare function name from the right side
@@ -1073,70 +986,17 @@ impl Checker {
             let fallback_matches = self.stdlib.lookup_by_name(name);
 
             if let Some(m) = module
-                && self.stdlib.lookup(m, name).is_some()
+                && let Some(stdlib_fn) = self.stdlib.lookup(m, name).cloned()
             {
-                // Found via type-directed resolution — mark as used, check args
+                // Found via type-directed resolution
                 self.used_names.insert(name.to_string());
-                let stdlib_fn = self.stdlib.lookup(m, name).unwrap();
-                let ret = match (&stdlib_fn.return_type, left_ty) {
-                    (Type::Array(_), Type::Array(elem)) => Type::Array(elem.clone()),
-                    _ => stdlib_fn.return_type.clone(),
-                };
-                // Validate piped value against first parameter
-                if let Some(first_param) = stdlib_fn.params.first()
-                    && !self.types_compatible(first_param, left_ty)
-                {
-                    self.diagnostics.push(
-                        Diagnostic::error(
-                            format!(
-                                "argument 1 to `{m}.{name}`: expected `{}`, found `{}`",
-                                first_param.display_name(),
-                                left_ty.display_name()
-                            ),
-                            right.span,
-                        )
-                        .with_label(format!("expected `{}`", first_param.display_name()))
-                        .with_code("E001"),
-                    );
-                }
-                // Set lambda param hint from array element type
-                if let Type::Array(elem) = left_ty {
-                    self.lambda_param_hint = Some((**elem).clone());
-                }
-                self.check_pipe_right_args(right);
-                self.lambda_param_hint = None;
-                return ret;
-            } else if !fallback_matches.is_empty() {
-                let stdlib_fn = fallback_matches[0];
-                // Validate piped value against first parameter
-                if let Some(first_param) = stdlib_fn.params.first()
-                    && !self.types_compatible(first_param, left_ty)
-                {
-                    self.diagnostics.push(
-                        Diagnostic::error(
-                            format!(
-                                "argument 1 to `{name}`: expected `{}`, found `{}`",
-                                first_param.display_name(),
-                                left_ty.display_name()
-                            ),
-                            right.span,
-                        )
-                        .with_label(format!("expected `{}`", first_param.display_name()))
-                        .with_code("E001"),
-                    );
-                }
-                // Found via name-based fallback
+                let display = format!("{m}.{name}");
+                return self.validate_stdlib_pipe_call(&stdlib_fn, &display, left_ty, right);
+            } else if !fallback_matches.is_empty() && self.env.lookup(name).is_none() {
+                // Found via name-based fallback (only if not locally defined)
+                let stdlib_fn = fallback_matches[0].clone();
                 self.used_names.insert(name.to_string());
-                let ret = match (&stdlib_fn.return_type, left_ty) {
-                    (Type::Array(_), Type::Array(elem)) => Type::Array(elem.clone()),
-                    _ => stdlib_fn.return_type.clone(),
-                };
-                if let Type::Array(elem) = left_ty {
-                    self.lambda_param_hint = Some((**elem).clone());
-                }
-                self.check_pipe_right_args(right);
-                self.lambda_param_hint = None;
-                return ret;
+                return self.validate_stdlib_pipe_call(&stdlib_fn, name, left_ty, right);
             }
         }
 
@@ -1196,6 +1056,43 @@ impl Checker {
         right_ty
     }
 
+    /// Validate a stdlib function call in a pipe, checking the first parameter type,
+    /// resolving generic return types, and checking additional arguments.
+    fn validate_stdlib_pipe_call(
+        &mut self,
+        stdlib_fn: &crate::stdlib::StdlibFn,
+        display_name: &str,
+        left_ty: &Type,
+        right: &Expr,
+    ) -> Type {
+        let ret = match (&stdlib_fn.return_type, left_ty) {
+            (Type::Array(_), Type::Array(elem)) => Type::Array(elem.clone()),
+            _ => stdlib_fn.return_type.clone(),
+        };
+        if let Some(first_param) = stdlib_fn.params.first()
+            && !self.types_compatible(first_param, left_ty)
+        {
+            self.diagnostics.push(
+                Diagnostic::error(
+                    format!(
+                        "argument 1 to `{display_name}`: expected `{}`, found `{}`",
+                        first_param.display_name(),
+                        left_ty.display_name()
+                    ),
+                    right.span,
+                )
+                .with_label(format!("expected `{}`", first_param.display_name()))
+                .with_code("E001"),
+            );
+        }
+        if let Type::Array(elem) = left_ty {
+            self.lambda_param_hint = Some((**elem).clone());
+        }
+        self.check_pipe_right_args(right);
+        self.lambda_param_hint = None;
+        ret
+    }
+
     /// Check arguments in the right side of a pipe without checking the callee identifier.
     fn check_pipe_right_args(&mut self, right: &Expr) {
         if let ExprKind::Call { args, .. } = &right.kind {
@@ -1252,6 +1149,13 @@ impl Checker {
                 Self::collect_generic_params_from_type(ok, names, seen);
                 Self::collect_generic_params_from_type(err, names, seen);
             }
+            Type::Map { key, value } => {
+                Self::collect_generic_params_from_type(key, names, seen);
+                Self::collect_generic_params_from_type(value, names, seen);
+            }
+            Type::Set { element } => {
+                Self::collect_generic_params_from_type(element, names, seen);
+            }
             _ => {}
         }
     }
@@ -1286,6 +1190,13 @@ impl Checker {
             (Type::Array(p), Type::Array(a)) => {
                 Self::unify_for_inference(p, a, generics, subs);
             }
+            (Type::Map { key: pk, value: pv }, Type::Map { key: ak, value: av }) => {
+                Self::unify_for_inference(pk, ak, generics, subs);
+                Self::unify_for_inference(pv, av, generics, subs);
+            }
+            (Type::Set { element: pe }, Type::Set { element: ae }) => {
+                Self::unify_for_inference(pe, ae, generics, subs);
+            }
             (Type::Option(p), Type::Option(a)) => {
                 Self::unify_for_inference(p, a, generics, subs);
             }
@@ -1307,6 +1218,13 @@ impl Checker {
         match ty {
             Type::Named(n) if subs.contains_key(n) => subs[n].clone(),
             Type::Array(inner) => Type::Array(Box::new(Self::substitute_generics(inner, subs))),
+            Type::Map { key, value } => Type::Map {
+                key: Box::new(Self::substitute_generics(key, subs)),
+                value: Box::new(Self::substitute_generics(value, subs)),
+            },
+            Type::Set { element } => Type::Set {
+                element: Box::new(Self::substitute_generics(element, subs)),
+            },
             Type::Option(inner) => Type::Option(Box::new(Self::substitute_generics(inner, subs))),
             Type::Tuple(types) => Type::Tuple(
                 types
@@ -1334,13 +1252,119 @@ impl Checker {
 
     fn type_to_stdlib_module(ty: &Type) -> Option<&'static str> {
         match ty {
-            Type::Array(_) => Some("Array"),
-            Type::String => Some("String"),
-            Type::Number => Some("Number"),
-            Type::Option(_) => Some("Option"),
-            Type::Result { .. } => Some("Result"),
+            Type::Array(_) => Some(type_names::MOD_ARRAY),
+            Type::Map { .. } => Some(type_names::MOD_MAP),
+            Type::Set { .. } => Some(type_names::MOD_SET),
+            Type::String => Some(type_names::MOD_STRING),
+            Type::Number => Some(type_names::MOD_NUMBER),
+            Type::Option(_) => Some(type_names::MOD_OPTION),
+            Type::Result { .. } => Some(type_names::MOD_RESULT),
             _ => None,
         }
+    }
+
+    /// Resolve the type of a member access (`obj_ty.field`), producing diagnostics for errors.
+    fn resolve_member_type(&mut self, obj_ty: &Type, field: &str, span: Span) -> Type {
+        // Rule 6: No property access on unnarrowed unions
+        if let Type::Result { .. } = obj_ty {
+            self.diagnostics.push(
+                Diagnostic::error(
+                    format!("cannot access `.{field}` on `Result` - use `match` or `?` first"),
+                    span,
+                )
+                .with_label("`Result` must be narrowed first")
+                .with_help("use `match result { Ok(v) -> ..., Err(e) -> ... }`")
+                .with_code("E006"),
+            );
+            return Type::Unknown;
+        }
+        if let Type::Union { name, .. } = obj_ty {
+            self.diagnostics.push(
+                Diagnostic::error(
+                    format!("cannot access `.{field}` on union `{name}` - use `match` first"),
+                    span,
+                )
+                .with_label("union must be narrowed first")
+                .with_help("use `match` to narrow the union first")
+                .with_code("E006"),
+            );
+            return Type::Unknown;
+        }
+
+        // Error on member access on Promise — must await first
+        if let Type::Named(name) = obj_ty
+            && name.starts_with("Promise<")
+        {
+            self.diagnostics.push(
+                Diagnostic::error(
+                    format!("cannot access `.{field}` on `{name}` — use `await` first"),
+                    span,
+                )
+                .with_label("must `await` the Promise before accessing members")
+                .with_code("E021"),
+            );
+            return Type::Unknown;
+        }
+
+        // Error on member access on `unknown` — must narrow first
+        if matches!(obj_ty, Type::Unknown) {
+            self.diagnostics.push(
+                Diagnostic::error(format!("cannot access `.{field}` on `unknown`"), span)
+                    .with_label("`unknown` must be narrowed before member access")
+                    .with_help("use `match`, type validation (e.g. Zod), or pattern matching")
+                    .with_code("E020"),
+            );
+            return Type::Unknown;
+        }
+
+        // Resolve Named types to their concrete definition
+        let concrete = self.resolve_type_to_concrete(obj_ty);
+
+        if let Type::Record(fields) = &concrete {
+            if let Some((_, ty)) = fields.iter().find(|(n, _)| n == field) {
+                return ty.clone();
+            }
+            let type_name = if let Type::Named(name) = obj_ty {
+                format!("`{name}`")
+            } else {
+                format!("`{}`", obj_ty.display_name())
+            };
+            self.diagnostics.push(
+                Diagnostic::error(format!("type {type_name} has no field `{field}`"), span)
+                    .with_label("unknown field")
+                    .with_help(format!(
+                        "available fields: {}",
+                        fields
+                            .iter()
+                            .map(|(n, _)| format!("`{n}`"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ))
+                    .with_code("E017"),
+            );
+            return Type::Unknown;
+        }
+
+        // Error on member access on primitive types
+        match obj_ty {
+            Type::Number | Type::String | Type::Bool | Type::Unit => {
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        format!(
+                            "cannot access `.{field}` on type `{}`",
+                            obj_ty.display_name()
+                        ),
+                        span,
+                    )
+                    .with_label("not a record type")
+                    .with_code("E017"),
+                );
+                return Type::Unknown;
+            }
+            _ => {}
+        }
+
+        Type::Unknown
     }
 
     /// Resolve a type to its concrete definition, following Named type lookups.
@@ -1365,11 +1389,11 @@ pub(crate) fn simple_resolve_type_expr(type_expr: &crate::parser::ast::TypeExpr)
     use crate::parser::ast::TypeExprKind;
     match &type_expr.kind {
         TypeExprKind::Named { name, .. } => match name.as_str() {
-            "number" => Type::Number,
-            "string" => Type::String,
-            "boolean" => Type::Bool,
-            "()" => Type::Unit,
-            "undefined" => Type::Undefined,
+            type_names::NUMBER => Type::Number,
+            type_names::STRING => Type::String,
+            type_names::BOOLEAN => Type::Bool,
+            type_names::UNIT => Type::Unit,
+            type_names::UNDEFINED => Type::Undefined,
             _ => Type::Named(name.to_string()),
         },
         TypeExprKind::Array(inner) => Type::Array(Box::new(simple_resolve_type_expr(inner))),

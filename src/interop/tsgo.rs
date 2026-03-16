@@ -134,13 +134,15 @@ fn collect_all_consts(program: &Program) -> Vec<&ConstDecl> {
 
 /// Recursively collect const declarations from an expression (function body, block, etc.)
 fn collect_consts_from_expr<'a>(expr: &'a Expr, consts: &mut Vec<&'a ConstDecl>) {
-    if let ExprKind::Block(stmts) = &expr.kind {
-        for stmt in stmts {
-            match &stmt.kind {
-                ItemKind::Const(decl) => consts.push(decl),
-                ItemKind::Function(func) => collect_consts_from_expr(&func.body, consts),
-                _ => {}
-            }
+    let items = match &expr.kind {
+        ExprKind::Block(stmts) | ExprKind::Collect(stmts) => stmts,
+        _ => return,
+    };
+    for stmt in items {
+        match &stmt.kind {
+            ItemKind::Const(decl) => consts.push(decl),
+            ItemKind::Function(func) => collect_consts_from_expr(&func.body, consts),
+            _ => {}
         }
     }
 }
@@ -549,7 +551,7 @@ fn collect_member_accesses_expr(
             collect_member_accesses_expr(left, imported_names, accesses);
             collect_member_accesses_expr(right, imported_names, accesses);
         }
-        ExprKind::Block(items) => {
+        ExprKind::Block(items) | ExprKind::Collect(items) => {
             for item in items {
                 match &item.kind {
                     ItemKind::Const(decl) => {
@@ -596,12 +598,14 @@ fn collect_member_accesses_expr(
         | ExprKind::Unwrap(inner)
         | ExprKind::Await(inner)
         | ExprKind::Try(inner)
-        | ExprKind::Return(Some(inner))
         | ExprKind::Ok(inner)
         | ExprKind::Err(inner)
         | ExprKind::Some(inner)
         | ExprKind::Spread(inner) => {
             collect_member_accesses_expr(inner, imported_names, accesses);
+        }
+        ExprKind::Parse { value, .. } => {
+            collect_member_accesses_expr(value, imported_names, accesses);
         }
         ExprKind::TemplateLiteral(parts) => {
             for part in parts {
@@ -673,16 +677,40 @@ fn type_decl_to_ts(decl: &TypeDecl) -> String {
     };
 
     match &decl.def {
-        TypeDef::Record(fields) => {
-            let fs: Vec<String> = fields
+        TypeDef::Record(entries) => {
+            let fs: Vec<String> = entries
                 .iter()
+                .filter_map(|e| e.as_field())
                 .map(|f| format!("  {}: {};", f.name, type_expr_to_ts(&f.type_ann)))
                 .collect();
-            format!(
-                "type {}{type_params} = {{\n{}\n}};",
-                decl.name,
-                fs.join("\n")
-            )
+            let spreads: Vec<String> = entries
+                .iter()
+                .filter_map(|e| e.as_spread())
+                .map(|s| s.type_name.clone())
+                .collect();
+            if spreads.is_empty() {
+                format!(
+                    "type {}{type_params} = {{\n{}\n}};",
+                    decl.name,
+                    fs.join("\n")
+                )
+            } else {
+                let spread_parts: Vec<String> = spreads.to_vec();
+                if fs.is_empty() {
+                    format!(
+                        "type {}{type_params} = {};",
+                        decl.name,
+                        spread_parts.join(" & ")
+                    )
+                } else {
+                    format!(
+                        "type {}{type_params} = {} & {{\n{}\n}};",
+                        decl.name,
+                        spread_parts.join(" & "),
+                        fs.join("\n")
+                    )
+                }
+            }
         }
         TypeDef::Alias(ty) => {
             format!("type {}{type_params} = {};", decl.name, type_expr_to_ts(ty))
@@ -698,6 +726,10 @@ fn type_decl_to_ts(decl: &TypeDecl) -> String {
                 decl.name,
                 members.join(",\n")
             )
+        }
+        TypeDef::StringLiteralUnion(variants) => {
+            let members: Vec<String> = variants.iter().map(|v| format!("\"{}\"", v)).collect();
+            format!("type {}{type_params} = {};", decl.name, members.join(" | "))
         }
     }
 }
@@ -1148,13 +1180,15 @@ fn collect_nested_functions<'a>(
     declared: &mut HashSet<String>,
     functions: &mut HashMap<String, &'a FunctionDecl>,
 ) {
-    if let ExprKind::Block(items) = &expr.kind {
-        for item in items {
-            if let ItemKind::Function(decl) = &item.kind {
-                declared.insert(decl.name.clone());
-                functions.insert(decl.name.clone(), decl);
-                collect_nested_functions(&decl.body, declared, functions);
-            }
+    let items = match &expr.kind {
+        ExprKind::Block(items) | ExprKind::Collect(items) => items,
+        _ => return,
+    };
+    for item in items {
+        if let ItemKind::Function(decl) = &item.kind {
+            declared.insert(decl.name.clone());
+            functions.insert(decl.name.clone(), decl);
+            collect_nested_functions(&decl.body, declared, functions);
         }
     }
 }

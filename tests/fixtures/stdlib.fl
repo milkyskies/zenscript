@@ -88,6 +88,19 @@ const _tangent = Math.tan(0)
 const _json_str = JSON.stringify([1, 2, 3])
 const _json_parsed = JSON.parse("{}")
 
+// ── Set ────────────────────────────────────────────────────
+const _set = Set.fromArray([1, 2, 3])
+const _set_arr = Set.toArray(_set)
+const _set_added = Set.add(_set, 4)
+const _set_removed = Set.remove(_set, 2)
+const _set_has = Set.has(_set, 1)
+const _set_size = Set.size(_set)
+const _set_empty = Set.isEmpty(_set)
+const _set2 = Set.fromArray([2, 3, 4])
+const _set_union = Set.union(_set, _set2)
+const _set_inter = Set.intersect(_set, _set2)
+const _set_diff = Set.diff(_set, _set2)
+
 // ── Pipes with stdlib ───────────────────────────────────────
 const _piped = [3, 1, 2] |> Array.sort
 const _pipe_chain = [1, 2, 3, 4, 5]

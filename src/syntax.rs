@@ -35,6 +35,8 @@ pub enum SyntaxKind {
     KW_TRAIT,
     KW_ASSERT,
     KW_WHEN,
+    KW_COLLECT,
+    KW_DERIVING,
 
     // Built-in constructors
     KW_OK,
@@ -43,6 +45,7 @@ pub enum SyntaxKind {
     KW_NONE,
 
     // Built-in expressions
+    KW_PARSE,
     KW_TODO,
     KW_UNREACHABLE,
 
@@ -54,6 +57,7 @@ pub enum SyntaxKind {
     QUESTION,      // ?
     UNDERSCORE,    // _
     DOT_DOT,       // ..
+    DOT_DOT_DOT,   // ...
     PLUS,          // +
     MINUS,         // -
     STAR,          // *
@@ -104,11 +108,14 @@ pub enum SyntaxKind {
     TYPE_DEF_RECORD,
     TYPE_DEF_UNION,
     TYPE_DEF_ALIAS,
+    TYPE_DEF_STRING_UNION,
     FOR_BLOCK,
+    DERIVING_CLAUSE,
     TRAIT_DECL,
     TEST_BLOCK,
     ASSERT_EXPR,
     RECORD_FIELD,
+    RECORD_SPREAD,
     VARIANT,
     VARIANT_FIELD,
     TYPE_EXPR,
@@ -141,11 +148,13 @@ pub enum SyntaxKind {
     GROUPED_EXPR,
     ARRAY_EXPR,
     SPREAD_EXPR,
+    COLLECT_EXPR,
     TUPLE_EXPR,
     DOT_SHORTHAND,
     OK_EXPR,
     ERR_EXPR,
     SOME_EXPR,
+    PARSE_EXPR,
     TODO_EXPR,
     UNREACHABLE_EXPR,
 
@@ -214,7 +223,6 @@ pub fn token_kind_to_syntax(kind: &TokenKind) -> SyntaxKind {
         TokenKind::Export => SyntaxKind::KW_EXPORT,
         TokenKind::Import => SyntaxKind::KW_IMPORT,
         TokenKind::From => SyntaxKind::KW_FROM,
-        TokenKind::Return => SyntaxKind::KW_RETURN,
         TokenKind::Match => SyntaxKind::KW_MATCH,
         TokenKind::Type => SyntaxKind::KW_TYPE,
         TokenKind::Opaque => SyntaxKind::KW_OPAQUE,
@@ -226,10 +234,13 @@ pub fn token_kind_to_syntax(kind: &TokenKind) -> SyntaxKind {
         TokenKind::Trait => SyntaxKind::KW_TRAIT,
         TokenKind::Assert => SyntaxKind::KW_ASSERT,
         TokenKind::When => SyntaxKind::KW_WHEN,
+        TokenKind::Collect => SyntaxKind::KW_COLLECT,
+        TokenKind::Deriving => SyntaxKind::KW_DERIVING,
         TokenKind::Ok => SyntaxKind::KW_OK,
         TokenKind::Err => SyntaxKind::KW_ERR,
         TokenKind::Some => SyntaxKind::KW_SOME,
         TokenKind::None => SyntaxKind::KW_NONE,
+        TokenKind::Parse => SyntaxKind::KW_PARSE,
         TokenKind::Todo => SyntaxKind::KW_TODO,
         TokenKind::Unreachable => SyntaxKind::KW_UNREACHABLE,
         TokenKind::Pipe => SyntaxKind::PIPE,
@@ -239,6 +250,7 @@ pub fn token_kind_to_syntax(kind: &TokenKind) -> SyntaxKind {
         TokenKind::Question => SyntaxKind::QUESTION,
         TokenKind::Underscore => SyntaxKind::UNDERSCORE,
         TokenKind::DotDot => SyntaxKind::DOT_DOT,
+        TokenKind::DotDotDot => SyntaxKind::DOT_DOT_DOT,
         TokenKind::Plus => SyntaxKind::PLUS,
         TokenKind::Minus => SyntaxKind::MINUS,
         TokenKind::Star => SyntaxKind::STAR,

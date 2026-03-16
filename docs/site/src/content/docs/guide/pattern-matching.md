@@ -105,6 +105,43 @@ Captured variables (`id`, `postId`) are bound as `string` in the match arm body.
 
 This is useful for URL routing, string parsing, and any case where you need to extract structured data from strings.
 
+## Array Patterns
+
+Match on array structure with head/tail destructuring:
+
+```floe
+match items {
+    [] -> "empty",
+    [only] -> `just one: ${only}`,
+    [first, second] -> "exactly two",
+    [first, ..rest] -> `first is ${first}, rest has ${rest |> Array.length}`,
+}
+```
+
+### Supported patterns
+
+| Pattern | Matches | Binds |
+|---|---|---|
+| `[]` | Empty array | Nothing |
+| `[a]` | Exactly 1 element | `a` |
+| `[a, b]` | Exactly 2 elements | `a`, `b` |
+| `[first, ..rest]` | 1 or more elements | `first` (head), `rest` (tail array) |
+| `[first, second, ..rest]` | 2 or more elements | `first`, `second`, `rest` |
+| `[_, ..rest]` | 1 or more, ignore head | `rest` |
+
+### Exhaustiveness
+
+`[]` combined with `[_, ..rest]` covers all cases (empty + non-empty):
+
+```floe
+match items {
+    [] -> "nothing here",
+    [head, ..tail] -> `starts with ${head}`,
+}
+```
+
+A pattern like `[a]` alone is NOT exhaustive - it only matches arrays of exactly one element.
+
 ## Wildcard
 
 The `_` pattern matches anything. Place it last as a default:
@@ -153,6 +190,32 @@ match value {
 }
 ```
 
+## Pipe into Match
+
+You can pipe a value directly into `match` to combine pipelines with pattern matching:
+
+```floe
+const label = price |> match {
+    _ when _ < 10 -> "cheap",
+    _ when _ < 100 -> "moderate",
+    _ -> "expensive",
+}
+```
+
+This works at the end of a pipeline chain:
+
+```floe
+const label = product
+    |> effectivePrice
+    |> match {
+        _ when _ < 10 -> "cheap",
+        _ when _ < 100 -> "moderate",
+        _ -> "expensive",
+    }
+```
+
+`x |> match { ... }` is pure syntax sugar and compiles identically to `match x { ... }`. See [Pipes](/guide/pipes/#pipe-into-match) for more details.
+
 ## Exhaustiveness
 
 The compiler checks that your match is exhaustive:
@@ -170,3 +233,4 @@ This applies to:
 - **Result** - must handle `Ok` and `Err`
 - **Option** - must handle `Some` and `None`
 - **Unions** - must handle every variant (or use `_`)
+- **Arrays** - `[]` + `[_, ..rest]` covers all cases (empty + non-empty)

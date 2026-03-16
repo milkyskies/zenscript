@@ -32,6 +32,37 @@ Update with spread:
 const updated = User(..user, age: 31)
 ```
 
+### Record Type Composition
+
+Include fields from other record types using spread syntax:
+
+```floe
+type BaseProps = {
+  className: string,
+  disabled: boolean,
+}
+
+type ButtonProps = {
+  ...BaseProps,
+  onClick: () -> (),
+  label: string,
+}
+// ButtonProps has: className, disabled, onClick, label
+```
+
+Multiple spreads are allowed:
+
+```floe
+type A = { x: number }
+type B = { y: string }
+type C = { ...A, ...B, z: boolean }
+```
+
+Rules:
+- Spread must reference a record type (not a union or alias)
+- Field name conflicts between spreads or with direct fields are compile errors
+- The resulting type is a flat record
+
 ## Union Types
 
 Discriminated unions with variants:
@@ -71,6 +102,37 @@ match filter {
 }
 ```
 
+## String Literal Unions
+
+For npm interop with TypeScript libraries that use string literal unions:
+
+```floe
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE"
+type Status = "loading" | "error" | "success"
+```
+
+Match on them with exhaustiveness checking:
+
+```floe
+fn describe(method: HttpMethod) -> string {
+    match method {
+        "GET" -> "fetching",
+        "POST" -> "creating",
+        "PUT" -> "updating",
+        "DELETE" -> "removing",
+    }
+}
+// Compiler error if you miss a variant
+```
+
+String literal unions compile to the same TypeScript type:
+
+```typescript
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
+```
+
+For pure Floe code, prefer regular tagged unions (`| Get | Post`) since they work with constructors, for-blocks, and provide better type safety. String literal unions exist primarily for seamless npm interop.
+
 ## Result and Option
 
 ### Result
@@ -102,7 +164,7 @@ Propagate errors concisely:
 ```floe
 fn getUsername(id: string) -> Result<string, Error> {
   const user = fetchUser(id)?   // returns Err early if it fails
-  return Ok(user.name)
+  Ok(user.name)
 }
 ```
 

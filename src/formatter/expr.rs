@@ -21,8 +21,13 @@ impl Formatter<'_> {
             return;
         }
 
+        let child_count = children.len();
         self.indent += 1;
-        for child in &children {
+        for (i, child) in children.iter().enumerate() {
+            // Insert a blank line before the final expression in multi-statement blocks
+            if child_count >= 2 && i == child_count - 1 {
+                self.newline();
+            }
             self.newline();
             self.write_indent();
             self.fmt_node(child);
@@ -662,6 +667,25 @@ impl Formatter<'_> {
             }
         }
         self.write("]");
+    }
+
+    pub(crate) fn fmt_parse_expr(&mut self, node: &SyntaxNode) {
+        self.write("parse<");
+        // Find and format the TYPE_EXPR child
+        for child in node.children() {
+            if child.kind() == SyntaxKind::TYPE_EXPR {
+                self.fmt_node(&child);
+                break;
+            }
+        }
+        self.write(">");
+        // Check if there's a value expression (non-TYPE_EXPR child)
+        let value_child = node.children().find(|c| c.kind() != SyntaxKind::TYPE_EXPR);
+        if let Some(value) = value_child {
+            self.write("(");
+            self.fmt_node(&value);
+            self.write(")");
+        }
     }
 
     pub(crate) fn fmt_wrapper_expr(&mut self, node: &SyntaxNode) {

@@ -39,7 +39,7 @@ Propagate errors early instead of nesting matches:
 fn processOrder(id: string) -> Result<Receipt, Error> {
   const order = fetchOrder(id)?       // returns Err early if it fails
   const payment = chargeCard(order)?  // same here
-  return Ok(Receipt(order, payment))
+  Ok(Receipt(order, payment))
 }
 ```
 
@@ -48,6 +48,31 @@ The `?` operator:
 - On `Err(e)`: returns `Err(e)` from the enclosing function
 
 Using `?` outside a function that returns `Result` is a compile error.
+
+## The `collect` Block
+
+Sometimes you want to validate multiple things and collect **all** errors, not just the first one. The `collect` block changes `?` from short-circuiting to accumulating:
+
+```floe
+fn validateForm(input: FormInput) -> Result<ValidForm, Array<ValidationError>> {
+    collect {
+        const name = input.name |> validateName?
+        const email = input.email |> validateEmail?
+        const age = input.age |> validateAge?
+
+        ValidForm(name, email, age)
+    }
+}
+```
+
+Inside `collect {}`:
+- Each `?` that hits `Err` records the error and continues
+- If any failed, the block returns `Err(Array<E>)` with all collected errors
+- If all succeeded, returns `Ok(last_expression)`
+
+The return type of a `collect` block is always `Result<T, Array<E>>`.
+
+This is useful for form validation, batch processing, and anywhere you want to report all errors at once instead of stopping at the first one.
 
 ## Option
 
@@ -123,6 +148,32 @@ At runtime, `unreachable` throws `Error("unreachable")`.
 
 - **`todo`** = "I haven't written this yet" (development aid)
 - **`unreachable`** = "This should never happen" (safety assertion)
+
+## Runtime Type Validation with `parse<T>`
+
+The `parse<T>` built-in validates unknown data against a type at runtime. The compiler generates the validation code - no runtime library needed.
+
+```floe
+// Validate JSON data against a type
+const user = json |> parse<User>?
+
+// With inline record types
+const point = data |> parse<{ x: number, y: number }>?
+
+// Validate arrays
+const items = raw |> parse<Array<Product>>?
+```
+
+`parse<T>` returns `Result<T, Error>`. Use `?` to unwrap or `match` to handle errors:
+
+```floe
+match data |> parse<User> {
+  Ok(user) -> Console.log(user.name),
+  Err(e) -> Console.error(e.message),
+}
+```
+
+Supported types: `string`, `number`, `boolean`, record types, `Array<T>`, `Option<T>`, and named types.
 
 ## Comparison with TypeScript
 

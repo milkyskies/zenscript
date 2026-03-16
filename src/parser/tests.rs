@@ -289,6 +289,39 @@ fn some_constructor() {
     assert!(matches!(expr, ExprKind::Some(_)));
 }
 
+// ── Parse Built-in ───────────────────────────────────────────
+
+#[test]
+fn parse_with_value() {
+    let expr = first_expr("parse<string>(x)");
+    assert!(matches!(expr, ExprKind::Parse { .. }));
+}
+
+#[test]
+fn parse_without_parens() {
+    // In pipe context: `json |> parse<User>`
+    let expr = first_expr("parse<User>");
+    match expr {
+        ExprKind::Parse { type_arg, value } => {
+            assert!(matches!(value.kind, ExprKind::Placeholder));
+            assert!(matches!(type_arg.kind, TypeExprKind::Named { .. }));
+        }
+        other => panic!("expected Parse, got {other:?}"),
+    }
+}
+
+#[test]
+fn parse_record_type() {
+    let expr = first_expr("parse<{ name: string, age: number }>(data)");
+    assert!(matches!(expr, ExprKind::Parse { .. }));
+}
+
+#[test]
+fn parse_array_type() {
+    let expr = first_expr("parse<Array<number>>(items)");
+    assert!(matches!(expr, ExprKind::Parse { .. }));
+}
+
 // ── Pipe Lambdas ─────────────────────────────────────────────
 
 #[test]
@@ -446,6 +479,92 @@ fn match_guard_no_guard() {
     }
 }
 
+// ── Array Pattern Matching ───────────────────────────────────
+
+#[test]
+fn match_array_empty() {
+    let expr = first_expr(r#"match items { [] -> "empty", _ -> "other" }"#);
+    match expr {
+        ExprKind::Match { arms, .. } => {
+            assert!(matches!(
+                arms[0].pattern.kind,
+                PatternKind::Array {
+                    ref elements,
+                    ref rest
+                } if elements.is_empty() && rest.is_none()
+            ));
+        }
+        _ => panic!("expected match"),
+    }
+}
+
+#[test]
+fn match_array_single_binding() {
+    let expr = first_expr("match items { [a] -> a, _ -> 0 }");
+    match expr {
+        ExprKind::Match { arms, .. } => {
+            if let PatternKind::Array { elements, rest } = &arms[0].pattern.kind {
+                assert_eq!(elements.len(), 1);
+                assert!(matches!(elements[0].kind, PatternKind::Binding(ref n) if n == "a"));
+                assert!(rest.is_none());
+            } else {
+                panic!("expected array pattern");
+            }
+        }
+        _ => panic!("expected match"),
+    }
+}
+
+#[test]
+fn match_array_rest_pattern() {
+    let expr = first_expr("match items { [first, ..rest] -> first, _ -> 0 }");
+    match expr {
+        ExprKind::Match { arms, .. } => {
+            if let PatternKind::Array { elements, rest } = &arms[0].pattern.kind {
+                assert_eq!(elements.len(), 1);
+                assert!(matches!(elements[0].kind, PatternKind::Binding(ref n) if n == "first"));
+                assert_eq!(rest.as_deref(), Some("rest"));
+            } else {
+                panic!("expected array pattern");
+            }
+        }
+        _ => panic!("expected match"),
+    }
+}
+
+#[test]
+fn match_array_two_plus_rest() {
+    let expr = first_expr("match items { [a, b, ..rest] -> a, _ -> 0 }");
+    match expr {
+        ExprKind::Match { arms, .. } => {
+            if let PatternKind::Array { elements, rest } = &arms[0].pattern.kind {
+                assert_eq!(elements.len(), 2);
+                assert_eq!(rest.as_deref(), Some("rest"));
+            } else {
+                panic!("expected array pattern");
+            }
+        }
+        _ => panic!("expected match"),
+    }
+}
+
+#[test]
+fn match_array_wildcard_rest() {
+    let expr = first_expr("match items { [_, .._] -> 1, _ -> 0 }");
+    match expr {
+        ExprKind::Match { arms, .. } => {
+            if let PatternKind::Array { elements, rest } = &arms[0].pattern.kind {
+                assert_eq!(elements.len(), 1);
+                assert!(matches!(elements[0].kind, PatternKind::Wildcard));
+                assert_eq!(rest.as_deref(), Some("_"));
+            } else {
+                panic!("expected array pattern");
+            }
+        }
+        _ => panic!("expected match"),
+    }
+}
+
 // ── Const Declaration ────────────────────────────────────────
 
 #[test]
@@ -597,8 +716,47 @@ fn type_record() {
         ItemKind::TypeDecl(decl) => {
             assert_eq!(decl.name, "User");
             match decl.def {
-                TypeDef::Record(fields) => assert_eq!(fields.len(), 2),
-                other => panic!("expected record, got {other:?}"),
+                TypeDef::Record(ref entries) => assert_eq!(entries.len(), 2),
+                ref other => panic!("expected record, got {other:?}"),
+            }
+        }
+        other => panic!("expected type decl, got {other:?}"),
+    }
+}
+
+#[test]
+fn type_record_with_spread() {
+    match first_item("type B = { ...A, extra: string }") {
+        ItemKind::TypeDecl(decl) => {
+            assert_eq!(decl.name, "B");
+            match decl.def {
+                TypeDef::Record(ref entries) => {
+                    assert_eq!(entries.len(), 2);
+                    assert!(entries[0].as_spread().is_some());
+                    assert_eq!(entries[0].as_spread().unwrap().type_name, "A");
+                    assert!(entries[1].as_field().is_some());
+                    assert_eq!(entries[1].as_field().unwrap().name, "extra");
+                }
+                ref other => panic!("expected record, got {other:?}"),
+            }
+        }
+        other => panic!("expected type decl, got {other:?}"),
+    }
+}
+
+#[test]
+fn type_record_with_multiple_spreads() {
+    match first_item("type C = { ...A, ...B, extra: string }") {
+        ItemKind::TypeDecl(decl) => {
+            assert_eq!(decl.name, "C");
+            match decl.def {
+                TypeDef::Record(ref entries) => {
+                    assert_eq!(entries.len(), 3);
+                    assert_eq!(entries[0].as_spread().unwrap().type_name, "A");
+                    assert_eq!(entries[1].as_spread().unwrap().type_name, "B");
+                    assert_eq!(entries[2].as_field().unwrap().name, "extra");
+                }
+                ref other => panic!("expected record, got {other:?}"),
             }
         }
         other => panic!("expected type decl, got {other:?}"),
@@ -747,11 +905,11 @@ fn banned_keyword_error() {
     assert!(errors[0].message.contains("banned keyword"));
 }
 
-// ── Block & Return ───────────────────────────────────────────
+// ── Block & Implicit Return ──────────────────────────────────
 
 #[test]
-fn block_with_return() {
-    match first_item("fn f() { const x = 1\nreturn x }") {
+fn block_with_implicit_return() {
+    match first_item("fn f() { const x = 1\nx }") {
         ItemKind::Function(decl) => match decl.body.kind {
             ExprKind::Block(items) => {
                 assert_eq!(items.len(), 2);
@@ -843,7 +1001,7 @@ type Todo = { id: string, text: string, done: boolean }
 
 export fn TodoApp() {
     const [todos, setTodos] = useState([])
-    return <div>{todos |> map(|t| <li>{t.text}</li>)}</div>
+    <div>{todos |> map(|t| <li>{t.text}</li>)}</div>
 }
 "#;
     let program = parse_ok(input);
@@ -1538,5 +1696,146 @@ fn lambda_destructured_param() {
             );
         }
         other => panic!("expected arrow, got {other:?}"),
+    }
+}
+
+// ── Pipe into Match ────────────────────────────────────────────
+
+#[test]
+fn pipe_into_match_simple() {
+    // `x |> match { _ -> 1 }` should desugar to `match x { _ -> 1 }`
+    let expr = first_expr("x |> match {\n    _ -> 1,\n}");
+    match expr {
+        ExprKind::Match { subject, arms } => {
+            assert!(
+                matches!(subject.kind, ExprKind::Identifier(ref name) if name == "x"),
+                "expected subject to be 'x', got {:?}",
+                subject.kind
+            );
+            assert_eq!(arms.len(), 1);
+        }
+        other => panic!("expected match, got {other:?}"),
+    }
+}
+
+#[test]
+fn pipe_into_match_multiple_arms() {
+    let expr = first_expr(
+        r#"price |> match {
+        _ when _ < 10 -> "cheap",
+        _ when _ < 100 -> "moderate",
+        _ -> "expensive",
+    }"#,
+    );
+    match expr {
+        ExprKind::Match { subject, arms } => {
+            assert!(
+                matches!(subject.kind, ExprKind::Identifier(ref name) if name == "price"),
+                "expected subject to be 'price', got {:?}",
+                subject.kind
+            );
+            assert_eq!(arms.len(), 3);
+        }
+        other => panic!("expected match, got {other:?}"),
+    }
+}
+
+#[test]
+fn pipe_chain_into_match() {
+    // `x |> f |> match { _ -> 1 }` should parse as `match (x |> f) { _ -> 1 }`
+    let expr = first_expr("x |> f |> match {\n    _ -> 1,\n}");
+    match expr {
+        ExprKind::Match { subject, arms } => {
+            assert!(
+                matches!(subject.kind, ExprKind::Pipe { .. }),
+                "expected subject to be a pipe, got {:?}",
+                subject.kind
+            );
+            assert_eq!(arms.len(), 1);
+        }
+        other => panic!("expected match, got {other:?}"),
+    }
+}
+
+// ── String Literal Unions ───────────────────────────────────
+
+#[test]
+fn string_literal_union() {
+    let input = r#"type HttpMethod = "GET" | "POST" | "PUT" | "DELETE""#;
+    match first_item(input) {
+        ItemKind::TypeDecl(decl) => {
+            assert_eq!(decl.name, "HttpMethod");
+            match decl.def {
+                TypeDef::StringLiteralUnion(variants) => {
+                    assert_eq!(variants, vec!["GET", "POST", "PUT", "DELETE"]);
+                }
+                other => panic!("expected string literal union, got {other:?}"),
+            }
+        }
+        other => panic!("expected type decl, got {other:?}"),
+    }
+}
+
+#[test]
+fn string_literal_union_two_variants() {
+    let input = r#"type Bool = "true" | "false""#;
+    match first_item(input) {
+        ItemKind::TypeDecl(decl) => {
+            assert_eq!(decl.name, "Bool");
+            match decl.def {
+                TypeDef::StringLiteralUnion(variants) => {
+                    assert_eq!(variants, vec!["true", "false"]);
+                }
+                other => panic!("expected string literal union, got {other:?}"),
+            }
+        }
+        other => panic!("expected type decl, got {other:?}"),
+    }
+}
+
+#[test]
+fn string_literal_union_exported() {
+    let input = r#"export type Status = "ok" | "error""#;
+    match first_item(input) {
+        ItemKind::TypeDecl(decl) => {
+            assert!(decl.exported);
+            assert_eq!(decl.name, "Status");
+            match decl.def {
+                TypeDef::StringLiteralUnion(variants) => {
+                    assert_eq!(variants, vec!["ok", "error"]);
+                }
+                other => panic!("expected string literal union, got {other:?}"),
+            }
+        }
+        other => panic!("expected type decl, got {other:?}"),
+    }
+}
+
+// ── Collect Block ───────────────────────────────────────────
+
+#[test]
+fn collect_block_basic() {
+    let expr = first_expr("collect { 42 }");
+    match expr {
+        ExprKind::Collect(items) => {
+            assert_eq!(items.len(), 1);
+        }
+        other => panic!("expected Collect, got {other:?}"),
+    }
+}
+
+#[test]
+fn collect_block_with_const() {
+    let expr = first_expr(
+        r#"collect {
+        const a = validate(1)?
+        a
+    }"#,
+    );
+    match expr {
+        ExprKind::Collect(items) => {
+            assert_eq!(items.len(), 2);
+        }
+        other => panic!("expected Collect, got {other:?}"),
     }
 }

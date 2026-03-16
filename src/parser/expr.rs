@@ -14,7 +14,7 @@ impl Parser {
     fn parse_or_expr(&mut self) -> Result<Expr, ParseError> {
         let mut left = self.parse_and_expr()?;
 
-        while self.check(&TokenKind::PipePipe) {
+        while matches!(self.current_kind(), TokenKind::PipePipe) {
             self.advance();
             let right = self.parse_and_expr()?;
             let span = self.merge_spans(left.span, right.span);
@@ -35,7 +35,7 @@ impl Parser {
     fn parse_and_expr(&mut self) -> Result<Expr, ParseError> {
         let mut left = self.parse_equality_expr()?;
 
-        while self.check(&TokenKind::AmpAmp) {
+        while matches!(self.current_kind(), TokenKind::AmpAmp) {
             self.advance();
             let right = self.parse_equality_expr()?;
             let span = self.merge_spans(left.span, right.span);
@@ -79,11 +79,31 @@ impl Parser {
     }
 
     /// Pipe: `a |> f |> g` — binds tighter than `==` but looser than `<`/`>`
+    /// Also supports `a |> match { ... }` which desugars to `match a { ... }`.
     fn parse_pipe_expr(&mut self) -> Result<Expr, ParseError> {
         let mut left = self.parse_comparison_expr()?;
 
-        while self.check(&TokenKind::Pipe) {
+        while matches!(self.current_kind(), TokenKind::Pipe) {
             self.advance();
+
+            // Pipe into match: `x |> match { ... }` → `match x { ... }`
+            if matches!(self.current_kind(), TokenKind::Match) {
+                let match_expr = self.parse_subjectless_match()?;
+                if let ExprKind::Match { arms, .. } = match_expr.kind {
+                    let span = self.merge_spans(left.span, match_expr.span);
+                    left = Expr {
+                        kind: ExprKind::Match {
+                            subject: Box::new(left),
+                            arms,
+                        },
+                        span,
+                    };
+                } else {
+                    unreachable!("parse_subjectless_match should return Match");
+                }
+                continue;
+            }
+
             let right = self.parse_comparison_expr()?;
             let span = self.merge_spans(left.span, right.span);
             left = Expr {
@@ -104,6 +124,12 @@ impl Parser {
 
         loop {
             let op = match self.current_kind() {
+                // After a JSX expression, `<` is a closing tag or sibling element, not less-than
+                TokenKind::LessThan if matches!(left.kind, ExprKind::Jsx(_)) => break,
+                // `<` followed by `/` is a closing tag `</tag>`, not a comparison
+                TokenKind::LessThan if self.peek_kind() == Some(&TokenKind::Slash) => break,
+                // `<` on a new line after a complete expression is JSX, not comparison
+                TokenKind::LessThan if self.tokens[self.pos].span.line > left.span.line => break,
                 TokenKind::LessThan => BinOp::Lt,
                 TokenKind::GreaterThan => BinOp::Gt,
                 TokenKind::LessEqual => BinOp::LtEq,
@@ -181,12 +207,18 @@ impl Parser {
 
     /// Unary: `!a`, `-a`
     fn parse_unary_expr(&mut self) -> Result<Expr, ParseError> {
+        self.parse_unary_expr_inner(true)
+    }
+
+    /// Unified unary parser. When `allow_unwrap` is false, postfix `?` is not
+    /// consumed — used by `try` so that `try fetch()?` parses as `(try fetch())?`.
+    fn parse_unary_expr_inner(&mut self, allow_unwrap: bool) -> Result<Expr, ParseError> {
         let start_span = self.current_span();
 
         match self.current_kind() {
             TokenKind::Bang => {
                 self.advance();
-                let operand = self.parse_unary_expr()?;
+                let operand = self.parse_unary_expr_inner(allow_unwrap)?;
                 let end_span = self.previous_span();
                 Ok(Expr {
                     kind: ExprKind::Unary {
@@ -198,7 +230,7 @@ impl Parser {
             }
             TokenKind::Minus => {
                 self.advance();
-                let operand = self.parse_unary_expr()?;
+                let operand = self.parse_unary_expr_inner(allow_unwrap)?;
                 let end_span = self.previous_span();
                 Ok(Expr {
                     kind: ExprKind::Unary {
@@ -210,7 +242,7 @@ impl Parser {
             }
             TokenKind::Await => {
                 self.advance();
-                let operand = self.parse_unary_expr()?;
+                let operand = self.parse_unary_expr_inner(allow_unwrap)?;
                 let end_span = self.previous_span();
                 Ok(Expr {
                     kind: ExprKind::Await(Box::new(operand)),
@@ -221,7 +253,7 @@ impl Parser {
                 self.advance();
                 // Parse inner without consuming `?` — so `try fetch()?` parses as
                 // `(try fetch())?`, not `try (fetch()?)`.
-                let operand = self.parse_unary_no_unwrap()?;
+                let operand = self.parse_unary_expr_inner(false)?;
                 let end_span = self.previous_span();
                 let mut expr = Expr {
                     kind: ExprKind::Try(Box::new(operand)),
@@ -238,118 +270,22 @@ impl Parser {
                 }
                 Ok(expr)
             }
-            _ => self.parse_postfix_expr(),
+            _ => self.parse_postfix_expr_inner(allow_unwrap),
         }
-    }
-
-    /// Like `parse_unary_expr` but does not consume `?` in postfix position.
-    /// Used by `try` so that `try fetch()?` parses as `(try fetch())?`.
-    fn parse_unary_no_unwrap(&mut self) -> Result<Expr, ParseError> {
-        let start_span = self.current_span();
-        match self.current_kind() {
-            TokenKind::Bang => {
-                self.advance();
-                let operand = self.parse_unary_no_unwrap()?;
-                let end_span = self.previous_span();
-                Ok(Expr {
-                    kind: ExprKind::Unary {
-                        op: UnaryOp::Not,
-                        operand: Box::new(operand),
-                    },
-                    span: self.merge_spans(start_span, end_span),
-                })
-            }
-            TokenKind::Minus => {
-                self.advance();
-                let operand = self.parse_unary_no_unwrap()?;
-                let end_span = self.previous_span();
-                Ok(Expr {
-                    kind: ExprKind::Unary {
-                        op: UnaryOp::Neg,
-                        operand: Box::new(operand),
-                    },
-                    span: self.merge_spans(start_span, end_span),
-                })
-            }
-            TokenKind::Await => {
-                self.advance();
-                let operand = self.parse_unary_no_unwrap()?;
-                let end_span = self.previous_span();
-                Ok(Expr {
-                    kind: ExprKind::Await(Box::new(operand)),
-                    span: self.merge_spans(start_span, end_span),
-                })
-            }
-            _ => self.parse_postfix_no_unwrap(),
-        }
-    }
-
-    /// Like `parse_postfix_expr` but does not consume `?`.
-    fn parse_postfix_no_unwrap(&mut self) -> Result<Expr, ParseError> {
-        let mut expr = self.parse_primary_expr()?;
-
-        loop {
-            match self.current_kind() {
-                // Skip `?` — caller (try) will handle it
-                TokenKind::Question => break,
-                TokenKind::Dot => {
-                    self.advance();
-                    let field = self.expect_identifier()?;
-                    let span = self.merge_spans(expr.span, self.previous_span());
-                    expr = Expr {
-                        kind: ExprKind::Member {
-                            object: Box::new(expr),
-                            field,
-                        },
-                        span,
-                    };
-                }
-                TokenKind::LeftBracket => {
-                    self.advance();
-                    let index = self.parse_expr()?;
-                    self.expect(&TokenKind::RightBracket)?;
-                    let span = self.merge_spans(expr.span, self.previous_span());
-                    expr = Expr {
-                        kind: ExprKind::Index {
-                            object: Box::new(expr),
-                            index: Box::new(index),
-                        },
-                        span,
-                    };
-                }
-                TokenKind::LeftParen => {
-                    if matches!(&expr.kind, ExprKind::Identifier(name) if name.starts_with(char::is_uppercase))
-                    {
-                        break;
-                    }
-                    self.advance();
-                    let args = self.parse_call_args()?;
-                    self.expect(&TokenKind::RightParen)?;
-                    let span = self.merge_spans(expr.span, self.previous_span());
-                    expr = Expr {
-                        kind: ExprKind::Call {
-                            callee: Box::new(expr),
-                            type_args: Vec::new(),
-                            args,
-                        },
-                        span,
-                    };
-                }
-                _ => break,
-            }
-        }
-
-        Ok(expr)
     }
 
     /// Postfix: `expr?`, `expr.field`, `expr[index]`, `expr(args)`
-    fn parse_postfix_expr(&mut self) -> Result<Expr, ParseError> {
+    /// When `allow_unwrap` is false, `?` is not consumed (used by `try`).
+    fn parse_postfix_expr_inner(&mut self, allow_unwrap: bool) -> Result<Expr, ParseError> {
         let mut expr = self.parse_primary_expr()?;
 
         loop {
             match self.current_kind() {
                 // Unwrap: `expr?`
                 TokenKind::Question => {
+                    if !allow_unwrap {
+                        break;
+                    }
                     self.advance();
                     let span = self.merge_spans(expr.span, self.previous_span());
                     expr = Expr {
@@ -358,9 +294,10 @@ impl Parser {
                     };
                 }
                 // Member access: `expr.field`
+                // Banned keywords are allowed as field names (e.g. Array.any)
                 TokenKind::Dot => {
                     self.advance();
-                    let field = self.expect_identifier()?;
+                    let field = self.expect_identifier_or_keyword()?;
                     let span = self.merge_spans(expr.span, self.previous_span());
                     expr = Expr {
                         kind: ExprKind::Member {
@@ -386,10 +323,12 @@ impl Parser {
                 }
                 // Generic call: `f<T>(args)` — type arguments before call
                 TokenKind::LessThan
-                    if matches!(
-                        &expr.kind,
-                        ExprKind::Identifier(_) | ExprKind::Member { .. }
-                    ) && self.is_generic_call() =>
+                    if allow_unwrap
+                        && matches!(
+                            &expr.kind,
+                            ExprKind::Identifier(_) | ExprKind::Member { .. }
+                        )
+                        && self.is_generic_call() =>
                 {
                     self.advance(); // consume `<`
                     let type_args = self.parse_comma_separated(|p| p.parse_type_expr())?;
@@ -444,7 +383,6 @@ impl Parser {
         match self.current_kind() {
             // Number literal
             TokenKind::Number(n) => {
-                let n = n.clone();
                 self.advance();
                 Ok(Expr {
                     kind: ExprKind::Number(n),
@@ -454,7 +392,6 @@ impl Parser {
 
             // String literal
             TokenKind::String(s) => {
-                let s = s.clone();
                 self.advance();
                 Ok(Expr {
                     kind: ExprKind::String(s),
@@ -464,7 +401,7 @@ impl Parser {
 
             // Template literal
             TokenKind::TemplateLiteral(parts) => {
-                let ast_parts = self.convert_template_parts(parts.clone())?;
+                let ast_parts = self.convert_template_parts(parts)?;
                 self.advance();
                 Ok(Expr {
                     kind: ExprKind::TemplateLiteral(ast_parts),
@@ -556,26 +493,63 @@ impl Parser {
                 })
             }
 
+            // parse<T>(value) or parse<T> (in pipe context, value is implicit)
+            TokenKind::Parse => {
+                self.advance(); // consume `parse`
+                self.expect(&TokenKind::LessThan)?;
+                let type_arg = self.parse_type_expr()?;
+                self.expect(&TokenKind::GreaterThan)?;
+                if self.check(&TokenKind::LeftParen) {
+                    self.advance();
+                    let value = self.parse_expr()?;
+                    self.expect(&TokenKind::RightParen)?;
+                    let end_span = self.previous_span();
+                    Ok(Expr {
+                        kind: ExprKind::Parse {
+                            type_arg,
+                            value: Box::new(value),
+                        },
+                        span: self.merge_spans(start_span, end_span),
+                    })
+                } else {
+                    // No parens — used in pipe context: `json |> parse<T>`
+                    // Value will be provided by pipe desugaring. Use placeholder.
+                    let end_span = self.previous_span();
+                    Ok(Expr {
+                        kind: ExprKind::Parse {
+                            type_arg,
+                            value: Box::new(Expr {
+                                kind: ExprKind::Placeholder,
+                                span: end_span,
+                            }),
+                        },
+                        span: self.merge_spans(start_span, end_span),
+                    })
+                }
+            }
+
+            // Collect block: `collect { ... }`
+            TokenKind::Collect => {
+                self.advance();
+                let block = self.parse_block_expr()?;
+                let end_span = self.previous_span();
+                match block.kind {
+                    ExprKind::Block(items) => Ok(Expr {
+                        kind: ExprKind::Collect(items),
+                        span: self.merge_spans(start_span, end_span),
+                    }),
+                    _ => Ok(Expr {
+                        kind: ExprKind::Collect(vec![Item {
+                            kind: ItemKind::Expr(block),
+                            span: self.merge_spans(start_span, end_span),
+                        }]),
+                        span: self.merge_spans(start_span, end_span),
+                    }),
+                }
+            }
+
             // Match expression
             TokenKind::Match => self.parse_match_expr(),
-
-            // Return
-            TokenKind::Return => {
-                self.advance();
-                let value = if self.is_at_end()
-                    || self.check(&TokenKind::RightBrace)
-                    || self.check(&TokenKind::Semicolon)
-                {
-                    Option::None
-                } else {
-                    Some(Box::new(self.parse_expr()?))
-                };
-                let end_span = self.previous_span();
-                Ok(Expr {
-                    kind: ExprKind::Return(value),
-                    span: self.merge_spans(start_span, end_span),
-                })
-            }
 
             // Object literal `{ key: value }` or block expression `{ ... }`
             TokenKind::LeftBrace => {
@@ -708,8 +682,6 @@ impl Parser {
 
             // Identifier — could be a constructor (uppercase) or variable (lowercase)
             TokenKind::Identifier(name) => {
-                let name = name.clone();
-
                 // Uppercase identifier followed by `(` is a constructor
                 if name.starts_with(char::is_uppercase)
                     && self.peek_kind() == Some(&TokenKind::LeftParen)
@@ -794,10 +766,7 @@ impl Parser {
                     banned.as_str(),
                     banned.help_message()
                 );
-                Err(ParseError {
-                    message: msg,
-                    span: start_span,
-                })
+                Err(self.error_with_kind(&msg, super::ParseErrorKind::BannedKeyword))
             }
 
             _ => Err(self.error(&format!("unexpected token: {:?}", self.current_kind()))),
@@ -852,39 +821,7 @@ impl Parser {
 
     /// Parse a single lambda parameter, which can be a plain identifier or a destructuring pattern.
     fn parse_lambda_param(&mut self) -> Result<Param, ParseError> {
-        if self.check(&TokenKind::LeftBrace) {
-            // Object destructuring: `{ field1, field2 }`
-            let start_span = self.current_span();
-            self.advance(); // consume `{`
-            let mut fields = Vec::new();
-            while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
-                fields.push(self.expect_identifier()?);
-                if !self.check(&TokenKind::Comma) {
-                    break;
-                }
-                self.advance();
-            }
-            self.expect(&TokenKind::RightBrace)?;
-            let end_span = self.previous_span();
-
-            // Type annotation after destructure: `{ x, y }: Type`
-            let type_ann = if self.check(&TokenKind::Colon) {
-                self.advance();
-                Some(self.parse_type_expr()?)
-            } else {
-                None
-            };
-
-            Ok(Param {
-                name: "_destructured".to_string(),
-                type_ann,
-                default: None,
-                destructure: Some(ParamDestructure::Object(fields)),
-                span: self.merge_spans(start_span, end_span),
-            })
-        } else {
-            self.parse_param()
-        }
+        self.parse_param_in_context(super::ParamContext::Lambda)
     }
 
     // ── Dot Shorthand ────────────────────────────────────────────

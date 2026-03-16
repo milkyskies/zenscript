@@ -147,3 +147,27 @@ fn snapshot_todo_unreachable() {
     let output = compile_fixture("todo_unreachable");
     insta::assert_snapshot!(output);
 }
+
+#[test]
+fn snapshot_record_spread() {
+    let output = compile_fixture("record_spread");
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn snapshot_array_patterns() {
+    let output = compile_fixture("array_patterns");
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn snapshot_collect() {
+    let output = compile_fixture("collect");
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn snapshot_deriving() {
+    let output = compile_fixture("deriving");
+    insta::assert_snapshot!(output);
+}
