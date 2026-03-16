@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
   <!-- Snowflake with rotational spin -->
   <g transform="translate(64, 64)" stroke="#3B82F6" stroke-width="4.5" stroke-linecap="round" fill="none">
-    <!-- Center dot -->
-    <circle cx="0" cy="0" r="3" fill="#3B82F6" stroke="none" />
+    <!-- Center hexagon -->
+    <polygon points="0,-8 6.9,-4 6.9,4 0,8 -6.9,4 -6.9,-4" />
     <!-- Six arms with swept branches (each arm + branch rotated 60°) -->
     <!-- Arm 1 (0°) -->
     <g transform="rotate(0)">
