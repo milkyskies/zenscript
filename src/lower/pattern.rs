@@ -126,9 +126,10 @@ impl<'src> Lowerer<'src> {
                                 && t.kind() == SyntaxKind::NUMBER
                             {
                                 return Some(Pattern {
-                                    kind: PatternKind::Literal(LiteralPattern::Number(
-                                        format!("-{}", t.text()),
-                                    )),
+                                    kind: PatternKind::Literal(LiteralPattern::Number(format!(
+                                        "-{}",
+                                        t.text()
+                                    ))),
                                     span,
                                 });
                             }
