@@ -210,14 +210,26 @@ impl Checker {
                             _ => "<anonymous>",
                         };
 
-                        // Check argument count
-                        if arg_types.len() != params.len() {
+                        // Check argument count, accounting for default parameters
+                        let required_params = self
+                            .fn_required_params
+                            .get(callee_name)
+                            .copied()
+                            .unwrap_or(params.len());
+                        if arg_types.len() < required_params || arg_types.len() > params.len() {
+                            let expected_msg = if required_params == params.len() {
+                                format!(
+                                    "{} argument{}",
+                                    params.len(),
+                                    if params.len() == 1 { "" } else { "s" }
+                                )
+                            } else {
+                                format!("{} to {} arguments", required_params, params.len())
+                            };
                             self.diagnostics.push(
                                 Diagnostic::error(
                                     format!(
-                                        "`{callee_name}` expects {} argument{}, found {}",
-                                        params.len(),
-                                        if params.len() == 1 { "" } else { "s" },
+                                        "`{callee_name}` expects {expected_msg}, found {}",
                                         arg_types.len()
                                     ),
                                     expr.span,
