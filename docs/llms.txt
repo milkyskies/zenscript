@@ -225,6 +225,20 @@ match appError {
     _ -> showGenericError(appError),
 }
 
+// Array pattern matching
+match items {
+    [] -> "empty",
+    [only] -> `just ${only}`,
+    [first, second] -> "exactly two",
+    [first, ..rest] -> `first is ${first}, rest has ${rest |> Array.length}`,
+}
+
+// Exhaustive array matching ([] + [_, ..rest] covers all cases)
+match items {
+    [] -> "empty",
+    [head, ..tail] -> `head: ${head}`,
+}
+
 // Inline match in JSX
 <div className={match active { true -> "bold", false -> "dim" }}>
     {match error {

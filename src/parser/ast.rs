@@ -514,6 +514,13 @@ pub enum PatternKind {
     Wildcard,
     /// Tuple pattern: `(x, y)`, `(_, 0)`
     Tuple(Vec<Pattern>),
+    /// Array pattern: `[]`, `[a]`, `[a, b]`, `[first, ..rest]`
+    Array {
+        /// Fixed element patterns (before any rest pattern)
+        elements: Vec<Pattern>,
+        /// Optional rest binding: `..rest` captures the remaining tail
+        rest: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

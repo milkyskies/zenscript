@@ -1,0 +1,13 @@
+---
+source: tests/snapshot_codegen.rs
+expression: output
+---
+const items = [1, 2, 3];
+
+const _result = items.length === 0 ? "empty" : items.length === 1 ? (() => { const only = items[0]; return only; })() : items.length >= 1 ? (() => { const first = items[0]; const rest = items.slice(1); return first; })() : (() => { throw new Error("non-exhaustive match"); })();
+
+const pair = [10, 20];
+
+const _sum = pair.length === 2 ? (() => { const a = pair[0]; const b = pair[1]; return a + b; })() : 0;
+
+const _head = items.length >= 2 ? (() => { const a = items[0]; const b = items[1]; const rest = items.slice(2); return a + b; })() : 0;

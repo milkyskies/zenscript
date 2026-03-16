@@ -84,6 +84,7 @@ All four of TypeScript's `?` uses (`?.`, `??`, `?:`, `? :`) are removed. `?` now
 | Tuple types | `(number, string)`, `(1, "a")` | `readonly [number, string]`, `[1, "a"] as const` |
 | Tuple destructuring | `const (x, y) = pair` | `const [x, y] = pair` |
 | Tuple match patterns | `(0, _) -> ...` | index-based match conditions |
+| Array match patterns | `[first, ..rest] -> ...` | length check + index/slice access |
 | tap | `x \|> tap(Console.log)` | IIFE: calls fn, returns value unchanged |
 | Immutable sort | `Array.sort` returns new array | sorted copy, no mutation |
 | Immutable maps | `Map.set`, `Map.remove` return new maps | `new Map([...old, [k, v]])` |
@@ -236,6 +237,51 @@ match url {
 ```
 
 Match uses `->` for arms (not `|x|`), so it's visually distinct from lambdas.
+
+### Array Pattern Matching
+
+Match on array structure with head/tail destructuring:
+
+```floe
+match items {
+    [] -> "empty",
+    [only] -> `just one: ${only}`,
+    [first, second] -> "exactly two",
+    [first, ..rest] -> `first is ${first}, ${rest |> Array.length} more`,
+}
+```
+
+| Pattern | Matches | Binds |
+|---|---|---|
+| `[]` | Empty array | Nothing |
+| `[a]` | Exactly 1 element | `a` |
+| `[a, b]` | Exactly 2 elements | `a`, `b` |
+| `[first, ..rest]` | 1 or more elements | `first` (head), `rest` (tail array) |
+| `[first, second, ..rest]` | 2 or more elements | `first`, `second`, `rest` |
+| `[_, ..rest]` | 1 or more, ignore head | `rest` |
+
+**Exhaustiveness:** `[]` + `[_, ..rest]` covers all cases (empty + non-empty). `[a]` alone is not exhaustive.
+
+**Codegen:**
+
+```floe
+match items {
+    [] -> "empty",
+    [first, ..rest] -> first,
+}
+```
+
+Emits:
+
+```typescript
+items.length === 0 ? "empty" : items.length >= 1 ? (() => { const first = items[0]; const rest = items.slice(1); return first; })() : (() => { throw new Error("non-exhaustive match"); })()
+```
+
+- Empty pattern `[]` checks `subject.length === 0`
+- Exact patterns `[a, b]` check `subject.length === N`
+- Rest patterns `[a, ..rest]` check `subject.length >= N` where N is the count of fixed elements
+- Element bindings use index access: `subject[0]`, `subject[1]`
+- Rest bindings use slice: `subject.slice(N)`
 
 ### Match Arm Guards
 
