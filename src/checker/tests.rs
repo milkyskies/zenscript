@@ -2559,3 +2559,73 @@ type Point = {
         diags.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
 }
+
+// ── Single-variant union newtypes ───────────────────────────
+
+#[test]
+fn newtype_with_number() {
+    let diags = check("type ProductId = ProductId(number)");
+    assert!(
+        !has_error_containing(&diags, "is not defined"),
+        "ProductId(number) should parse as a newtype, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn newtype_with_string() {
+    let diags = check("type Email = Email(string)");
+    assert!(
+        !has_error_containing(&diags, "is not defined"),
+        "Email(string) should parse as a newtype, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn newtype_with_boolean() {
+    let diags = check("type Flag = Flag(boolean)");
+    assert!(
+        !has_error_containing(&diags, "is not defined"),
+        "Flag(boolean) should parse as a newtype, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn newtype_with_named_field() {
+    let diags = check("type UserId = UserId(value: number)");
+    assert!(
+        !has_error_containing(&diags, "is not defined"),
+        "UserId(value: number) should parse as a newtype, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn newtype_coexists_with_regular_unions() {
+    let diags = check(
+        r#"
+type ProductId = ProductId(number)
+type Route =
+  | Home
+  | Profile(id: string)
+  | NotFound
+"#,
+    );
+    assert!(
+        diags.iter().all(|d| d.severity != Severity::Error),
+        "newtypes and regular unions should coexist, got errors: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn type_alias_still_works() {
+    let diags = check("type Name = string");
+    assert!(
+        diags.iter().all(|d| d.severity != Severity::Error),
+        "type aliases should still work, got errors: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}

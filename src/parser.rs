@@ -538,6 +538,23 @@ impl Parser {
             return Ok(TypeDef::Record(entries));
         }
 
+        // Check if this is a single-variant union (newtype pattern): `Name(fields)`
+        // An uppercase identifier followed by `(` is a constructor, not a type alias.
+        if self.is_newtype_constructor() {
+            let start_span = self.current_span();
+            let name = self.expect_identifier()?;
+            self.advance(); // consume '('
+            let fields = self.parse_comma_separated(|p| p.parse_variant_field())?;
+            self.expect(&TokenKind::RightParen)?;
+            let end_span = self.previous_span();
+            let variant = Variant {
+                name,
+                fields,
+                span: self.merge_spans(start_span, end_span),
+            };
+            return Ok(TypeDef::Union(vec![variant]));
+        }
+
         // Otherwise it's a type alias
         let type_expr = self.parse_type_expr()?;
         Ok(TypeDef::Alias(type_expr))
@@ -1200,6 +1217,17 @@ impl Parser {
 
     fn is_identifier(&self) -> bool {
         matches!(self.tokens[self.pos].kind, TokenKind::Identifier(_))
+    }
+
+    /// Check if we're at a single-variant union (newtype) pattern: `Name(...)`.
+    /// An uppercase identifier followed by `(` is a constructor, not a type alias.
+    fn is_newtype_constructor(&self) -> bool {
+        if let TokenKind::Identifier(name) = &self.tokens[self.pos].kind {
+            name.starts_with(|c: char| c.is_uppercase())
+                && self.peek_kind() == Some(&TokenKind::LeftParen)
+        } else {
+            false
+        }
     }
 
     /// Check if the current token is `|` used in union type declarations.
