@@ -302,11 +302,18 @@ impl<'src> Lowerer<'src> {
         let idents = self.collect_idents(node);
         let has_lbrace = self.has_token(node, SyntaxKind::L_BRACE);
 
+        let has_lparen = self.has_token(node, SyntaxKind::L_PAREN);
+
         let (name, destructure) = if has_lbrace {
             // Destructured param: { name, age }
             let fields: Vec<String> = idents.clone();
             let synthetic_name = format!("_{}", fields.join("_"));
             (synthetic_name, Some(ParamDestructure::Object(fields)))
+        } else if has_lparen {
+            // Tuple destructured param: (a, b)
+            let fields: Vec<String> = idents.clone();
+            let synthetic_name = format!("_{}", fields.join("_"));
+            (synthetic_name, Some(ParamDestructure::Array(fields)))
         } else {
             (idents.first()?.clone(), None)
         };

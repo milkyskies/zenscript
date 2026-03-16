@@ -1400,12 +1400,42 @@ impl Checker {
 pub(crate) fn simple_resolve_type_expr(type_expr: &crate::parser::ast::TypeExpr) -> Type {
     use crate::parser::ast::TypeExprKind;
     match &type_expr.kind {
-        TypeExprKind::Named { name, .. } => match name.as_str() {
+        TypeExprKind::Named {
+            name, type_args, ..
+        } => match name.as_str() {
             type_names::NUMBER => Type::Number,
             type_names::STRING => Type::String,
             type_names::BOOLEAN => Type::Bool,
             type_names::UNIT => Type::Unit,
             type_names::UNDEFINED => Type::Undefined,
+            type_names::ARRAY => {
+                let inner = type_args
+                    .first()
+                    .map(simple_resolve_type_expr)
+                    .unwrap_or(Type::Unknown);
+                Type::Array(Box::new(inner))
+            }
+            type_names::OPTION => {
+                let inner = type_args
+                    .first()
+                    .map(simple_resolve_type_expr)
+                    .unwrap_or(Type::Unknown);
+                Type::Option(Box::new(inner))
+            }
+            type_names::RESULT => {
+                let ok = type_args
+                    .first()
+                    .map(simple_resolve_type_expr)
+                    .unwrap_or(Type::Unknown);
+                let err = type_args
+                    .get(1)
+                    .map(simple_resolve_type_expr)
+                    .unwrap_or(Type::Unknown);
+                Type::Result {
+                    ok: Box::new(ok),
+                    err: Box::new(err),
+                }
+            }
             _ => Type::Named(name.to_string()),
         },
         TypeExprKind::Array(inner) => Type::Array(Box::new(simple_resolve_type_expr(inner))),

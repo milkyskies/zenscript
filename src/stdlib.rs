@@ -145,6 +145,7 @@ fn build_stdlib() -> Vec<StdlibFn> {
         stdlib_fn!("Array", "unique", [array_of(t.clone())], array_of(t.clone()), "[...new Set($0)]"),
         stdlib_fn!("Array", "groupBy", [array_of(t.clone()), fun(vec![t.clone()], Type::String)], Type::Named("Record".to_string()), "Object.groupBy($0, $1)"),
         stdlib_fn!("Array", "zip", [array_of(t.clone()), array_of(u.clone())], array_of(Type::Tuple(vec![t.clone(), u.clone()])), "$0.map((_v, _i) => [_v, $1[_i]] as const)"),
+        stdlib_fn!("Array", "from", [t.clone(), fun(vec![t.clone(), Type::Number], u.clone())], array_of(u.clone()), "Array.from($0, $1)"),
         // ── Option ──────────────────────────────────────────────
         stdlib_fn!("Option", "map", [option_of(t.clone()), fun(vec![t.clone()], u.clone())], option_of(u.clone()), "$0 !== undefined ? ($1)($0) : undefined"),
         stdlib_fn!("Option", "flatMap", [option_of(t.clone()), fun(vec![t.clone()], option_of(u.clone()))], option_of(u.clone()), "$0 !== undefined ? ($1)($0) : undefined"),
@@ -176,6 +177,7 @@ fn build_stdlib() -> Vec<StdlibFn> {
         stdlib_fn!("String", "padStart", [Type::String, Type::Number, Type::String], Type::String, "$0.padStart($1, $2)"),
         stdlib_fn!("String", "padEnd", [Type::String, Type::Number, Type::String], Type::String, "$0.padEnd($1, $2)"),
         stdlib_fn!("String", "repeat", [Type::String, Type::Number], Type::String, "$0.repeat($1)"),
+        stdlib_fn!("String", "localeCompare", [Type::String, Type::String], Type::Number, "$0.localeCompare($1)"),
         // ── Number ──────────────────────────────────────────────
         stdlib_fn!("Number", "parse", [Type::String], result_of(Type::Number, Type::Named("ParseError".to_string())), "(() => { const _n = Number($0); return Number.isNaN(_n) || $0.trim() === \"\" ? { ok: false as const, error: { message: `Failed to parse \"${$0}\" as number` } } : { ok: true as const, value: _n }; })()"),
         stdlib_fn!("Number", "clamp", [Type::Number, Type::Number, Type::Number], Type::Number, "Math.min(Math.max($0, $1), $2)"),

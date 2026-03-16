@@ -1032,6 +1032,10 @@ impl<'src> CstParser<'src> {
                     self.builder.finish_node();
                 }
                 Some(TokenKind::LeftParen) => {
+                    // Don't treat `(` on a new line as a call — it's a new expression
+                    if self.preceded_by_newline() {
+                        break;
+                    }
                     // Check if it's a constructor (uppercase ident) — don't parse as call
                     if self.is_uppercase_ident_at_checkpoint() {
                         break;
