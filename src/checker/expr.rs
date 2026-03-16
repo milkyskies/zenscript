@@ -314,9 +314,13 @@ impl Checker {
                 // Collect valid field names for this type
                 let valid_fields: Option<Vec<String>> = if let Some(ref info) = type_info {
                     match &info.def {
-                        TypeDef::Record(fields) => {
-                            Some(fields.iter().map(|f| f.name.clone()).collect())
-                        }
+                        TypeDef::Record(entries) => Some(
+                            entries
+                                .iter()
+                                .filter_map(|e| e.as_field())
+                                .map(|f| f.name.clone())
+                                .collect(),
+                        ),
                         _ => None,
                     }
                 } else {
@@ -379,9 +383,10 @@ impl Checker {
                     // Check for missing required fields (only when no spread)
                     if spread.is_none() {
                         let has_defaults: Vec<String> = if let Some(ref info) = type_info {
-                            if let TypeDef::Record(record_fields) = &info.def {
-                                record_fields
+                            if let TypeDef::Record(record_entries) = &info.def {
+                                record_entries
                                     .iter()
+                                    .filter_map(|e| e.as_field())
                                     .filter(|f| f.default.is_some())
                                     .map(|f| f.name.clone())
                                     .collect()
@@ -449,9 +454,10 @@ impl Checker {
                 let field_type_map: Option<Vec<(String, Type)>> = if let Some(ref info) = type_info
                 {
                     match &info.def {
-                        TypeDef::Record(fields) => Some(
-                            fields
+                        TypeDef::Record(entries) => Some(
+                            entries
                                 .iter()
+                                .filter_map(|e| e.as_field())
                                 .map(|f| (f.name.clone(), self.resolve_type(&f.type_ann)))
                                 .collect(),
                         ),

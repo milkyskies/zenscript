@@ -1,0 +1,13 @@
+---
+source: tests/snapshot_codegen.rs
+expression: output
+---
+type BaseProps = { className: string; disabled: boolean };
+
+type ButtonProps = BaseProps & { onClick: () => void; label: string };
+
+type A = { x: number };
+
+type B = { y: string };
+
+type C = A & B & { z: boolean };

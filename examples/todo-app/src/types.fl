@@ -15,6 +15,16 @@ export type Validation =
     | TooLong
     | Empty
 
+export type Timestamped = {
+    createdAt: number,
+    updatedAt: number,
+}
+
+export type TodoWithTimestamp = {
+    ...Todo,
+    ...Timestamped,
+}
+
 export trait Display {
     fn display(self) -> string
 }

@@ -81,6 +81,24 @@ type ApiError =
     | NotFound
     | ServerError(status: number)
 
+// Record type composition with spread
+type BaseProps = {
+    className: string,
+    disabled: boolean,
+}
+
+type ButtonProps = {
+    ...BaseProps,
+    onClick: () -> (),
+    label: string,
+}
+// ButtonProps has: className, disabled, onClick, label
+
+// Multiple spreads
+type A = { x: number }
+type B = { y: string }
+type C = { ...A, ...B, z: boolean }
+
 // Branded types
 type UserId = Brand<string, "UserId">
 type Email = Brand<string, "Email">

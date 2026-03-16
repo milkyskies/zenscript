@@ -130,11 +130,16 @@ impl<'src> Lexer<'src> {
             b'*' => TokenKind::Star,
             b'%' => TokenKind::Percent,
 
-            // Dot or DotDot
+            // Dot, DotDot, or DotDotDot
             b'.' => {
                 if self.peek() == Some(b'.') {
                     self.advance();
-                    TokenKind::DotDot
+                    if self.peek() == Some(b'.') {
+                        self.advance();
+                        TokenKind::DotDotDot
+                    } else {
+                        TokenKind::DotDot
+                    }
                 } else {
                     TokenKind::Dot
                 }
@@ -639,6 +644,15 @@ mod tests {
         assert_eq!(
             lex(". .."),
             vec![TokenKind::Dot, TokenKind::DotDot, TokenKind::Eof]
+        );
+    }
+
+    #[test]
+    fn dot_dot_dot() {
+        assert_eq!(lex("..."), vec![TokenKind::DotDotDot, TokenKind::Eof]);
+        assert_eq!(
+            lex(".. ."),
+            vec![TokenKind::DotDot, TokenKind::Dot, TokenKind::Eof]
         );
     }
 

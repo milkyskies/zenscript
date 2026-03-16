@@ -147,3 +147,9 @@ fn snapshot_todo_unreachable() {
     let output = compile_fixture("todo_unreachable");
     insta::assert_snapshot!(output);
 }
+
+#[test]
+fn snapshot_record_spread() {
+    let output = compile_fixture("record_spread");
+    insta::assert_snapshot!(output);
+}

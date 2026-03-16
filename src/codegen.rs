@@ -534,8 +534,8 @@ impl Codegen {
         self.push(" = ");
 
         match &decl.def {
-            TypeDef::Record(fields) => {
-                self.emit_record_type(fields);
+            TypeDef::Record(entries) => {
+                self.emit_record_type_entries(entries);
             }
             TypeDef::Union(variants) => {
                 self.emit_union_type(variants);
@@ -547,6 +547,36 @@ impl Codegen {
         }
 
         self.push(";");
+    }
+
+    fn emit_record_type_entries(&mut self, entries: &[RecordEntry]) {
+        let spreads: Vec<&RecordSpread> = entries.iter().filter_map(|e| e.as_spread()).collect();
+        let fields: Vec<&RecordField> = entries.iter().filter_map(|e| e.as_field()).collect();
+
+        // Emit spreads as intersection types
+        for spread in &spreads {
+            self.push(&spread.type_name);
+            if !fields.is_empty() || spread != spreads.last().unwrap() {
+                self.push(" & ");
+            }
+        }
+
+        if !fields.is_empty() || spreads.is_empty() {
+            self.emit_record_type_fields(&fields);
+        }
+    }
+
+    fn emit_record_type_fields(&mut self, fields: &[&RecordField]) {
+        self.push("{ ");
+        for (i, field) in fields.iter().enumerate() {
+            if i > 0 {
+                self.push("; ");
+            }
+            self.push(&field.name);
+            self.push(": ");
+            self.emit_type_expr(&field.type_ann);
+        }
+        self.push(" }");
     }
 
     fn emit_record_type(&mut self, fields: &[RecordField]) {

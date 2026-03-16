@@ -462,15 +462,18 @@ impl Checker {
     // ── Type Registration ────────────────────────────────────────
 
     fn register_type_decl(&mut self, decl: &TypeDecl) {
+        // Flatten record spreads into a flat record definition
+        let flattened_def = self.flatten_record_spreads(&decl.def, &decl.name);
+
         let info = TypeInfo {
-            def: decl.def.clone(),
+            def: flattened_def.clone(),
             opaque: decl.opaque,
             type_params: decl.type_params.clone(),
         };
         self.env.define_type(&decl.name, info);
 
         // Register the type name in the value namespace too (for constructors)
-        match &decl.def {
+        match &flattened_def {
             TypeDef::Record(_) => {
                 self.env.define(&decl.name, Type::Named(decl.name.clone()));
             }
@@ -503,13 +506,136 @@ impl Checker {
         }
     }
 
+    /// Flatten record type spreads (`...OtherType`) into regular fields.
+    /// Returns the original `TypeDef` unchanged if it's not a record or has no spreads.
+    fn flatten_record_spreads(&mut self, def: &TypeDef, type_name: &str) -> TypeDef {
+        let entries = match def {
+            TypeDef::Record(entries) => entries,
+            other => return other.clone(),
+        };
+
+        // Check if there are any spreads at all
+        let has_spreads = entries.iter().any(|e| matches!(e, RecordEntry::Spread(_)));
+        if !has_spreads {
+            return def.clone();
+        }
+
+        let mut flat_fields: Vec<RecordField> = Vec::new();
+        let mut seen_names: std::collections::HashMap<String, Span> =
+            std::collections::HashMap::new();
+
+        for entry in entries {
+            match entry {
+                RecordEntry::Field(field) => {
+                    if seen_names.contains_key(&field.name) {
+                        self.diagnostics.push(
+                            Diagnostic::error(
+                                format!(
+                                    "duplicate field `{}` in record type `{}`",
+                                    field.name, type_name
+                                ),
+                                field.span,
+                            )
+                            .with_label("duplicate field")
+                            .with_help("field was already defined elsewhere in this record type")
+                            .with_code("E030"),
+                        );
+                    } else {
+                        seen_names.insert(field.name.clone(), field.span);
+                        flat_fields.push(field.as_ref().clone());
+                    }
+                }
+                RecordEntry::Spread(spread) => {
+                    // Look up the referenced type
+                    if let Some(info) = self.env.lookup_type(&spread.type_name) {
+                        let info = info.clone();
+                        match &info.def {
+                            TypeDef::Record(spread_entries) => {
+                                // Get only the direct fields from the spread target
+                                // (which should already be flattened if it was registered first)
+                                let spread_fields: Vec<RecordField> = spread_entries
+                                    .iter()
+                                    .filter_map(|e| e.as_field().cloned())
+                                    .collect();
+                                for field in &spread_fields {
+                                    if seen_names.contains_key(&field.name) {
+                                        self.diagnostics.push(
+                                            Diagnostic::error(
+                                                format!(
+                                                    "field `{}` from spread `...{}` conflicts with existing field in `{}`",
+                                                    field.name, spread.type_name, type_name
+                                                ),
+                                                spread.span,
+                                            )
+                                            .with_label(format!("field `{}` already defined", field.name))
+                                            .with_help("field was already defined elsewhere in this record type")
+                                            .with_code("E031"),
+                                        );
+                                    } else {
+                                        seen_names.insert(field.name.clone(), spread.span);
+                                        flat_fields.push(field.clone());
+                                    }
+                                }
+                            }
+                            TypeDef::Union(_) => {
+                                self.diagnostics.push(
+                                    Diagnostic::error(
+                                        format!(
+                                            "cannot spread union type `{}` into record type `{}`",
+                                            spread.type_name, type_name
+                                        ),
+                                        spread.span,
+                                    )
+                                    .with_label("spread target must be a record type")
+                                    .with_code("E032"),
+                                );
+                            }
+                            TypeDef::Alias(_) => {
+                                self.diagnostics.push(
+                                    Diagnostic::error(
+                                        format!(
+                                            "cannot spread type alias `{}` into record type `{}`; spread target must be a record type",
+                                            spread.type_name, type_name
+                                        ),
+                                        spread.span,
+                                    )
+                                    .with_label("spread target must be a record type")
+                                    .with_code("E032"),
+                                );
+                            }
+                        }
+                    } else {
+                        self.diagnostics.push(
+                            Diagnostic::error(
+                                format!("unknown type `{}` in spread", spread.type_name),
+                                spread.span,
+                            )
+                            .with_label("type not found")
+                            .with_code("E002"),
+                        );
+                    }
+                }
+            }
+        }
+
+        TypeDef::Record(
+            flat_fields
+                .into_iter()
+                .map(|f| RecordEntry::Field(Box::new(f)))
+                .collect(),
+        )
+    }
+
     /// Second-pass validation of type annotations within type declarations.
     /// The first pass (register_type_decl) skips unknown type errors for forward references.
     fn validate_type_decl_annotations(&mut self, decl: &TypeDecl) {
         match &decl.def {
-            TypeDef::Record(fields) => {
-                for field in fields {
-                    self.resolve_type(&field.type_ann);
+            TypeDef::Record(entries) => {
+                for entry in entries {
+                    if let RecordEntry::Field(field) = entry {
+                        self.resolve_type(&field.type_ann);
+                    }
+                    // Spreads are validated during register_type_decl
                 }
             }
             TypeDef::Union(variants) => {

@@ -54,6 +54,7 @@ pub enum SyntaxKind {
     QUESTION,      // ?
     UNDERSCORE,    // _
     DOT_DOT,       // ..
+    DOT_DOT_DOT,   // ...
     PLUS,          // +
     MINUS,         // -
     STAR,          // *
@@ -109,6 +110,7 @@ pub enum SyntaxKind {
     TEST_BLOCK,
     ASSERT_EXPR,
     RECORD_FIELD,
+    RECORD_SPREAD,
     VARIANT,
     VARIANT_FIELD,
     TYPE_EXPR,
@@ -239,6 +241,7 @@ pub fn token_kind_to_syntax(kind: &TokenKind) -> SyntaxKind {
         TokenKind::Question => SyntaxKind::QUESTION,
         TokenKind::Underscore => SyntaxKind::UNDERSCORE,
         TokenKind::DotDot => SyntaxKind::DOT_DOT,
+        TokenKind::DotDotDot => SyntaxKind::DOT_DOT_DOT,
         TokenKind::Plus => SyntaxKind::PLUS,
         TokenKind::Minus => SyntaxKind::MINUS,
         TokenKind::Star => SyntaxKind::STAR,
