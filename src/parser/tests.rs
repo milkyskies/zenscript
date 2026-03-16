@@ -1777,3 +1777,32 @@ fn string_literal_union_exported() {
         other => panic!("expected type decl, got {other:?}"),
     }
 }
+
+// ── Collect Block ───────────────────────────────────────────
+
+#[test]
+fn collect_block_basic() {
+    let expr = first_expr("collect { 42 }");
+    match expr {
+        ExprKind::Collect(items) => {
+            assert_eq!(items.len(), 1);
+        }
+        other => panic!("expected Collect, got {other:?}"),
+    }
+}
+
+#[test]
+fn collect_block_with_const() {
+    let expr = first_expr(
+        r#"collect {
+        const a = validate(1)?
+        a
+    }"#,
+    );
+    match expr {
+        ExprKind::Collect(items) => {
+            assert_eq!(items.len(), 2);
+        }
+        other => panic!("expected Collect, got {other:?}"),
+    }
+}

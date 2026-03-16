@@ -44,6 +44,10 @@ pub struct Checker {
     untrusted_imports: HashSet<String>,
     /// Whether we are currently inside a `try` expression.
     inside_try: bool,
+    /// Whether we are currently inside a `collect` block.
+    inside_collect: bool,
+    /// The error type collected from `?` operations inside a `collect` block.
+    collect_err_type: Option<Type>,
     /// Whether we are checking an event handler prop value (onChange, onClick, etc.)
     event_handler_context: bool,
     /// Hint for lambda parameter type inference from calling context.
@@ -233,6 +237,8 @@ impl Checker {
             expr_types: HashMap::new(),
             untrusted_imports: untrusted_globals,
             inside_try: false,
+            inside_collect: false,
+            collect_err_type: None,
             event_handler_context: false,
             lambda_param_hint: None,
             registering_types: false,

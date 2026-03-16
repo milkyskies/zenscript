@@ -343,7 +343,43 @@ if (!_r0.ok) return _r0
 const user = _r0.value
 ```
 
-### Option<T> — No Null, No Undefined
+### The `collect` Block (Error Accumulation)
+
+Inside a `collect {}` block, `?` does NOT short-circuit. Each `?` that hits an Err records the error and continues. If any failed, the block returns `Err(Array<E>)` with all collected errors. If all succeeded, returns `Ok(last_expression)`.
+
+```floe
+fn validateForm(input: FormInput) -> Result<ValidForm, Array<ValidationError>> {
+    collect {
+        const name = input.name |> validateName?
+        const email = input.email |> validateEmail?
+        const age = input.age |> validateAge?
+
+        ValidForm(name, email, age)
+    }
+}
+```
+
+Compiles to an IIFE with error accumulation:
+
+```typescript
+(() => {
+    const __errors: Array<ValidationError> = [];
+    const _r0 = validateName(input.name);
+    if (!_r0.ok) __errors.push(_r0.error);
+    const name = _r0.ok ? _r0.value : undefined as any;
+    const _r1 = validateEmail(input.email);
+    if (!_r1.ok) __errors.push(_r1.error);
+    const email = _r1.ok ? _r1.value : undefined as any;
+    if (__errors.length > 0) return { ok: false, error: __errors };
+    return { ok: true, value: { name, email } };
+})()
+```
+
+The return type of `collect { ... }` is `Result<T, Array<E>>` where:
+- `T` is the type of the last expression in the block
+- `E` is the error type from `?` operations in the block
+
+### Option<T> - No Null, No Undefined
 
 ```floe
 type User = {
@@ -1014,6 +1050,7 @@ Key tokens beyond standard TypeScript:
 | `SelfKw` | `self` keyword (explicit receiver in for blocks) |
 | `Trait` | `trait` keyword (trait declarations) |
 | `Assert` | `assert` keyword (only valid inside test blocks) |
+| `Collect` | `collect` keyword (error accumulation block) |
 
 Number literals support underscore separators for readability: `1_000_000`, `3.141_592`, `0xFF_FF`. Underscores can appear between any two digits but not at the start, end, or adjacent to a decimal point. The lexer strips underscores before emitting the token value.
 
@@ -1050,6 +1087,7 @@ enum Expr {
     Pipe { left: Box<Expr>, right: Box<Expr> },
     Match { subject: Box<Expr>, arms: Vec<MatchArm> },
     Unwrap(Box<Expr>),         // the ? operator
+    Collect(Vec<Item>),        // collect { ... } error accumulation
     Construct {                 // Type(field: value, ..spread)
         type_name: String,
         spread: Option<Box<Expr>>,

@@ -965,6 +965,13 @@ impl<'src> CstParser<'src> {
             }
 
             Some(TokenKind::Match) => self.parse_match_expr(),
+            Some(TokenKind::Collect) => {
+                self.builder.start_node(SyntaxKind::COLLECT_EXPR.into());
+                self.bump(); // collect
+                self.eat_trivia();
+                self.parse_block_expr();
+                self.builder.finish_node();
+            }
             Some(TokenKind::LeftBrace) => self.parse_block_expr(),
 
             Some(TokenKind::LeftBracket) => {

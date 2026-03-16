@@ -493,6 +493,26 @@ impl Parser {
                 })
             }
 
+            // Collect block: `collect { ... }`
+            TokenKind::Collect => {
+                self.advance();
+                let block = self.parse_block_expr()?;
+                let end_span = self.previous_span();
+                match block.kind {
+                    ExprKind::Block(items) => Ok(Expr {
+                        kind: ExprKind::Collect(items),
+                        span: self.merge_spans(start_span, end_span),
+                    }),
+                    _ => Ok(Expr {
+                        kind: ExprKind::Collect(vec![Item {
+                            kind: ItemKind::Expr(block),
+                            span: self.merge_spans(start_span, end_span),
+                        }]),
+                        span: self.merge_spans(start_span, end_span),
+                    }),
+                }
+            }
+
             // Match expression
             TokenKind::Match => self.parse_match_expr(),
 

@@ -159,3 +159,9 @@ fn snapshot_array_patterns() {
     let output = compile_fixture("array_patterns");
     insta::assert_snapshot!(output);
 }
+
+#[test]
+fn snapshot_collect() {
+    let output = compile_fixture("collect");
+    insta::assert_snapshot!(output);
+}

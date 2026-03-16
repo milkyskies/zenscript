@@ -17,6 +17,7 @@
 "test" @keyword
 "assert" @keyword
 "when" @keyword
+"collect" @keyword
 
 ; ── Self ────────────────────────────────────────────────
 (self) @variable.builtin

@@ -154,6 +154,17 @@ Constructor(a: 1)  // record constructor
 Constructor(..existing, a: 2)  // spread + update
 ```
 
+### Collect Block
+
+```floe
+collect {
+    const name = validateName(input.name)?
+    const email = validateEmail(input.email)?
+    ValidForm(name, email)
+}
+// Returns Result<T, Array<E>> — accumulates all errors from ?
+```
+
 ### Constructors
 
 ```floe

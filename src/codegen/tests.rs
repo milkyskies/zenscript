@@ -1097,3 +1097,52 @@ fn match_array_literal_element() {
         "expected literal element check, got: {result}"
     );
 }
+
+// ── Collect Block ───────────────────────────────────────────
+
+#[test]
+fn collect_basic_structure() {
+    let result = emit(
+        r#"
+fn validate(x: number) -> Result<number, string> { Ok(x) }
+fn f() -> Result<number, Array<string>> {
+    collect {
+        const a = validate(1)?
+        const b = validate(2)?
+        a + b
+    }
+}
+"#,
+    );
+    assert!(
+        result.contains("__errors"),
+        "expected error accumulator, got: {result}"
+    );
+    assert!(result.contains("(() => {"), "expected IIFE, got: {result}");
+    assert!(
+        result.contains("ok: true as const"),
+        "expected ok result, got: {result}"
+    );
+    assert!(
+        result.contains("ok: false as const"),
+        "expected err result, got: {result}"
+    );
+}
+
+#[test]
+fn collect_no_unwrap() {
+    // collect with no ? just wraps in Ok
+    let result = emit(
+        r#"
+fn f() -> Result<number, Array<string>> {
+    collect {
+        42
+    }
+}
+"#,
+    );
+    assert!(
+        result.contains("ok: true as const, value: 42"),
+        "expected Ok(42) result, got: {result}"
+    );
+}

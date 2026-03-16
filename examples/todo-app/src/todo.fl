@@ -47,6 +47,32 @@ for Array<Todo> {
     }
 }
 
+fn toResult(v: Validation) -> Result<string, string> {
+    match v {
+        Valid(text) -> Ok(text),
+        TooShort -> Err("Text too short"),
+        TooLong -> Err("Text too long"),
+        Empty -> Err("Text is empty"),
+    }
+}
+
+fn validateId(id: string) -> Result<string, string> {
+    match id |> String.length {
+        0 -> Err("ID is empty"),
+        _ -> Ok(id),
+    }
+}
+
+// Error accumulation: collect all validation errors at once
+export fn validateTodo(text: string, id: string) -> Result<Todo, Array<string>> {
+    collect {
+        const validText = toResult(text |> validate)?
+        const validId = validateId(id)?
+
+        Todo(id: validId, text: validText, done: false)
+    }
+}
+
 test "validate trims and checks length" {
     assert "" |> validate == Empty
     assert "a" |> validate == TooShort

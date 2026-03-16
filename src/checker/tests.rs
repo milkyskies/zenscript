@@ -2429,3 +2429,48 @@ type C = {
         diags
     );
 }
+
+// ── Collect Block ───────────────────────────────────────────
+
+#[test]
+fn collect_allows_question_without_result_return() {
+    // ? inside collect doesn't require the enclosing function to return Result
+    let diags = check(
+        r#"
+fn validate(x: number) -> Result<number, string> { Ok(x) }
+fn f() -> Result<number, Array<string>> {
+    collect {
+        const a = validate(1)?
+        const b = validate(2)?
+        a + b
+    }
+}
+"#,
+    );
+    let errors: Vec<_> = diags
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "expected no errors in collect block, got: {errors:?}"
+    );
+}
+
+#[test]
+fn collect_question_on_non_result_still_errors() {
+    let diags = check(
+        r#"
+fn f() -> Result<number, Array<string>> {
+    collect {
+        const a = (42)?
+        a
+    }
+}
+"#,
+    );
+    assert!(
+        has_error(&diags, "E005"),
+        "expected E005 for ? on non-Result, got: {diags:?}"
+    );
+}

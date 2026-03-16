@@ -134,13 +134,15 @@ fn collect_all_consts(program: &Program) -> Vec<&ConstDecl> {
 
 /// Recursively collect const declarations from an expression (function body, block, etc.)
 fn collect_consts_from_expr<'a>(expr: &'a Expr, consts: &mut Vec<&'a ConstDecl>) {
-    if let ExprKind::Block(stmts) = &expr.kind {
-        for stmt in stmts {
-            match &stmt.kind {
-                ItemKind::Const(decl) => consts.push(decl),
-                ItemKind::Function(func) => collect_consts_from_expr(&func.body, consts),
-                _ => {}
-            }
+    let items = match &expr.kind {
+        ExprKind::Block(stmts) | ExprKind::Collect(stmts) => stmts,
+        _ => return,
+    };
+    for stmt in items {
+        match &stmt.kind {
+            ItemKind::Const(decl) => consts.push(decl),
+            ItemKind::Function(func) => collect_consts_from_expr(&func.body, consts),
+            _ => {}
         }
     }
 }
@@ -549,7 +551,7 @@ fn collect_member_accesses_expr(
             collect_member_accesses_expr(left, imported_names, accesses);
             collect_member_accesses_expr(right, imported_names, accesses);
         }
-        ExprKind::Block(items) => {
+        ExprKind::Block(items) | ExprKind::Collect(items) => {
             for item in items {
                 match &item.kind {
                     ItemKind::Const(decl) => {
@@ -1175,13 +1177,15 @@ fn collect_nested_functions<'a>(
     declared: &mut HashSet<String>,
     functions: &mut HashMap<String, &'a FunctionDecl>,
 ) {
-    if let ExprKind::Block(items) = &expr.kind {
-        for item in items {
-            if let ItemKind::Function(decl) = &item.kind {
-                declared.insert(decl.name.clone());
-                functions.insert(decl.name.clone(), decl);
-                collect_nested_functions(&decl.body, declared, functions);
-            }
+    let items = match &expr.kind {
+        ExprKind::Block(items) | ExprKind::Collect(items) => items,
+        _ => return,
+    };
+    for item in items {
+        if let ItemKind::Function(decl) = &item.kind {
+            declared.insert(decl.name.clone());
+            functions.insert(decl.name.clone(), decl);
+            collect_nested_functions(&decl.body, declared, functions);
         }
     }
 }

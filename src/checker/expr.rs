@@ -76,34 +76,46 @@ impl Checker {
 
             ExprKind::Unwrap(inner) => {
                 let ty = self.check_expr(inner);
-                // Rule 5: ? only allowed in functions returning Result/Option
-                match &self.current_return_type {
-                    Some(ret) if ret.is_result() || ret.is_option() => {}
-                    Some(_) => {
-                        self.diagnostics.push(
-                            Diagnostic::error(
-                                "`?` operator requires function to return `Result` or `Option`",
-                                expr.span,
-                            )
-                            .with_label("enclosing function does not return `Result` or `Option`")
-                            .with_help("change the function's return type to `Result` or `Option`")
-                            .with_code("E005"),
-                        );
-                    }
-                    None => {
-                        self.diagnostics.push(
-                            Diagnostic::error(
-                                "`?` operator can only be used inside a function",
-                                expr.span,
-                            )
-                            .with_label("not inside a function")
-                            .with_code("E005"),
-                        );
+                // Rule 5: ? only allowed in functions returning Result/Option,
+                // OR inside a collect block (where ? accumulates errors)
+                if !self.inside_collect {
+                    match &self.current_return_type {
+                        Some(ret) if ret.is_result() || ret.is_option() => {}
+                        Some(_) => {
+                            self.diagnostics.push(
+                                Diagnostic::error(
+                                    "`?` operator requires function to return `Result` or `Option`",
+                                    expr.span,
+                                )
+                                .with_label(
+                                    "enclosing function does not return `Result` or `Option`",
+                                )
+                                .with_help(
+                                    "change the function's return type to `Result` or `Option`",
+                                )
+                                .with_code("E005"),
+                            );
+                        }
+                        None => {
+                            self.diagnostics.push(
+                                Diagnostic::error(
+                                    "`?` operator can only be used inside a function",
+                                    expr.span,
+                                )
+                                .with_label("not inside a function")
+                                .with_code("E005"),
+                            );
+                        }
                     }
                 }
                 // Unwrap the inner type
                 match ty {
-                    Type::Result { ok, .. } => *ok,
+                    Type::Result { ok, err } => {
+                        if self.inside_collect {
+                            self.collect_err_type = Some(*err);
+                        }
+                        *ok
+                    }
                     Type::Option(inner) => *inner,
                     _ => {
                         self.diagnostics.push(
@@ -718,6 +730,47 @@ impl Checker {
             ExprKind::Jsx(element) => {
                 self.check_jsx(element);
                 Type::Named("JSX.Element".to_string())
+            }
+
+            ExprKind::Collect(items) => {
+                // collect { ... } — accumulates errors from ? instead of short-circuiting
+                // The block returns Result<T, Array<E>> where T is the last expression type
+                // and E is the error type from ? operations
+                self.env.push_scope();
+                let prev_inside_collect = self.inside_collect;
+                self.inside_collect = true;
+                let mut last_type = Type::Unit;
+                let mut err_type: Option<Type> = None;
+
+                for (i, item) in items.iter().enumerate() {
+                    let is_last = i == items.len() - 1;
+                    if is_last {
+                        if let ItemKind::Expr(e) = &item.kind {
+                            last_type = self.check_expr(e);
+                        } else {
+                            self.check_item(item);
+                        }
+                    } else {
+                        self.check_item(item);
+                    }
+                    // Collect error types from ? operations within
+                    // (The checker tracks them via collect_err_type)
+                    if let Some(ref et) = self.collect_err_type
+                        && err_type.is_none()
+                    {
+                        err_type = Some(et.clone());
+                    }
+                }
+
+                self.inside_collect = prev_inside_collect;
+                self.collect_err_type = None;
+                self.env.pop_scope();
+
+                let e = err_type.unwrap_or(Type::Unknown);
+                Type::Result {
+                    ok: Box::new(last_type),
+                    err: Box::new(Type::Array(Box::new(e))),
+                }
             }
 
             ExprKind::Block(items) => {

@@ -184,6 +184,16 @@
     ],
     "description": "Inline test block"
   },
+  "Collect Block": {
+    "prefix": "collect",
+    "body": [
+      "collect {",
+      "\tconst ${1:name} = ${2:expr}?",
+      "\t$0",
+      "}"
+    ],
+    "description": "Collect block for error accumulation"
+  },
   "Todo Placeholder": {
     "prefix": "todo",
     "body": [

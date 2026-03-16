@@ -400,6 +400,8 @@ pub enum ExprKind {
     // -- Blocks --
     /// Block expression: `{ stmt1; stmt2; expr }`
     Block(Vec<Item>),
+    /// Collect block: `collect { ... }` — accumulates errors from `?` instead of short-circuiting
+    Collect(Vec<Item>),
 
     // -- Grouping --
     /// Parenthesized expression: `(a + b)`

@@ -294,6 +294,7 @@ module.exports = grammar({
         $.assignment_expression,
         $.await_expression,
         $.try_expression,
+        $.collect_expression,
         $.return_statement,
       ),
 
@@ -626,6 +627,9 @@ module.exports = grammar({
 
     try_expression: ($) =>
       prec.right(seq("try", $._expression)),
+
+    collect_expression: ($) =>
+      seq("collect", $.block),
 
     // ── Comments ────────────────────────────────────────────
 

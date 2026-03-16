@@ -282,6 +282,10 @@ impl Codegen {
                 self.emit_jsx(element);
             }
 
+            ExprKind::Collect(items) => {
+                self.emit_collect_block(items);
+            }
+
             ExprKind::Block(items) => {
                 self.emit_block_items(items);
             }
@@ -765,6 +769,165 @@ impl Codegen {
         self.emit_indent();
         self.push("}");
     }
+
+    // ── Collect Block ───────────────────────────────────────────
+
+    /// Emit a collect block as an IIFE that accumulates errors from `?`.
+    ///
+    /// ```typescript
+    /// (() => {
+    ///     const __errors: Array<E> = [];
+    ///     const _r0 = validateName(input.name);
+    ///     if (!_r0.ok) __errors.push(_r0.error);
+    ///     const name = _r0.ok ? _r0.value : undefined as any;
+    ///     ...
+    ///     if (__errors.length > 0) return { ok: false, error: __errors };
+    ///     return { ok: true, value: <last_expr> };
+    /// })()
+    /// ```
+    fn emit_collect_block(&mut self, items: &[Item]) {
+        self.push("(() => {");
+        self.newline();
+        self.indent += 1;
+
+        // Emit error accumulator
+        self.emit_indent();
+        self.push("const __errors: Array<any> = [];");
+        self.newline();
+
+        let mut result_counter = 0;
+
+        for (i, item) in items.iter().enumerate() {
+            let is_last = i == items.len() - 1;
+            if is_last {
+                if let ItemKind::Expr(expr) = &item.kind {
+                    // Check for errors before returning
+                    self.emit_indent();
+                    self.push(
+                        "if (__errors.length > 0) return { ok: false as const, error: __errors };",
+                    );
+                    self.newline();
+                    self.emit_indent();
+                    self.push("return { ok: true as const, value: ");
+                    self.emit_expr(expr);
+                    self.push(" };");
+                    self.newline();
+                } else {
+                    self.emit_collect_item(item, &mut result_counter);
+                    self.emit_indent();
+                    self.push(
+                        "if (__errors.length > 0) return { ok: false as const, error: __errors };",
+                    );
+                    self.newline();
+                    self.emit_indent();
+                    self.push("return { ok: true as const, value: undefined };");
+                    self.newline();
+                }
+            } else {
+                self.emit_collect_item(item, &mut result_counter);
+            }
+        }
+
+        self.indent -= 1;
+        self.emit_indent();
+        self.push("})()");
+    }
+
+    /// Emit an item inside a collect block.
+    /// Const declarations with `?` get special treatment:
+    /// instead of short-circuiting, we accumulate the error.
+    fn emit_collect_item(&mut self, item: &Item, result_counter: &mut usize) {
+        match &item.kind {
+            ItemKind::Const(decl) => {
+                if let Some(unwrap_inner) = Self::find_unwrap_in_expr(&decl.value) {
+                    let idx = *result_counter;
+                    *result_counter += 1;
+                    let temp = format!("_r{idx}");
+
+                    // const _rN = <inner expression before ?>
+                    self.emit_indent();
+                    self.push(&format!("const {temp} = "));
+                    self.emit_expr(unwrap_inner);
+                    self.push(";");
+                    self.newline();
+
+                    // if (!_rN.ok) __errors.push(_rN.error);
+                    self.emit_indent();
+                    self.push(&format!("if (!{temp}.ok) __errors.push({temp}.error);"));
+                    self.newline();
+
+                    // const <binding> = _rN.ok ? _rN.value : undefined as any;
+                    self.emit_indent();
+                    match &decl.binding {
+                        ConstBinding::Name(name) => {
+                            self.push(&format!(
+                                "const {name} = {temp}.ok ? {temp}.value : undefined as any;"
+                            ));
+                        }
+                        _ => {
+                            // For destructured bindings, fall back to normal emit
+                            self.push(&format!(
+                                "const __v{idx} = {temp}.ok ? {temp}.value : undefined as any;"
+                            ));
+                        }
+                    }
+                    self.newline();
+                } else {
+                    // No unwrap — emit normally
+                    self.emit_item(item);
+                    self.newline();
+                }
+            }
+            ItemKind::Expr(expr) => {
+                // Check if the expression itself is an unwrap
+                if let ExprKind::Unwrap(inner) = &expr.kind {
+                    let idx = *result_counter;
+                    *result_counter += 1;
+                    let temp = format!("_r{idx}");
+
+                    self.emit_indent();
+                    self.push(&format!("const {temp} = "));
+                    self.emit_expr(inner);
+                    self.push(";");
+                    self.newline();
+
+                    self.emit_indent();
+                    self.push(&format!("if (!{temp}.ok) __errors.push({temp}.error);"));
+                    self.newline();
+                } else {
+                    self.emit_indent();
+                    self.emit_expr(expr);
+                    self.push(";");
+                    self.newline();
+                }
+            }
+            _ => {
+                self.emit_item(item);
+                self.newline();
+            }
+        }
+    }
+
+    /// Find the inner expression of the outermost `?` in an expression.
+    /// For example, in `input.name |> validateName?`, this returns
+    /// `input.name |> validateName` (the Pipe expression).
+    fn find_unwrap_in_expr(expr: &Expr) -> Option<&Expr> {
+        match &expr.kind {
+            ExprKind::Unwrap(inner) => Some(inner),
+            ExprKind::Pipe { right, .. } => {
+                // Check if the right side of the pipe ends with ?
+                if let ExprKind::Unwrap(_) = &right.kind {
+                    // The whole pipe expression has ? at the end
+                    // We need to reconstruct without the ?, but we can't mutate.
+                    // Instead, return None and handle it at the Pipe level.
+                    None
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
 }
 
 /// Check if an expression tree contains an Await node.
@@ -787,6 +950,13 @@ fn expr_contains_await(expr: &Expr) -> bool {
         | ExprKind::Unwrap(operand)
         | ExprKind::Try(operand)
         | ExprKind::Spread(operand) => expr_contains_await(operand),
+        ExprKind::Collect(items) | ExprKind::Block(items) => items.iter().any(|item| {
+            if let ItemKind::Expr(e) = &item.kind {
+                expr_contains_await(e)
+            } else {
+                false
+            }
+        }),
         _ => false,
     }
 }

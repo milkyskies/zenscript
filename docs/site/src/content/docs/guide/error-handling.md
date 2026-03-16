@@ -49,6 +49,31 @@ The `?` operator:
 
 Using `?` outside a function that returns `Result` is a compile error.
 
+## The `collect` Block
+
+Sometimes you want to validate multiple things and collect **all** errors, not just the first one. The `collect` block changes `?` from short-circuiting to accumulating:
+
+```floe
+fn validateForm(input: FormInput) -> Result<ValidForm, Array<ValidationError>> {
+    collect {
+        const name = input.name |> validateName?
+        const email = input.email |> validateEmail?
+        const age = input.age |> validateAge?
+
+        ValidForm(name, email, age)
+    }
+}
+```
+
+Inside `collect {}`:
+- Each `?` that hits `Err` records the error and continues
+- If any failed, the block returns `Err(Array<E>)` with all collected errors
+- If all succeeded, returns `Ok(last_expression)`
+
+The return type of a `collect` block is always `Result<T, Array<E>>`.
+
+This is useful for form validation, batch processing, and anywhere you want to report all errors at once instead of stopping at the first one.
+
 ## Option
 
 ```floe

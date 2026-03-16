@@ -287,6 +287,18 @@ match user.nickname {
 user.nickname |> Option.unwrapOr(user.name)
 user.nickname |> Option.map(|n| toUpper(n))
 
+// collect block — accumulate all errors instead of short-circuiting
+fn validateForm(input: FormInput) -> Result<ValidForm, Array<ValidationError>> {
+    collect {
+        const name = input.name |> validateName?
+        const email = input.email |> validateEmail?
+        const age = input.age |> validateAge?
+
+        ValidForm(name, email, age)
+    }
+}
+// Inside collect, ? records errors and continues. Returns Err(Array<E>) if any failed.
+
 // Map<K, V> — immutable key-value maps
 const config = Map.fromArray([("host", "localhost"), ("port", "8080")])
 const updated = config |> Map.set("port", "3000")

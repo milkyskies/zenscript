@@ -288,6 +288,37 @@ impl<'src> Lowerer<'src> {
                 })
             }
 
+            SyntaxKind::COLLECT_EXPR => {
+                // collect { ... } — the child is a BLOCK_EXPR
+                let mut items = Vec::new();
+                for child in node.children() {
+                    if child.kind() == SyntaxKind::BLOCK_EXPR {
+                        for block_child in child.children() {
+                            match block_child.kind() {
+                                SyntaxKind::ITEM => {
+                                    if let Some(item) = self.lower_item(&block_child) {
+                                        items.push(item);
+                                    }
+                                }
+                                SyntaxKind::EXPR_ITEM => {
+                                    if let Some(expr) = self.lower_first_expr(&block_child) {
+                                        items.push(Item {
+                                            kind: ItemKind::Expr(expr),
+                                            span: self.node_span(&block_child),
+                                        });
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+                Some(Expr {
+                    span,
+                    kind: ExprKind::Collect(items),
+                })
+            }
+
             SyntaxKind::BLOCK_EXPR => {
                 let mut items = Vec::new();
                 for child in node.children() {

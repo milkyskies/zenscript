@@ -35,6 +35,7 @@ pub enum SyntaxKind {
     KW_TRAIT,
     KW_ASSERT,
     KW_WHEN,
+    KW_COLLECT,
 
     // Built-in constructors
     KW_OK,
@@ -144,6 +145,7 @@ pub enum SyntaxKind {
     GROUPED_EXPR,
     ARRAY_EXPR,
     SPREAD_EXPR,
+    COLLECT_EXPR,
     TUPLE_EXPR,
     DOT_SHORTHAND,
     OK_EXPR,
@@ -228,6 +230,7 @@ pub fn token_kind_to_syntax(kind: &TokenKind) -> SyntaxKind {
         TokenKind::Trait => SyntaxKind::KW_TRAIT,
         TokenKind::Assert => SyntaxKind::KW_ASSERT,
         TokenKind::When => SyntaxKind::KW_WHEN,
+        TokenKind::Collect => SyntaxKind::KW_COLLECT,
         TokenKind::Ok => SyntaxKind::KW_OK,
         TokenKind::Err => SyntaxKind::KW_ERR,
         TokenKind::Some => SyntaxKind::KW_SOME,
