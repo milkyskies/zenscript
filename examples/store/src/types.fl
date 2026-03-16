@@ -1,10 +1,15 @@
 // ── Newtype wrappers ───────────────────────────────────
-// Single-variant unions act as newtypes (like Gleam/Rust).
-// ProductId and OrderId are both numbers at runtime,
-// but the compiler prevents mixing them up.
+// Single-variant unions as newtypes (Gleam/Rust style).
 
 export type ProductId = ProductId(number)
 export type OrderId = OrderId(number)
+
+// ── Shared field groups ────────────────────────────────
+// Record type composition with spread.
+
+type WithRating = {
+    rating: number,
+}
 
 // ── Product (from DummyJSON API) ───────────────────────
 
@@ -15,16 +20,16 @@ export type Product = {
     category: string,
     price: number,
     discountPercentage: number,
-    rating: number,
+    ...WithRating,
     stock: number,
     tags: Array<string>,
     brand: string,
     thumbnail: string,
     images: Array<string>,
-}
+} deriving (Eq)
 
 export type Review = {
-    rating: number,
+    ...WithRating,
     comment: string,
     date: string,
     reviewerName: string,
@@ -38,8 +43,6 @@ export type CartItem = {
 }
 
 // ── Nested error unions ────────────────────────────────
-// Multi-depth matching lets us handle every failure mode
-// in a single match expression.
 
 export type NetworkError =
     | Timeout(ms: number)
@@ -73,6 +76,21 @@ export type OrderStatus =
     | Confirmed(orderId: OrderId)
     | Shipped(tracking: string)
     | Failed(reason: string)
+
+// ── Checkout validation ────────────────────────────────
+
+export type CheckoutError =
+    | EmptyCart
+    | InvalidEmail(email: string)
+    | InvalidPhone(phone: string)
+    | OutOfStock(productId: ProductId)
+
+export type ShippingInfo = {
+    name: string,
+    email: string,
+    phone: string,
+    address: string,
+}
 
 // ── Traits ─────────────────────────────────────────────
 

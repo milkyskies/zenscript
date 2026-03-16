@@ -1,6 +1,7 @@
 import trusted { useState } from "react"
-import { CartItem, Product, OrderStatus, OrderId } from "../types"
+import { CartItem, Product, OrderStatus, OrderId, ShippingInfo, CheckoutError } from "../types"
 import { for Array, formatPrice } from "../product"
+import { validateCheckout, processCheckout } from "../checkout"
 
 // ── Cart item row ──────────────────────────────────────
 
@@ -13,7 +14,7 @@ fn CartItemRow(props: {
     const product = item.product
     const lineTotal = (product.price * (1 - product.discountPercentage / 100)) * item.quantity
 
-    return <div className="flex items-center gap-4 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+    <div className="flex items-center gap-4 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
         <img
             src={product.thumbnail}
             alt={product.title}
@@ -22,7 +23,9 @@ fn CartItemRow(props: {
         <div className="flex-1">
             <h3 className="font-medium text-zinc-100">{product.title}</h3>
             <p className="text-sm text-zinc-500">{product.category}</p>
-            <p className="text-sm text-indigo-400">{formatPrice(product.price * (1 - product.discountPercentage / 100))}</p>
+            <p className="text-sm text-indigo-400">
+                {formatPrice(product.price * (1 - product.discountPercentage / 100))}
+            </p>
         </div>
         <div className="flex items-center gap-2">
             <button
@@ -60,7 +63,7 @@ fn OrderSummary(props: {
 }) -> JSX.Element {
     const (subtotal, discount, total) = props.cart |> totals
 
-    return <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
         <h3 className="mb-4 text-lg font-semibold">Order Summary</h3>
 
         <div className="space-y-2 text-sm">
@@ -84,13 +87,13 @@ fn OrderSummary(props: {
 
         <button
             onClick={props.onCheckout}
-            disabled={match props.orderStatus { Pending -> false, _ -> true }}
-            className={match props.orderStatus {
+            disabled={props.orderStatus |> match { Pending -> false, _ -> true }}
+            className={props.orderStatus |> match {
                 Pending -> "mt-6 w-full rounded-xl bg-indigo-600 py-3 font-semibold text-white transition-colors hover:bg-indigo-500",
                 _ -> "mt-6 w-full rounded-xl bg-zinc-800 py-3 font-semibold text-zinc-600 cursor-not-allowed",
             }}
         >
-            {match props.orderStatus {
+            {props.orderStatus |> match {
                 Pending -> "Checkout",
                 Confirmed(orderId) -> `Order #${orderId} confirmed!`,
                 Shipped(tracking) -> `Shipped: ${tracking}`,
@@ -110,25 +113,25 @@ export fn CartPage(props: {
     const [orderStatus, setOrderStatus] = useState<OrderStatus>(OrderStatus.Pending)
 
     fn handleCheckout() {
-        const orderId = OrderId(Math.floor(Math.random() * 10000))
+        const orderId = OrderId(Math.floor(Math.random() * 10_000))
         setOrderStatus(Confirmed(orderId))
     }
 
     const count = props.cart |> itemCount
 
-    return <div>
+    <div>
         <h1 className="mb-6 text-3xl font-bold">
-            {`Cart (${count} item${match count { 1 -> "", _ -> "s" }})`}
+            {`Cart (${count} item${count |> match { 1 -> "", _ -> "s" }})`}
         </h1>
 
-        {match props.cart |> Array.length {
-            0 -> <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-12 text-center">
+        {props.cart |> match {
+            [] -> <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-12 text-center">
                 <p className="text-lg text-zinc-500">Your cart is empty</p>
                 <p className="mt-2 text-sm text-zinc-600">Browse the store to add some products!</p>
             </div>,
-            _ -> <div className="flex gap-8">
+            items -> <div className="flex gap-8">
                 <div className="flex-1 space-y-3">
-                    {props.cart |> Array.map(|item|
+                    {items |> Array.map(|item|
                         <CartItemRow
                             key={item.product.id}
                             item={item}

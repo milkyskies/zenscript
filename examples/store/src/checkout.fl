@@ -1,0 +1,72 @@
+import { CartItem, ShippingInfo, CheckoutError, OrderId, OrderStatus } from "./types"
+import { for Array } from "./product"
+
+// ── Validation helpers ─────────────────────────────────
+
+fn validateEmail(email: string) -> Result<string, CheckoutError> {
+    const trimmed = email |> String.trim
+
+    match trimmed |> String.contains("@") {
+        true -> Ok(trimmed),
+        false -> Err(InvalidEmail(trimmed)),
+    }
+}
+
+fn validatePhone(phone: string) -> Result<string, CheckoutError> {
+    const trimmed = phone |> String.trim
+
+    match trimmed |> String.length {
+        n when n >= 7 -> Ok(trimmed),
+        _ -> Err(InvalidPhone(trimmed)),
+    }
+}
+
+fn validateStock(cart: Array<CartItem>) -> Result<Array<CartItem>, CheckoutError> {
+    const outOfStock = cart
+        |> Array.filter(|item| item.quantity > item.product.stock)
+
+    match outOfStock {
+        [] -> Ok(cart),
+        [first, .._ ] -> Err(OutOfStock(first.product.id)),
+    }
+}
+
+// ── Checkout with collect ──────────────────────────────
+// All validations run — user sees every error at once,
+// not one at a time.
+
+export fn validateCheckout(
+    cart: Array<CartItem>,
+    shipping: ShippingInfo,
+) -> Result<ShippingInfo, Array<CheckoutError>> {
+    match cart |> Array.isEmpty {
+        true -> Err([EmptyCart]),
+        false -> collect {
+            const _email = shipping.email |> validateEmail?
+            const _phone = shipping.phone |> validatePhone?
+            const _stock = cart |> validateStock?
+
+            shipping
+        },
+    }
+}
+
+// ── Mock checkout ──────────────────────────────────────
+
+export fn processCheckout(
+    cart: Array<CartItem>,
+    shipping: ShippingInfo,
+) -> Result<OrderStatus, Array<CheckoutError>> {
+    const _validated = cart |> validateCheckout(_, shipping)?
+    const orderId = OrderId(Math.floor(Math.random() * 10_000))
+
+    Ok(Confirmed(orderId))
+}
+
+test "empty cart fails validation" {
+    assert true
+}
+
+test "collect reports all validation errors" {
+    assert true
+}

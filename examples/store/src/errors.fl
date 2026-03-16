@@ -1,10 +1,9 @@
 import { ApiError, Display } from "./types"
 
 // ── Multi-depth match on nested error unions ───────────
-// This is the showcase for Floe's nested union matching.
 
 export for ApiError: Display fn display(self) -> string {
-    match self {
+    self |> match {
         // Level 2: drill into NetworkError variants
         Network(Timeout(ms)) -> `Request timed out after ${ms}ms`,
         Network(DnsFailure(host)) -> `Cannot resolve ${host}`,
@@ -12,7 +11,7 @@ export for ApiError: Display fn display(self) -> string {
 
         // Level 1: other ApiError variants
         NotFound(id) -> `Product #${id} not found`,
-        BadResponse(status, _) -> match status {
+        BadResponse(status, _) -> status |> match {
             400..499 -> `Client error (${status})`,
             500..599 -> `Server error (${status})`,
             s -> `Unexpected status ${s}`,
@@ -22,9 +21,9 @@ export for ApiError: Display fn display(self) -> string {
 }
 
 export for ApiError fn isRetryable(self) -> boolean {
-    match self {
+    self |> match {
         Network(_) -> true,
-        BadResponse(status, _) -> match status {
+        BadResponse(status, _) -> status |> match {
             429 -> true,
             500..599 -> true,
             _ -> false,

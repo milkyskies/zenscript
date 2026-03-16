@@ -1,13 +1,13 @@
 import trusted { useState, Suspense } from "react"
-import trusted { useSuspenseQuery, QueryClient, QueryClientProvider, QueryErrorResetBoundary } from "@tanstack/react-query"
+import trusted { useSuspenseQuery, QueryErrorResetBoundary } from "@tanstack/react-query"
 import trusted { ErrorBoundary } from "react-error-boundary"
 import trusted { Link } from "@tanstack/react-router"
-import { Product, SortOrder, PriceRange, CartItem, ApiError } from "../types"
+import { Product, SortOrder, PriceRange, ApiError } from "../types"
 import { for Product, for Array, sortProducts, matchesPrice, formatPrice } from "../product"
 import { for ApiError } from "../errors"
 import { fetchProducts, fetchCategories } from "../api"
 
-// ── Product card component ─────────────────────────────
+// ── Product card ───────────────────────────────────────
 
 fn ProductCard(props: {
     product: Product,
@@ -16,7 +16,7 @@ fn ProductCard(props: {
     const product = props.product
     const hasDiscount = product.discountPercentage > 0
 
-    return <div className="group rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 transition-all hover:border-zinc-700 hover:bg-zinc-900">
+    <div className="group rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 transition-all hover:border-zinc-700 hover:bg-zinc-900">
         <Link to={`/product/${product.id}`} className="block">
             <img
                 src={product.thumbnail}
@@ -25,7 +25,9 @@ fn ProductCard(props: {
             />
         </Link>
         <div className="mb-2 flex items-start justify-between gap-2">
-            <Link to={`/product/${product.id}`} className="font-semibold text-zinc-100 line-clamp-2 hover:text-indigo-300 transition-colors">{product.title}</Link>
+            <Link to={`/product/${product.id}`} className="font-semibold text-zinc-100 line-clamp-2 hover:text-indigo-300 transition-colors">
+                {product.title}
+            </Link>
             <span className="shrink-0 rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
                 {product.category}
             </span>
@@ -52,9 +54,9 @@ fn ProductCard(props: {
         <div className="mb-3 flex items-center gap-2 text-sm">
             <span className="text-amber-400">{product |> ratingStars}</span>
             <span className="text-zinc-500">{`${product.rating}/5`}</span>
-            <span className={match product.stock {
+            <span className={product.stock |> match {
                 0 -> "ml-auto text-red-400",
-                _ when product.stock < 5 -> "ml-auto text-amber-400",
+                n when n < 5 -> "ml-auto text-amber-400",
                 _ -> "ml-auto text-zinc-500",
             }}>
                 {product |> stockLabel}
@@ -63,13 +65,13 @@ fn ProductCard(props: {
 
         <button
             onClick={|| props.onAddToCart(product)}
-            disabled={match product |> inStock { true -> false, false -> true }}
-            className={match product |> inStock {
+            disabled={!(product |> inStock)}
+            className={product |> inStock |> match {
                 true -> "w-full rounded-lg bg-indigo-600 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500",
                 false -> "w-full rounded-lg bg-zinc-800 py-2 text-sm font-medium text-zinc-600 cursor-not-allowed",
             }}
         >
-            {match product |> inStock {
+            {product |> inStock |> match {
                 true -> "Add to Cart",
                 false -> "Out of Stock",
             }}
@@ -104,13 +106,13 @@ fn FilterSidebar(props: {
         ("Name", SortOrder.Name),
     ]
 
-    return <aside className="w-64 shrink-0 space-y-6">
+    <aside className="w-64 shrink-0 space-y-6">
         <div>
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-zinc-400">Category</h3>
             <div className="space-y-1">
                 <button
                     onClick={|| props.onCategoryChange("")}
-                    className={match props.selectedCategory {
+                    className={props.selectedCategory |> match {
                         "" -> "block w-full rounded px-3 py-1.5 text-left text-sm bg-indigo-600/20 text-indigo-300",
                         _ -> "block w-full rounded px-3 py-1.5 text-left text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200",
                     }}
@@ -121,7 +123,7 @@ fn FilterSidebar(props: {
                     <button
                         key={slug}
                         onClick={|| props.onCategoryChange(slug)}
-                        className={match props.selectedCategory == slug {
+                        className={props.selectedCategory == slug |> match {
                             true -> "block w-full rounded px-3 py-1.5 text-left text-sm bg-indigo-600/20 text-indigo-300",
                             false -> "block w-full rounded px-3 py-1.5 text-left text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200",
                         }}
@@ -139,7 +141,7 @@ fn FilterSidebar(props: {
                     <button
                         key={label}
                         onClick={|| props.onPriceRangeChange(range)}
-                        className={match props.priceRange == range {
+                        className={props.priceRange == range |> match {
                             true -> "block w-full rounded px-3 py-1.5 text-left text-sm bg-indigo-600/20 text-indigo-300",
                             false -> "block w-full rounded px-3 py-1.5 text-left text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200",
                         }}
@@ -157,7 +159,7 @@ fn FilterSidebar(props: {
                     <button
                         key={label}
                         onClick={|| props.onSortChange(order)}
-                        className={match props.sortOrder == order {
+                        className={props.sortOrder == order |> match {
                             true -> "block w-full rounded px-3 py-1.5 text-left text-sm bg-indigo-600/20 text-indigo-300",
                             false -> "block w-full rounded px-3 py-1.5 text-left text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200",
                         }}
@@ -185,12 +187,12 @@ fn CategoryList(props: {
         queryFn: async || fetchCategories(),
     })
 
-    const categories = match data {
+    const categories = data |> match {
         Ok(cats) -> cats,
         Err(_) -> [],
     }
 
-    return <FilterSidebar
+    <FilterSidebar
         categories={categories}
         selectedCategory={props.selectedCategory}
         onCategoryChange={props.onCategoryChange}
@@ -215,7 +217,7 @@ fn ProductGrid(props: {
         queryFn: async || fetchProducts(category: props.category, search: props.search, limit: 30),
     })
 
-    const (products, total) = match data {
+    const (products, total) = data |> match {
         Ok(result) -> result,
         Err(_) -> ([], 0),
     }
@@ -224,7 +226,7 @@ fn ProductGrid(props: {
         |> Array.filter(|p| matchesPrice(p, props.priceRange))
         |> sortProducts(_, props.sortOrder)
 
-    return <div>
+    <div>
         <p className="mb-4 text-sm text-zinc-500">
             {`${filtered |> Array.length} of ${total} products`}
         </p>
@@ -240,13 +242,11 @@ fn ProductGrid(props: {
     </div>
 }
 
-// ── Loading skeleton ───────────────────────────────────
+// ── Skeletons ──────────────────────────────────────────
 
 fn CatalogSkeleton() -> JSX.Element {
-    const skeletons = [1, 2, 3, 4, 5, 6]
-
-    return <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {skeletons |> Array.map(|i|
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {[1, 2, 3, 4, 5, 6] |> Array.map(|i|
             <div key={i} className="animate-pulse rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
                 <div className="mb-3 h-48 rounded-lg bg-zinc-800" />
                 <div className="mb-2 h-5 w-3/4 rounded bg-zinc-800" />
@@ -258,7 +258,19 @@ fn CatalogSkeleton() -> JSX.Element {
     </div>
 }
 
+fn SidebarSkeleton() -> JSX.Element {
+    <div className="w-64 shrink-0 animate-pulse space-y-4">
+        <div className="h-4 w-20 rounded bg-zinc-800" />
+        <div className="space-y-2">
+            <div className="h-8 rounded bg-zinc-800" />
+            <div className="h-8 rounded bg-zinc-800" />
+            <div className="h-8 rounded bg-zinc-800" />
+        </div>
+    </div>
+}
+
 // ── Main catalog page ──────────────────────────────────
+// Uses `use` to flatten Suspense/ErrorBoundary nesting.
 
 export fn CatalogPage(props: {
     onAddToCart: (Product) -> (),
@@ -268,7 +280,7 @@ export fn CatalogPage(props: {
     const [sortOrder, setSortOrder] = useState<SortOrder>(SortOrder.Rating)
     const [priceRange, setPriceRange] = useState<PriceRange>(PriceRange.Any)
 
-    return <div>
+    <div>
         <div className="mb-6 flex items-center gap-4">
             <h1 className="text-3xl font-bold">Store</h1>
             <input
@@ -281,14 +293,7 @@ export fn CatalogPage(props: {
         </div>
 
         <div className="flex gap-8">
-            <Suspense fallback={<div className="w-64 shrink-0 animate-pulse space-y-4">
-                <div className="h-4 w-20 rounded bg-zinc-800" />
-                <div className="space-y-2">
-                    <div className="h-8 rounded bg-zinc-800" />
-                    <div className="h-8 rounded bg-zinc-800" />
-                    <div className="h-8 rounded bg-zinc-800" />
-                </div>
-            </div>}>
+            <Suspense fallback={<SidebarSkeleton />}>
                 <CategoryList
                     selectedCategory={category}
                     onCategoryChange={setCategory}

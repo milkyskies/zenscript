@@ -21,18 +21,18 @@ export for Product fn inStock(self) -> boolean {
 }
 
 export for Product fn stockLabel(self) -> string {
-    match self.stock {
+    self.stock |> match {
         0 -> "Out of stock",
-        _ when self.stock < 5 -> `Only ${self.stock} left!`,
-        _ when self.stock < 20 -> "In stock",
+        n when n < 5 -> `Only ${n} left!`,
+        n when n < 20 -> "In stock",
         _ -> "Plenty in stock",
     }
 }
 
 export for Product fn ratingStars(self) -> string {
     const full = Math.floor(self.rating)
-    const stars = Array.from({ length: full }, |_| "*")
-    stars |> Array.join("")
+
+    Array.from({ length: full }, |_| "*") |> Array.join("")
 }
 
 // ── Cart operations ────────────────────────────────────
@@ -40,7 +40,8 @@ export for Product fn ratingStars(self) -> string {
 for Array<CartItem> {
     export fn addItem(self, product: Product, qty: number = 1) -> Array<CartItem> {
         const existing = self |> Array.findIndex(.product.id == product.id)
-        match existing {
+
+        existing |> match {
             -1 -> self |> Array.append(CartItem(product: product, quantity: qty)),
             _ -> self |> Array.map(|item|
                 match item.product.id == product.id {
@@ -56,7 +57,7 @@ for Array<CartItem> {
     }
 
     export fn updateQuantity(self, productId: number, qty: number) -> Array<CartItem> {
-        match qty {
+        qty |> match {
             0 -> self |> removeItem(productId),
             _ -> self |> Array.map(|item|
                 match item.product.id == productId {
@@ -71,27 +72,28 @@ for Array<CartItem> {
     export fn totals(self) -> (number, number, number) {
         const subtotal = self
             |> Array.map(|item| item.product.price * item.quantity)
-            |> Array.reduce(|acc, x| acc + x, 0)
+            |> Array.sum
 
         const discounted = self
             |> Array.map(|item| (item.product |> effectivePrice) * item.quantity)
-            |> Array.reduce(|acc, x| acc + x, 0)
+            |> Array.sum
 
-        const discount = subtotal - discounted
-        (subtotal, discount, discounted)
+        (subtotal, subtotal - discounted, discounted)
     }
 
     export fn itemCount(self) -> number {
-        self
-            |> Array.map(.quantity)
-            |> Array.reduce(|acc, q| acc + q, 0)
+        self |> Array.map(.quantity) |> Array.sum
+    }
+
+    export fn isEmpty(self) -> boolean {
+        self |> Array.isEmpty
     }
 }
 
 // ── Sorting with partial application ───────────────────
 
 fn compareBy(order: SortOrder, a: Product, b: Product) -> number {
-    match order {
+    order |> match {
         PriceLow -> (a |> effectivePrice) - (b |> effectivePrice),
         PriceHigh -> (b |> effectivePrice) - (a |> effectivePrice),
         Rating -> b.rating - a.rating,
@@ -99,7 +101,6 @@ fn compareBy(order: SortOrder, a: Product, b: Product) -> number {
     }
 }
 
-// Partial application: compareBy(order, _, _) creates a comparator
 export fn sortProducts(products: Array<Product>, order: SortOrder) -> Array<Product> {
     products |> Array.sort(compareBy(order, _, _))
 }
@@ -108,18 +109,23 @@ export fn sortProducts(products: Array<Product>, order: SortOrder) -> Array<Prod
 
 export fn matchesPrice(product: Product, range: PriceRange) -> boolean {
     const price = product |> effectivePrice
-    match range {
-        Any -> true,
-        Under(max) -> price < max,
-        Between(min, max) -> price >= min && price < max,
-        Over(min) -> price >= min,
+
+    price |> match {
+        _ when range == Any -> true,
+        p when range == Under(25) -> p < 25,
+        p -> match range {
+            Any -> true,
+            Under(max) -> p < max,
+            Between(min, max) -> p >= min && p < max,
+            Over(min) -> p >= min,
+        },
     }
 }
 
 // ── Formatting ─────────────────────────────────────────
 
 export fn formatPrice(amount: number) -> string {
-    `$${amount |> Math.round(_, 2)}`
+    `$${amount |> Number.toFixed(2)}`
 }
 
 // ── Tests ──────────────────────────────────────────────

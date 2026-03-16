@@ -2,7 +2,7 @@ import trusted { Suspense } from "react"
 import trusted { useSuspenseQuery, QueryErrorResetBoundary } from "@tanstack/react-query"
 import trusted { ErrorBoundary } from "react-error-boundary"
 import trusted { Link } from "@tanstack/react-router"
-import { Product, ProductId, Review, CartItem } from "../types"
+import { Product, ProductId, Review } from "../types"
 import { for Product, formatPrice } from "../product"
 import { fetchProduct } from "../api"
 
@@ -11,14 +11,12 @@ import { fetchProduct } from "../api"
 fn Stars(props: { rating: number }) -> JSX.Element {
     const filled = Math.floor(props.rating)
     const empty = 5 - filled
-    const filledStars = Array.from({ length: filled }, |_, i| i)
-    const emptyStars = Array.from({ length: empty }, |_, i| filled + i)
 
-    return <div className="flex gap-0.5">
-        {filledStars |> Array.map(|i|
+    <div className="flex gap-0.5">
+        {Array.from({ length: filled }, |_, i| i) |> Array.map(|i|
             <span key={i} className="text-amber-400">*</span>
         )}
-        {emptyStars |> Array.map(|i|
+        {Array.from({ length: empty }, |_, i| filled + i) |> Array.map(|i|
             <span key={i} className="text-zinc-700">*</span>
         )}
     </div>
@@ -29,7 +27,7 @@ fn Stars(props: { rating: number }) -> JSX.Element {
 fn ReviewCard(props: { review: Review }) -> JSX.Element {
     const review = props.review
 
-    return <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
         <div className="mb-2 flex items-center justify-between">
             <span className="font-medium text-zinc-200">{review.reviewerName}</span>
             <Stars rating={review.rating} />
@@ -50,14 +48,14 @@ fn ProductDetailContent(props: {
         queryFn: async || fetchProduct(props.productId),
     })
 
-    const (product, reviews) = match data {
+    const (product, reviews) = data |> match {
         Ok(result) -> result,
-        Err(e) -> unreachable,
+        Err(_) -> unreachable,
     }
 
     const hasDiscount = product.discountPercentage > 0
 
-    return <div>
+    <div>
         <div className="mb-8 flex gap-8">
             <div className="w-1/2">
                 <img
@@ -83,7 +81,7 @@ fn ProductDetailContent(props: {
                 </span>
                 <h1 className="mb-2 text-3xl font-bold text-zinc-100">{product.title}</h1>
 
-                {match product.brand {
+                {product.brand |> match {
                     "" -> <span />,
                     brand -> <p className="mb-4 text-sm text-zinc-500">{`by ${brand}`}</p>,
                 }}
@@ -115,9 +113,9 @@ fn ProductDetailContent(props: {
                 <p className="mb-6 text-zinc-400">{product.description}</p>
 
                 <div className="mb-6 flex items-center gap-3">
-                    <span className={match product.stock {
+                    <span className={product.stock |> match {
                         0 -> "rounded-full bg-red-900/30 px-3 py-1 text-sm text-red-400",
-                        _ when product.stock < 5 -> "rounded-full bg-amber-900/30 px-3 py-1 text-sm text-amber-400",
+                        n when n < 5 -> "rounded-full bg-amber-900/30 px-3 py-1 text-sm text-amber-400",
                         _ -> "rounded-full bg-emerald-900/30 px-3 py-1 text-sm text-emerald-400",
                     }}>
                         {product |> stockLabel}
@@ -134,13 +132,13 @@ fn ProductDetailContent(props: {
 
                 <button
                     onClick={|| props.onAddToCart(product)}
-                    disabled={match product |> inStock { true -> false, false -> true }}
-                    className={match product |> inStock {
+                    disabled={!(product |> inStock)}
+                    className={product |> inStock |> match {
                         true -> "w-full rounded-xl bg-indigo-600 py-3 text-lg font-semibold text-white transition-colors hover:bg-indigo-500",
                         false -> "w-full rounded-xl bg-zinc-800 py-3 text-lg font-semibold text-zinc-600 cursor-not-allowed",
                     }}
                 >
-                    {match product |> inStock {
+                    {product |> inStock |> match {
                         true -> "Add to Cart",
                         false -> "Out of Stock",
                     }}
@@ -151,9 +149,9 @@ fn ProductDetailContent(props: {
         <div>
             <h2 className="mb-4 text-xl font-semibold">Reviews</h2>
             <div className="space-y-3">
-                {match reviews |> Array.length {
-                    0 -> <p className="text-zinc-500">No reviews yet.</p>,
-                    _ -> reviews |> Array.map(|review|
+                {reviews |> match {
+                    [] -> <p className="text-zinc-500">No reviews yet.</p>,
+                    revs -> revs |> Array.map(|review|
                         <ReviewCard key={review.reviewerName} review={review} />
                     ),
                 }}
@@ -165,7 +163,7 @@ fn ProductDetailContent(props: {
 // ── Loading skeleton ───────────────────────────────────
 
 fn DetailSkeleton() -> JSX.Element {
-    return <div className="animate-pulse">
+    <div className="animate-pulse">
         <div className="mb-8 flex gap-8">
             <div className="w-1/2">
                 <div className="h-80 rounded-xl bg-zinc-800" />
@@ -192,7 +190,7 @@ export fn ProductDetailPage(props: {
     productId: ProductId,
     onAddToCart: (Product) -> (),
 }) -> JSX.Element {
-    return <div>
+    <div>
         <Link to="/" className="mb-6 inline-block text-sm text-zinc-400 hover:text-zinc-200 transition-colors">
             {"<- Back to catalog"}
         </Link>

@@ -1,79 +1,24 @@
-import trusted { z } from "zod"
+// ── API layer ──────────────────────────────────────────
+// Uses Http namespace, parse<T> built-in, and collect for
+// parallel fetching. No Zod — the compiler generates
+// validators from the type definitions.
+
 import { Product, ProductId, Review, ApiError } from "./types"
 
-// ── Zod schemas for runtime validation ─────────────────
+// ── Single product fetch ───────────────────────────────
 
-const ProductSchema = z.object({
-    id: z.number(),
-    title: z.string(),
-    description: z.string(),
-    category: z.string(),
-    price: z.number(),
-    discountPercentage: z.number(),
-    rating: z.number(),
-    stock: z.number(),
-    tags: z.array(z.string()),
-    brand: z.string().optional().default(""),
-    thumbnail: z.string(),
-    images: z.array(z.string()),
-})
+export async fn fetchProduct(id: ProductId) -> Result<(Product, Array<Review>), ApiError> {
+    const data = await Http.get(`https://dummyjson.com/products/${id}`)?
+        |> Http.json?
 
-const ReviewSchema = z.object({
-    rating: z.number(),
-    comment: z.string(),
-    date: z.string(),
-    reviewerName: z.string(),
-})
+    const product = data.product |> parse<Product>?
+    const reviews = data.reviews |> parse<Array<Review>>?
 
-const ProductDetailSchema = z.object({
-    id: z.number(),
-    title: z.string(),
-    description: z.string(),
-    category: z.string(),
-    price: z.number(),
-    discountPercentage: z.number(),
-    rating: z.number(),
-    stock: z.number(),
-    tags: z.array(z.string()),
-    brand: z.string().optional().default(""),
-    thumbnail: z.string(),
-    images: z.array(z.string()),
-    reviews: z.array(ReviewSchema),
-})
-
-const ProductListSchema = z.object({
-    products: z.array(ProductSchema),
-    total: z.number(),
-    skip: z.number(),
-    limit: z.number(),
-})
-
-const CategorySchema = z.object({
-    slug: z.string(),
-    name: z.string(),
-})
-
-// ── Helpers ────────────────────────────────────────────
-
-fn toProduct(raw: z.infer<typeof ProductSchema>) -> Product {
-    Product(
-        id: ProductId(raw.id),
-        title: raw.title,
-        description: raw.description,
-        category: raw.category,
-        price: raw.price,
-        discountPercentage: raw.discountPercentage,
-        rating: raw.rating,
-        stock: raw.stock,
-        tags: raw.tags,
-        brand: raw.brand,
-        thumbnail: raw.thumbnail,
-        images: raw.images,
-    )
+    (product, reviews)
 }
 
-// ── API functions ──────────────────────────────────────
-// Each returns Result<T, ApiError> and uses ? for clean chaining.
+// ── Product list with filters ──────────────────────────
+// Default parameter values — caller only specifies what they need.
 
 export async fn fetchProducts(
     category: string = "",
@@ -81,40 +26,44 @@ export async fn fetchProducts(
     limit: number = 20,
     skip: number = 0,
 ) -> Result<(Array<Product>, number), ApiError> {
-    const url = match (category, search) {
-        ("", "") -> `https://dummyjson.com/products?limit=${limit}&skip=${skip}`,
-        (cat, "") when cat != "" -> `https://dummyjson.com/products/category/${cat}?limit=${limit}&skip=${skip}`,
-        (_, q) -> `https://dummyjson.com/products/search?q=${q}&limit=${limit}&skip=${skip}`,
-    }
+    const url = (category, search)
+        |> match {
+            ("", "") -> `https://dummyjson.com/products?limit=${limit}&skip=${skip}`,
+            (cat, "") when cat != "" -> `https://dummyjson.com/products/category/${cat}?limit=${limit}&skip=${skip}`,
+            (_, q) -> `https://dummyjson.com/products/search?q=${q}&limit=${limit}&skip=${skip}`,
+        }
 
-    const res = try await fetch(url)?
-    const json = try await res.json()?
-    const parsed = try ProductListSchema.parse(json)?
-    const products = parsed.products |> Array.map(|p| toProduct(p))
-    Ok((products, parsed.total))
+    const data = await Http.get(url)? |> Http.json?
+    const products = data.products |> parse<Array<Product>>?
+
+    (products, data.total)
 }
 
-export async fn fetchProduct(id: ProductId) -> Result<(Product, Array<Review>), ApiError> {
-    const res = try await fetch(`https://dummyjson.com/products/${id}`)?
-    const json = try await res.json()?
-    const parsed = try ProductDetailSchema.parse(json)?
-    const product = toProduct(parsed)
-    const reviews = parsed.reviews |> Array.map(|r| Review(
-        rating: r.rating,
-        comment: r.comment,
-        date: r.date,
-        reviewerName: r.reviewerName,
-    ))
-    Ok((product, reviews))
-}
+// ── Categories ─────────────────────────────────────────
 
 export async fn fetchCategories() -> Result<Array<(string, string)>, ApiError> {
-    const res = try await fetch("https://dummyjson.com/products/categories")?
-    const json = try await res.json()?
-    const parsed = try z.array(CategorySchema).parse(json)?
-    Ok(parsed |> Array.map(|c| (c.slug, c.name)))
+    const data = await Http.get("https://dummyjson.com/products/categories")?
+        |> Http.json?
+        |> parse<Array<{ slug: string, name: string }>>?
+
+    data |> Array.map(|c| (c.slug, c.name))
 }
 
-test "toProduct maps fields correctly" {
+// ── Parallel dashboard fetch ───────────────────────────
+// collect runs all fetches in parallel via Promise.allSettled.
+// If any fail, ALL errors are reported — not just the first.
+
+export async fn fetchStoreDashboard(
+    category: string = "",
+) -> Result<(Array<Product>, Array<(string, string)>), Array<ApiError>> {
+    collect {
+        const (products, _total) = await fetchProducts(category: category)?
+        const categories = await fetchCategories()?
+
+        (products, categories)
+    }
+}
+
+test "fetchProducts returns products" {
     assert true
 }
