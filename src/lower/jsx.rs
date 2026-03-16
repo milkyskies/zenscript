@@ -17,7 +17,31 @@ impl<'src> Lowerer<'src> {
         }
 
         let name = idents.first()?.clone();
-        let self_closing = self.has_token(node, SyntaxKind::SLASH);
+        // Self-closing: SLASH appears right before GREATER_THAN (not after LESS_THAN)
+        let self_closing = {
+            let mut prev_was_slash = false;
+            let mut found = false;
+            for token in node.children_with_tokens() {
+                if let Some(token) = token.as_token() {
+                    if token.kind() == SyntaxKind::SLASH {
+                        prev_was_slash = true;
+                    } else if token.kind() == SyntaxKind::GREATER_THAN && prev_was_slash {
+                        found = true;
+                        break;
+                    } else if !token.kind().is_trivia() {
+                        prev_was_slash = false;
+                    }
+                }
+            }
+            // Only truly self-closing if there are no children (JSX_EXPR_CHILD, JSX_TEXT, JSX_ELEMENT)
+            found
+                && !node.children().any(|c| {
+                    matches!(
+                        c.kind(),
+                        SyntaxKind::JSX_EXPR_CHILD | SyntaxKind::JSX_TEXT | SyntaxKind::JSX_ELEMENT
+                    )
+                })
+        };
 
         let mut props = Vec::new();
         let mut children = Vec::new();
@@ -91,7 +115,11 @@ impl<'src> Lowerer<'src> {
         let idents = self.collect_idents_direct(node);
         let name = idents.first()?.clone();
 
-        let value = self.lower_first_expr(node);
+        let value = if self.has_token(node, SyntaxKind::EQUAL) {
+            self.lower_expr_after_eq(node)
+        } else {
+            None
+        };
 
         Some(JsxProp { name, value, span })
     }

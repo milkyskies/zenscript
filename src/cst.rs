@@ -95,7 +95,13 @@ impl<'src> CstParser<'src> {
                 self.parse_const_decl();
                 self.builder.finish_node();
             }
-            Some(TokenKind::Fn) | Some(TokenKind::Async) => {
+            Some(TokenKind::Fn) => {
+                self.builder
+                    .start_node_at(checkpoint, SyntaxKind::ITEM.into());
+                self.parse_function_decl();
+                self.builder.finish_node();
+            }
+            Some(TokenKind::Async) if self.peek_is(TokenKind::Fn) => {
                 self.builder
                     .start_node_at(checkpoint, SyntaxKind::ITEM.into());
                 self.parse_function_decl();
@@ -147,6 +153,12 @@ impl<'src> CstParser<'src> {
         self.expect(TokenKind::Import);
         self.eat_trivia();
 
+        // `import trusted { ... }` — module-level trusted
+        if self.at_identifier("trusted") {
+            self.bump(); // trusted (emitted as IDENT token)
+            self.eat_trivia();
+        }
+
         if self.at(TokenKind::LeftBrace) {
             self.bump(); // {
             self.eat_trivia();
@@ -182,6 +194,11 @@ impl<'src> CstParser<'src> {
 
     fn parse_import_specifier(&mut self) {
         self.builder.start_node(SyntaxKind::IMPORT_SPECIFIER.into());
+        // `trusted foo` — per-specifier trusted
+        if self.at_identifier("trusted") && self.peek_is_ident() {
+            self.bump(); // trusted
+            self.eat_trivia();
+        }
         self.expect_ident();
         self.eat_trivia();
 
@@ -278,8 +295,21 @@ impl<'src> CstParser<'src> {
 
     fn parse_param(&mut self) {
         self.builder.start_node(SyntaxKind::PARAM.into());
-        self.expect_ident();
-        self.eat_trivia();
+
+        if self.at(TokenKind::LeftBrace) {
+            // Destructured param: { name, age }
+            self.bump(); // {
+            self.eat_trivia();
+            self.parse_comma_separated(Self::expect_ident_item, TokenKind::RightBrace);
+            self.expect(TokenKind::RightBrace);
+            self.eat_trivia();
+        } else if self.at(TokenKind::SelfKw) {
+            self.bump(); // self
+            self.eat_trivia();
+        } else {
+            self.expect_ident();
+            self.eat_trivia();
+        }
 
         if self.at(TokenKind::Colon) {
             self.bump();
@@ -351,10 +381,36 @@ impl<'src> CstParser<'src> {
             self.builder.start_node(SyntaxKind::TYPE_DEF_RECORD.into());
             self.parse_record_fields();
             self.builder.finish_node();
+        } else if self.is_newtype_constructor() {
+            // Single-variant newtype: `type ProductId = ProductId(number)`
+            // Parse as a union with one variant
+            self.builder.start_node(SyntaxKind::TYPE_DEF_UNION.into());
+            self.builder.start_node(SyntaxKind::VARIANT.into());
+            self.expect_ident(); // variant name
+            self.eat_trivia();
+            if self.at(TokenKind::LeftParen) {
+                self.bump();
+                self.eat_trivia();
+                self.parse_comma_separated(Self::parse_variant_field, TokenKind::RightParen);
+                self.expect(TokenKind::RightParen);
+            }
+            self.builder.finish_node();
+            self.builder.finish_node();
         } else {
             self.builder.start_node(SyntaxKind::TYPE_DEF_ALIAS.into());
             self.parse_type_expr();
             self.builder.finish_node();
+        }
+    }
+
+    /// Check if the current position is a newtype constructor: `Uppercase(...)`.
+    fn is_newtype_constructor(&self) -> bool {
+        if let Some(TokenKind::Identifier(name)) = self.current_kind()
+            && name.starts_with(char::is_uppercase)
+        {
+            self.peek_is(TokenKind::LeftParen)
+        } else {
+            false
         }
     }
 
@@ -749,28 +805,7 @@ impl<'src> CstParser<'src> {
     // ── Expressions ─────────────────────────────────────────────
 
     fn parse_expr(&mut self) {
-        self.parse_pipe_expr();
-    }
-
-    fn parse_pipe_expr(&mut self) {
-        let checkpoint = self.builder.checkpoint();
         self.parse_or_expr();
-
-        while self.at(TokenKind::Pipe) {
-            self.builder
-                .start_node_at(checkpoint, SyntaxKind::PIPE_EXPR.into());
-            self.bump(); // |>
-            self.eat_trivia();
-
-            // Pipe into match: `x |> match { ... }`
-            if self.at(TokenKind::Match) {
-                self.parse_subjectless_match_expr();
-            } else {
-                self.parse_or_expr();
-            }
-
-            self.builder.finish_node();
-        }
     }
 
     fn parse_or_expr(&mut self) {
@@ -803,14 +838,35 @@ impl<'src> CstParser<'src> {
 
     fn parse_equality_expr(&mut self) {
         let checkpoint = self.builder.checkpoint();
-        self.parse_comparison_expr();
+        self.parse_pipe_expr();
 
         while self.at(TokenKind::EqualEqual) || self.at(TokenKind::BangEqual) {
             self.builder
                 .start_node_at(checkpoint, SyntaxKind::BINARY_EXPR.into());
             self.bump();
             self.eat_trivia();
-            self.parse_comparison_expr();
+            self.parse_pipe_expr();
+            self.builder.finish_node();
+        }
+    }
+
+    fn parse_pipe_expr(&mut self) {
+        let checkpoint = self.builder.checkpoint();
+        self.parse_comparison_expr();
+
+        while self.at(TokenKind::Pipe) {
+            self.builder
+                .start_node_at(checkpoint, SyntaxKind::PIPE_EXPR.into());
+            self.bump(); // |>
+            self.eat_trivia();
+
+            // Pipe into match: `x |> match { ... }`
+            if self.at(TokenKind::Match) {
+                self.parse_subjectless_match_expr();
+            } else {
+                self.parse_comparison_expr();
+            }
+
             self.builder.finish_node();
         }
     }
@@ -819,10 +875,11 @@ impl<'src> CstParser<'src> {
         let checkpoint = self.builder.checkpoint();
         self.parse_additive_expr();
 
-        while self.at(TokenKind::LessThan)
+        while (self.at(TokenKind::LessThan)
             || self.at(TokenKind::GreaterThan)
             || self.at(TokenKind::LessEqual)
-            || self.at(TokenKind::GreaterEqual)
+            || self.at(TokenKind::GreaterEqual))
+            && !self.preceded_by_newline()
         {
             self.builder
                 .start_node_at(checkpoint, SyntaxKind::BINARY_EXPR.into());
@@ -899,7 +956,22 @@ impl<'src> CstParser<'src> {
                         .start_node_at(checkpoint, SyntaxKind::MEMBER_EXPR.into());
                     self.bump();
                     self.eat_trivia();
-                    self.expect_ident();
+                    // Accept identifiers, banned keywords, and other keywords after `.`
+                    // (e.g., `Array.any(...)`, `Number.parse(...)`)
+                    if self.is_ident()
+                        || matches!(
+                            self.current_kind(),
+                            Some(TokenKind::Banned(_))
+                                | Some(TokenKind::Parse)
+                                | Some(TokenKind::Match)
+                                | Some(TokenKind::For)
+                                | Some(TokenKind::Type)
+                        )
+                    {
+                        self.bump();
+                    } else {
+                        self.expect_ident();
+                    }
                     self.builder.finish_node();
                 }
                 Some(TokenKind::LeftBracket) => {
@@ -910,6 +982,21 @@ impl<'src> CstParser<'src> {
                     self.parse_expr();
                     self.eat_trivia();
                     self.expect(TokenKind::RightBracket);
+                    self.builder.finish_node();
+                }
+                Some(TokenKind::LessThan) if self.is_generic_call() => {
+                    // Generic call: `f<T>(args)` or `f<T, U>(args)`
+                    self.builder
+                        .start_node_at(checkpoint, SyntaxKind::CALL_EXPR.into());
+                    self.bump(); // <
+                    self.eat_trivia();
+                    self.parse_comma_separated(Self::parse_type_expr, TokenKind::GreaterThan);
+                    self.expect(TokenKind::GreaterThan);
+                    self.eat_trivia();
+                    self.expect(TokenKind::LeftParen);
+                    self.eat_trivia();
+                    self.parse_comma_separated(Self::parse_call_arg, TokenKind::RightParen);
+                    self.expect(TokenKind::RightParen);
                     self.builder.finish_node();
                 }
                 Some(TokenKind::LeftParen) => {
@@ -999,6 +1086,14 @@ impl<'src> CstParser<'src> {
                 self.builder.finish_node();
             }
 
+            Some(TokenKind::Try) => {
+                self.builder.start_node(SyntaxKind::TRY_EXPR.into());
+                self.bump(); // try
+                self.eat_trivia();
+                self.parse_expr();
+                self.builder.finish_node();
+            }
+
             Some(TokenKind::Match) => self.parse_match_expr(),
             Some(TokenKind::Collect) => {
                 self.builder.start_node(SyntaxKind::COLLECT_EXPR.into());
@@ -1007,7 +1102,13 @@ impl<'src> CstParser<'src> {
                 self.parse_block_expr();
                 self.builder.finish_node();
             }
-            Some(TokenKind::LeftBrace) => self.parse_block_expr(),
+            Some(TokenKind::LeftBrace) => {
+                if self.is_object_literal() {
+                    self.parse_object_literal();
+                } else {
+                    self.parse_block_expr();
+                }
+            }
 
             Some(TokenKind::LeftBracket) => {
                 self.builder.start_node(SyntaxKind::ARRAY_EXPR.into());
@@ -1021,9 +1122,11 @@ impl<'src> CstParser<'src> {
             Some(TokenKind::LeftParen) => {
                 if self.peek_is(TokenKind::RightParen) {
                     // Unit value: ()
+                    self.builder.start_node(SyntaxKind::TUPLE_EXPR.into());
                     self.bump(); // (
                     self.eat_trivia();
                     self.bump(); // )
+                    self.builder.finish_node();
                 } else if self.is_paren_tuple_expr() {
                     // Tuple: (expr, expr, ...)
                     self.builder.start_node(SyntaxKind::TUPLE_EXPR.into());
@@ -1047,6 +1150,23 @@ impl<'src> CstParser<'src> {
 
             Some(TokenKind::Dot) => {
                 self.parse_dot_shorthand();
+            }
+
+            Some(TokenKind::Async) => {
+                // `async || { ... }` or `async |x| { ... }`
+                self.builder.start_node(SyntaxKind::ARROW_EXPR.into());
+                self.bump(); // async
+                self.eat_trivia();
+                if self.at(TokenKind::PipePipe) {
+                    self.bump(); // ||
+                    self.eat_trivia();
+                    self.parse_expr();
+                } else if self.at(TokenKind::VerticalBar) {
+                    self.parse_pipe_lambda_inner();
+                } else {
+                    self.error("expected '||' or '|' after 'async'");
+                }
+                self.builder.finish_node();
             }
 
             Some(TokenKind::VerticalBar) => {
@@ -1257,13 +1377,18 @@ impl<'src> CstParser<'src> {
     /// Parse `|params| body` pipe lambda.
     fn parse_pipe_lambda(&mut self) {
         self.builder.start_node(SyntaxKind::ARROW_EXPR.into());
+        self.parse_pipe_lambda_inner();
+        self.builder.finish_node();
+    }
+
+    /// Parse the inner `|params| body` of a pipe lambda (without wrapping in ARROW_EXPR).
+    fn parse_pipe_lambda_inner(&mut self) {
         self.expect(TokenKind::VerticalBar);
         self.eat_trivia();
         self.parse_comma_separated(Self::parse_param, TokenKind::VerticalBar);
         self.expect(TokenKind::VerticalBar);
         self.eat_trivia();
         self.parse_expr();
-        self.builder.finish_node();
     }
 
     // ── Match Expression ─────────────────────────────────────────
@@ -1461,6 +1586,59 @@ impl<'src> CstParser<'src> {
         }
     }
 
+    // ── Object Literal ───────────────────────────────────────────
+
+    /// Check if the current `{` starts an object literal rather than a block.
+    /// An object literal has the form `{ ident: expr, ... }` or `{ ident, ... }` (shorthand).
+    fn is_object_literal(&self) -> bool {
+        // Look ahead past trivia after `{`
+        let mut i = self.pos + 1;
+        while i < self.tokens.len() && self.tokens[i].kind.is_trivia() {
+            i += 1;
+        }
+        if i >= self.tokens.len() {
+            return false;
+        }
+        // Must be an identifier (not a keyword)
+        if !matches!(self.tokens[i].kind, TokenKind::Identifier(_)) {
+            return false;
+        }
+        // Next non-trivia token after the ident must be `:` (key: value) or `,` or `}` (shorthand)
+        i += 1;
+        while i < self.tokens.len() && self.tokens[i].kind.is_trivia() {
+            i += 1;
+        }
+        if i >= self.tokens.len() {
+            return false;
+        }
+        matches!(
+            self.tokens[i].kind,
+            TokenKind::Colon | TokenKind::Comma | TokenKind::RightBrace
+        )
+    }
+
+    fn parse_object_literal(&mut self) {
+        self.builder.start_node(SyntaxKind::OBJECT_EXPR.into());
+        self.expect(TokenKind::LeftBrace);
+        self.eat_trivia();
+        self.parse_comma_separated(Self::parse_object_field, TokenKind::RightBrace);
+        self.expect(TokenKind::RightBrace);
+        self.builder.finish_node();
+    }
+
+    fn parse_object_field(&mut self) {
+        self.builder.start_node(SyntaxKind::OBJECT_FIELD.into());
+        self.expect_ident();
+        self.eat_trivia();
+        if self.at(TokenKind::Colon) {
+            self.bump(); // :
+            self.eat_trivia();
+            self.parse_expr();
+        }
+        // If no colon, it's shorthand: { name } means { name: name }
+        self.builder.finish_node();
+    }
+
     // ── Block Expression ─────────────────────────────────────────
 
     fn parse_block_expr(&mut self) {
@@ -1656,6 +1834,78 @@ impl<'src> CstParser<'src> {
 
     fn at_end(&self) -> bool {
         self.pos >= self.tokens.len() || self.at(TokenKind::Eof)
+    }
+
+    /// Check if the previous trivia token contains a newline.
+    /// Used to prevent `<` on a new line from being parsed as comparison.
+    fn preceded_by_newline(&self) -> bool {
+        if self.pos == 0 {
+            return false;
+        }
+        // Look at the previous token(s) — if we see a whitespace token with \n, it's a newline
+        let mut i = self.pos - 1;
+        loop {
+            if self.tokens[i].kind.is_trivia() {
+                if let TokenKind::Whitespace = &self.tokens[i].kind {
+                    let text = &self.tokens[i].span;
+                    // Check if the whitespace span contains a newline
+                    let ws_text = &self.source[text.start..text.end];
+                    if ws_text.contains('\n') {
+                        return true;
+                    }
+                }
+                if i == 0 {
+                    break;
+                }
+                i -= 1;
+            } else {
+                break;
+            }
+        }
+        false
+    }
+
+    /// Check if the current `<` starts a generic call: `f<Type>(...)`.
+    /// Looks ahead for balanced `<>` followed by `(`.
+    fn is_generic_call(&self) -> bool {
+        let mut depth = 0;
+        let mut i = self.pos; // at `<`
+        while i < self.tokens.len() {
+            match &self.tokens[i].kind {
+                TokenKind::LessThan => depth += 1,
+                TokenKind::GreaterThan => {
+                    depth -= 1;
+                    if depth == 0 {
+                        // Check if the next non-trivia token is `(`
+                        i += 1;
+                        while i < self.tokens.len() && self.tokens[i].kind.is_trivia() {
+                            i += 1;
+                        }
+                        return i < self.tokens.len()
+                            && self.tokens[i].kind == TokenKind::LeftParen;
+                    }
+                }
+                // These tokens can't appear in type arguments
+                TokenKind::LeftBrace
+                | TokenKind::RightBrace
+                | TokenKind::Semicolon
+                | TokenKind::Equal => return false,
+                _ => {}
+            }
+            i += 1;
+        }
+        false
+    }
+
+    fn peek_is_ident(&self) -> bool {
+        let mut i = self.pos + 1;
+        while i < self.tokens.len() {
+            if !self.tokens[i].kind.is_trivia() {
+                return matches!(self.tokens[i].kind, TokenKind::Identifier(_));
+            }
+            i += 1;
+        }
+        false
     }
 
     fn peek_is(&self, kind: TokenKind) -> bool {

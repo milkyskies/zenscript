@@ -7,26 +7,38 @@ impl<'src> Lowerer<'src> {
         match node.kind() {
             SyntaxKind::PIPE_EXPR => {
                 // Check for pipe-into-match: `x |> match { ... }`
-                // If the right child is a MATCH_EXPR without a subject, desugar
+                // If the last child node is a MATCH_EXPR without a subject, desugar
                 // to `match x { ... }` by using the left side as the match subject.
-                let children: Vec<_> = node.children().collect();
-                let has_pipe_match = children.len() >= 2
-                    && children.last().is_some_and(|c| {
-                        c.kind() == SyntaxKind::MATCH_EXPR && self.is_subjectless_match(c)
-                    });
+                let last_child_node = node.children().last();
+                let has_pipe_match = last_child_node.as_ref().is_some_and(|c| {
+                    c.kind() == SyntaxKind::MATCH_EXPR && self.is_subjectless_match(c)
+                });
 
                 if has_pipe_match {
-                    // Lower the left side (everything before the match)
-                    let left_nodes: Vec<_> = children[..children.len() - 1].to_vec();
-                    let left = if left_nodes.len() == 1 {
-                        self.lower_expr_node(&left_nodes[0])
-                    } else {
-                        self.lower_token_expr(node)
-                    };
-                    let left = left?;
+                    // Lower the left side: collect all expressions except the match
+                    let match_node = last_child_node?;
+                    let mut left_exprs = Vec::new();
+                    for child_or_token in node.children_with_tokens() {
+                        match child_or_token {
+                            rowan::NodeOrToken::Node(ref child) => {
+                                if child.kind() != SyntaxKind::MATCH_EXPR
+                                    && let Some(expr) = self.lower_expr_node(child)
+                                {
+                                    left_exprs.push(expr);
+                                }
+                            }
+                            rowan::NodeOrToken::Token(ref token) => {
+                                if token.kind() != SyntaxKind::PIPE
+                                    && let Some(expr) = self.token_to_expr(token)
+                                {
+                                    left_exprs.push(expr);
+                                }
+                            }
+                        }
+                    }
+                    let left = left_exprs.into_iter().next()?;
 
                     // Lower the match arms from the MATCH_EXPR node
-                    let match_node = children.last()?;
                     let mut arms = Vec::new();
                     for child in match_node.children() {
                         if child.kind() == SyntaxKind::MATCH_ARM
@@ -49,13 +61,29 @@ impl<'src> Lowerer<'src> {
                         let mut iter = exprs.into_iter();
                         let left = iter.next()?;
                         let right = iter.next()?;
-                        Some(Expr {
-                            span: self.node_span(node),
-                            kind: ExprKind::Pipe {
-                                left: Box::new(left),
-                                right: Box::new(right),
-                            },
-                        })
+
+                        // `a |> f?` restructure: lift `?` above the pipe → `(a |> f)?`
+                        if let ExprKind::Unwrap(inner) = right.kind {
+                            let pipe_span = self.node_span(node);
+                            Some(Expr {
+                                span: pipe_span,
+                                kind: ExprKind::Unwrap(Box::new(Expr {
+                                    span: pipe_span,
+                                    kind: ExprKind::Pipe {
+                                        left: Box::new(left),
+                                        right: inner,
+                                    },
+                                })),
+                            })
+                        } else {
+                            Some(Expr {
+                                span: self.node_span(node),
+                                kind: ExprKind::Pipe {
+                                    left: Box::new(left),
+                                    right: Box::new(right),
+                                },
+                            })
+                        }
                     } else {
                         exprs.into_iter().next()
                     }
@@ -94,6 +122,14 @@ impl<'src> Lowerer<'src> {
                 })
             }
 
+            SyntaxKind::TRY_EXPR => {
+                let operand = self.lower_child_exprs(node).into_iter().next()?;
+                Some(Expr {
+                    span,
+                    kind: ExprKind::Try(Box::new(operand)),
+                })
+            }
+
             SyntaxKind::AWAIT_EXPR => {
                 let operand = self.lower_child_exprs(node).into_iter().next()?;
                 Some(Expr {
@@ -113,7 +149,22 @@ impl<'src> Lowerer<'src> {
             SyntaxKind::MEMBER_EXPR => {
                 let exprs = self.lower_child_exprs(node);
                 let object = exprs.into_iter().next()?;
-                let idents = self.collect_idents(node);
+                // Collect idents including banned keywords and other keywords used as field names
+                let mut idents = self.collect_idents(node);
+                for token in node.children_with_tokens() {
+                    if let Some(token) = token.as_token()
+                        && matches!(
+                            token.kind(),
+                            SyntaxKind::BANNED
+                                | SyntaxKind::KW_PARSE
+                                | SyntaxKind::KW_MATCH
+                                | SyntaxKind::KW_FOR
+                                | SyntaxKind::KW_TYPE
+                        )
+                    {
+                        idents.push(token.text().to_string());
+                    }
+                }
                 let field = idents.last()?.clone();
                 Some(Expr {
                     span,
@@ -221,6 +272,7 @@ impl<'src> Lowerer<'src> {
             SyntaxKind::ARROW_EXPR => {
                 let mut params = Vec::new();
                 let mut body = None;
+                let async_fn = self.has_keyword(node, SyntaxKind::KW_ASYNC);
 
                 for child in node.children() {
                     match child.kind() {
@@ -245,7 +297,7 @@ impl<'src> Lowerer<'src> {
                 Some(Expr {
                     span,
                     kind: ExprKind::Arrow {
-                        async_fn: false,
+                        async_fn,
                         params,
                         body: Box::new(body?),
                     },
@@ -402,6 +454,29 @@ impl<'src> Lowerer<'src> {
                 })
             }
 
+            SyntaxKind::OBJECT_EXPR => {
+                let mut fields = Vec::new();
+                for child in node.children() {
+                    if child.kind() == SyntaxKind::OBJECT_FIELD {
+                        let idents = self.collect_idents(&child);
+                        if let Some(key) = idents.first() {
+                            let value = self.lower_first_expr(&child).unwrap_or_else(|| {
+                                // Shorthand: { name } means { name: name }
+                                Expr {
+                                    span: self.node_span(&child),
+                                    kind: ExprKind::Identifier(key.clone()),
+                                }
+                            });
+                            fields.push((key.clone(), value));
+                        }
+                    }
+                }
+                Some(Expr {
+                    span,
+                    kind: ExprKind::Object(fields),
+                })
+            }
+
             SyntaxKind::ARRAY_EXPR => {
                 let elements = self.lower_child_exprs_and_tokens(node);
                 Some(Expr {
@@ -412,10 +487,18 @@ impl<'src> Lowerer<'src> {
 
             SyntaxKind::TUPLE_EXPR => {
                 let elements = self.lower_child_exprs_and_tokens(node);
-                Some(Expr {
-                    span,
-                    kind: ExprKind::Tuple(elements),
-                })
+                if elements.is_empty() {
+                    // Empty tuple: () → Unit
+                    Some(Expr {
+                        span,
+                        kind: ExprKind::Unit,
+                    })
+                } else {
+                    Some(Expr {
+                        span,
+                        kind: ExprKind::Tuple(elements),
+                    })
+                }
             }
 
             SyntaxKind::JSX_ELEMENT => {
@@ -440,8 +523,8 @@ impl<'src> Lowerer<'src> {
 
                 // Check for binary op and RHS expression
                 let predicate = self.find_binary_op(node).and_then(|op| {
-                    // Find the RHS expression (child node or token after the operator)
-                    let rhs = self.lower_first_expr(node)?;
+                    // Find the RHS expression after the binary operator
+                    let rhs = self.lower_expr_after_binary_op(node)?;
                     Some((op, Box::new(rhs)))
                 });
 
@@ -452,6 +535,27 @@ impl<'src> Lowerer<'src> {
             }
 
             SyntaxKind::ERROR => None,
+
+            // Type expressions, patterns, and other non-expression nodes
+            SyntaxKind::TYPE_EXPR
+            | SyntaxKind::TYPE_EXPR_FUNCTION
+            | SyntaxKind::TYPE_EXPR_RECORD
+            | SyntaxKind::TYPE_EXPR_TUPLE
+            | SyntaxKind::TYPE_DEF_RECORD
+            | SyntaxKind::TYPE_DEF_UNION
+            | SyntaxKind::TYPE_DEF_ALIAS
+            | SyntaxKind::TYPE_DEF_STRING_UNION
+            | SyntaxKind::PARAM
+            | SyntaxKind::PARAM_LIST
+            | SyntaxKind::IMPORT_DECL
+            | SyntaxKind::IMPORT_SPECIFIER
+            | SyntaxKind::IMPORT_FOR_SPECIFIER
+            | SyntaxKind::RECORD_FIELD
+            | SyntaxKind::VARIANT
+            | SyntaxKind::VARIANT_FIELD
+            | SyntaxKind::MATCH_GUARD
+            | SyntaxKind::DERIVING_CLAUSE
+            | SyntaxKind::OBJECT_FIELD => None,
 
             // For other kinds, try to extract token-level expressions
             _ => self.lower_token_expr_in_node(node),
@@ -474,24 +578,21 @@ impl<'src> Lowerer<'src> {
     }
 
     pub(super) fn lower_child_exprs(&mut self, node: &SyntaxNode) -> Vec<Expr> {
+        // Walk children_with_tokens so we pick up both child nodes (like CALL_EXPR)
+        // and bare tokens (like NUMBER, IDENT) that represent expression operands.
         let mut exprs = Vec::new();
-        let mut found_first_token_expr = false;
 
-        for child in node.children() {
-            if let Some(expr) = self.lower_expr_node(&child) {
-                exprs.push(expr);
-            }
-        }
-
-        // If no child expr nodes, try token exprs
-        if exprs.is_empty() {
-            for token in node.children_with_tokens() {
-                if let Some(token) = token.as_token()
-                    && let Some(expr) = self.token_to_expr(token)
-                    && (!found_first_token_expr || token.kind() != SyntaxKind::IDENT)
-                {
-                    exprs.push(expr);
-                    found_first_token_expr = true;
+        for child_or_token in node.children_with_tokens() {
+            match child_or_token {
+                rowan::NodeOrToken::Node(child) => {
+                    if let Some(expr) = self.lower_expr_node(&child) {
+                        exprs.push(expr);
+                    }
+                }
+                rowan::NodeOrToken::Token(token) => {
+                    if let Some(expr) = self.token_to_expr(&token) {
+                        exprs.push(expr);
+                    }
                 }
             }
         }
@@ -623,11 +724,78 @@ impl<'src> Lowerer<'src> {
         if has_colon {
             let idents = self.collect_idents_direct(node);
             let label = idents.first()?.clone();
-            let value = self.lower_first_expr(node)?;
+            // Find the expression after the colon
+            let value = self.lower_expr_after_colon(node).unwrap_or_else(|| {
+                // Punning: `label:` without value → `label: label`
+                Expr {
+                    kind: ExprKind::Identifier(label.clone()),
+                    span: self.node_span(node),
+                }
+            });
             Some(Arg::Named { label, value })
         } else {
             let expr = self.lower_first_expr(node)?;
             Some(Arg::Positional(expr))
         }
+    }
+
+    fn lower_expr_after_binary_op(&mut self, node: &SyntaxNode) -> Option<Expr> {
+        let mut past_op = false;
+        for child_or_token in node.children_with_tokens() {
+            match child_or_token {
+                rowan::NodeOrToken::Token(token) => {
+                    let is_binop = matches!(
+                        token.kind(),
+                        SyntaxKind::EQUAL_EQUAL
+                            | SyntaxKind::BANG_EQUAL
+                            | SyntaxKind::LESS_THAN
+                            | SyntaxKind::GREATER_THAN
+                            | SyntaxKind::LESS_EQUAL
+                            | SyntaxKind::GREATER_EQUAL
+                            | SyntaxKind::PLUS
+                            | SyntaxKind::MINUS
+                            | SyntaxKind::STAR
+                            | SyntaxKind::SLASH
+                            | SyntaxKind::PERCENT
+                    );
+                    if is_binop {
+                        past_op = true;
+                        continue;
+                    }
+                    if past_op && let Some(expr) = self.token_to_expr(&token) {
+                        return Some(expr);
+                    }
+                }
+                rowan::NodeOrToken::Node(child) => {
+                    if past_op {
+                        return self.lower_expr_node(&child);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn lower_expr_after_colon(&mut self, node: &SyntaxNode) -> Option<Expr> {
+        let mut past_colon = false;
+        for child_or_token in node.children_with_tokens() {
+            match child_or_token {
+                rowan::NodeOrToken::Token(token) => {
+                    if token.kind() == SyntaxKind::COLON {
+                        past_colon = true;
+                        continue;
+                    }
+                    if past_colon && let Some(expr) = self.token_to_expr(&token) {
+                        return Some(expr);
+                    }
+                }
+                rowan::NodeOrToken::Node(child) => {
+                    if past_colon {
+                        return self.lower_expr_node(&child);
+                    }
+                }
+            }
+        }
+        None
     }
 }

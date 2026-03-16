@@ -161,8 +161,15 @@ impl<'src> Lowerer<'src> {
             }
         }
 
+        // Check for module-level `trusted` keyword (an IDENT "trusted" directly in IMPORT_DECL)
+        let module_trusted = node.children_with_tokens().any(|child| {
+            child
+                .as_token()
+                .is_some_and(|t| t.kind() == SyntaxKind::IDENT && t.text() == "trusted")
+        });
+
         Some(ImportDecl {
-            trusted: false,
+            trusted: module_trusted,
             specifiers,
             for_specifiers,
             source,
@@ -181,13 +188,20 @@ impl<'src> Lowerer<'src> {
         let span = self.node_span(node);
         let idents = self.collect_idents(node);
 
-        let name = idents.first()?.clone();
-        let alias = idents.get(1).cloned();
+        // Check for per-specifier `trusted` — appears as first IDENT "trusted"
+        let per_trusted = idents.first().is_some_and(|name| name == "trusted") && idents.len() >= 2;
+
+        let (name, alias) = if per_trusted {
+            // "trusted", "name" [, "alias"]
+            (idents[1].clone(), idents.get(2).cloned())
+        } else {
+            (idents.first()?.clone(), idents.get(1).cloned())
+        };
 
         Some(ImportSpecifier {
             name,
             alias,
-            trusted: false,
+            trusted: per_trusted,
             span,
         })
     }
@@ -198,11 +212,11 @@ impl<'src> Lowerer<'src> {
         let mut binding = None;
         let mut type_ann = None;
 
-        // Determine binding type by looking at tokens
-        let idents = self.collect_idents(node);
-        let has_lbracket = self.has_token(node, SyntaxKind::L_BRACKET);
-        let has_lbrace = self.has_token(node, SyntaxKind::L_BRACE);
-        let has_lparen = self.has_token(node, SyntaxKind::L_PAREN);
+        // Collect idents only before `=` to avoid capturing value-side idents
+        let idents = self.collect_idents_before_eq(node);
+        let has_lbracket = self.has_token_before_eq(node, SyntaxKind::L_BRACKET);
+        let has_lbrace = self.has_token_before_eq(node, SyntaxKind::L_BRACE);
+        let has_lparen = self.has_token_before_eq(node, SyntaxKind::L_PAREN);
 
         if has_lbracket {
             binding = Some(ConstBinding::Array(idents));
@@ -286,7 +300,16 @@ impl<'src> Lowerer<'src> {
     fn lower_param(&mut self, node: &SyntaxNode) -> Option<Param> {
         let span = self.node_span(node);
         let idents = self.collect_idents(node);
-        let name = idents.first()?.clone();
+        let has_lbrace = self.has_token(node, SyntaxKind::L_BRACE);
+
+        let (name, destructure) = if has_lbrace {
+            // Destructured param: { name, age }
+            let fields: Vec<String> = idents.clone();
+            let synthetic_name = format!("_{}", fields.join("_"));
+            (synthetic_name, Some(ParamDestructure::Object(fields)))
+        } else {
+            (idents.first()?.clone(), None)
+        };
 
         let mut type_ann = None;
 
@@ -303,7 +326,7 @@ impl<'src> Lowerer<'src> {
             name,
             type_ann,
             default,
-            destructure: None,
+            destructure,
             span,
         })
     }
@@ -829,6 +852,37 @@ impl<'src> Lowerer<'src> {
         (line, col)
     }
 
+    /// Collect ident tokens that appear before the `=` sign.
+    fn collect_idents_before_eq(&self, node: &SyntaxNode) -> Vec<String> {
+        let mut idents = Vec::new();
+        for token in node.children_with_tokens() {
+            if let Some(token) = token.as_token() {
+                if token.kind() == SyntaxKind::EQUAL {
+                    break;
+                }
+                if token.kind() == SyntaxKind::IDENT {
+                    idents.push(token.text().to_string());
+                }
+            }
+        }
+        idents
+    }
+
+    /// Check if a token kind appears before the `=` sign.
+    fn has_token_before_eq(&self, node: &SyntaxNode, kind: SyntaxKind) -> bool {
+        for token in node.children_with_tokens() {
+            if let Some(token) = token.as_token() {
+                if token.kind() == SyntaxKind::EQUAL {
+                    return false;
+                }
+                if token.kind() == kind {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     fn collect_idents(&self, node: &SyntaxNode) -> Vec<String> {
         let mut idents = Vec::new();
         for token in node.children_with_tokens() {
@@ -1319,10 +1373,7 @@ mod tests {
 
     #[test]
     fn pipe_basic() {
-        // Pipe expressions are lowered correctly through the full parser path
-        let prog = crate::parser::Parser::new("1 |> f(_)")
-            .parse_program()
-            .unwrap();
+        let prog = lower("1 |> f(_)");
         let ItemKind::Expr(ref expr) = prog.items[0].kind else {
             panic!("expected Expr")
         };
