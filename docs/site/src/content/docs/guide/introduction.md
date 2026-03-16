@@ -35,7 +35,7 @@ export fn App() -> JSX.Element {
     |> filter(.done)
     |> length
 
-  return <div>
+  <div>
     <h1>Todos ({completedCount} done)</h1>
   </div>
 }

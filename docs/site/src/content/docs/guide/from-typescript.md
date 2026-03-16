@@ -25,7 +25,7 @@ function greet(name: string): string {
 
 // Floe
 fn greet(name: string) -> string {
-  return `Hello, ${name}!`
+  `Hello, ${name}!`
 }
 ```
 
@@ -183,6 +183,7 @@ fn find(id: string) -> Option<User> {
 | `throw` | Invisible error paths | `Result<T, E>` |
 | `function` | Verbose | `fn` |
 | `=>` | Two function syntaxes | `\|x\|` for lambdas |
+| `return` | Implicit returns | Last expression is the return value |
 
 ## Incremental Adoption
 

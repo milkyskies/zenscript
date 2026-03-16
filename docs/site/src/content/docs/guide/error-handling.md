@@ -39,7 +39,7 @@ Propagate errors early instead of nesting matches:
 fn processOrder(id: string) -> Result<Receipt, Error> {
   const order = fetchOrder(id)?       // returns Err early if it fails
   const payment = chargeCard(order)?  // same here
-  return Ok(Receipt(order, payment))
+  Ok(Receipt(order, payment))
 }
 ```
 

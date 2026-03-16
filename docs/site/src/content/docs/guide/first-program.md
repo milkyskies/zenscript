@@ -8,7 +8,7 @@ Create a file called `hello.fl`:
 
 ```floe
 export fn greet(name: string) -> string {
-  return `Hello, ${name}!`
+  `Hello, ${name}!`
 }
 
 greet("world") |> Console.log
@@ -40,7 +40,7 @@ import { useState } from "react"
 export fn Counter() -> JSX.Element {
   const [count, setCount] = useState(0)
 
-  return <div>
+  <div>
     <p>Count: {count}</p>
     <button onClick={|| setCount(count + 1)}>+1</button>
   </div>

@@ -30,15 +30,17 @@ const { name, age } = getUser()
 
 ```floe
 fn add(a: number, b: number) -> number {
-  return a + b
+  a + b
 }
 ```
+
+The last expression in a function body is the return value. The `return` keyword is not used in Floe.
 
 Exported functions **must** have return type annotations:
 
 ```floe
 export fn greet(name: string) -> string {
-  return `Hello, ${name}!`
+  `Hello, ${name}!`
 }
 ```
 
@@ -46,7 +48,7 @@ export fn greet(name: string) -> string {
 
 ```floe
 fn greet(name: string = "world") -> string {
-  return `Hello, ${name}!`
+  `Hello, ${name}!`
 }
 ```
 
@@ -93,7 +95,7 @@ type Callback = () -> ()
 ```floe
 async fn fetchUser(id: string) -> Promise<User> {
   const response = await fetch(`/api/users/${id}`)
-  return await response.json()
+  await response.json()
 }
 ```
 

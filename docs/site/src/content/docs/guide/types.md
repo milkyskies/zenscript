@@ -164,7 +164,7 @@ Propagate errors concisely:
 ```floe
 fn getUsername(id: string) -> Result<string, Error> {
   const user = fetchUser(id)?   // returns Err early if it fails
-  return Ok(user.name)
+  Ok(user.name)
 }
 ```
 
