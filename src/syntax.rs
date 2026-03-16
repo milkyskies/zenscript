@@ -155,6 +155,8 @@ pub enum SyntaxKind {
     ERR_EXPR,
     SOME_EXPR,
     PARSE_EXPR,
+    OBJECT_EXPR,
+    OBJECT_FIELD,
     TODO_EXPR,
     UNREACHABLE_EXPR,
 
