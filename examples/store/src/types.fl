@@ -1,0 +1,84 @@
+// ── Branded types ──────────────────────────────────────
+// ProductId and OrderId are both numbers at runtime,
+// but the compiler prevents mixing them up.
+
+export type ProductId = Brand<number, "ProductId">
+export type OrderId = Brand<number, "OrderId">
+
+// ── Product (from DummyJSON API) ───────────────────────
+
+export type Product = {
+    id: ProductId,
+    title: string,
+    description: string,
+    category: string,
+    price: number,
+    discountPercentage: number,
+    rating: number,
+    stock: number,
+    tags: Array<string>,
+    brand: string,
+    thumbnail: string,
+    images: Array<string>,
+}
+
+export type Review = {
+    rating: number,
+    comment: string,
+    date: string,
+    reviewerName: string,
+}
+
+// ── Cart ───────────────────────────────────────────────
+
+export type CartItem = {
+    product: Product,
+    quantity: number,
+}
+
+// ── Nested error unions ────────────────────────────────
+// Multi-depth matching lets us handle every failure mode
+// in a single match expression.
+
+export type NetworkError =
+    | Timeout(ms: number)
+    | DnsFailure(host: string)
+    | ConnectionRefused
+
+export type ApiError =
+    | Network(NetworkError)
+    | NotFound(id: ProductId)
+    | BadResponse(status: number, body: string)
+    | ParseError(message: string)
+
+// ── Sort + Filter ──────────────────────────────────────
+
+export type SortOrder =
+    | PriceLow
+    | PriceHigh
+    | Rating
+    | Name
+
+export type PriceRange =
+    | Any
+    | Under(max: number)
+    | Between(min: number, max: number)
+    | Over(min: number)
+
+// ── Order ──────────────────────────────────────────────
+
+export type OrderStatus =
+    | Pending
+    | Confirmed(orderId: OrderId)
+    | Shipped(tracking: string)
+    | Failed(reason: string)
+
+// ── Traits ─────────────────────────────────────────────
+
+export trait Display {
+    fn display(self) -> string
+}
+
+export trait Discountable {
+    fn effectivePrice(self) -> number
+}

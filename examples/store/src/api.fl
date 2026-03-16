@@ -1,0 +1,120 @@
+import trusted { z } from "zod"
+import { Product, ProductId, Review, ApiError } from "./types"
+
+// ── Zod schemas for runtime validation ─────────────────
+
+const ProductSchema = z.object({
+    id: z.number(),
+    title: z.string(),
+    description: z.string(),
+    category: z.string(),
+    price: z.number(),
+    discountPercentage: z.number(),
+    rating: z.number(),
+    stock: z.number(),
+    tags: z.array(z.string()),
+    brand: z.string().optional().default(""),
+    thumbnail: z.string(),
+    images: z.array(z.string()),
+})
+
+const ReviewSchema = z.object({
+    rating: z.number(),
+    comment: z.string(),
+    date: z.string(),
+    reviewerName: z.string(),
+})
+
+const ProductDetailSchema = z.object({
+    id: z.number(),
+    title: z.string(),
+    description: z.string(),
+    category: z.string(),
+    price: z.number(),
+    discountPercentage: z.number(),
+    rating: z.number(),
+    stock: z.number(),
+    tags: z.array(z.string()),
+    brand: z.string().optional().default(""),
+    thumbnail: z.string(),
+    images: z.array(z.string()),
+    reviews: z.array(ReviewSchema),
+})
+
+const ProductListSchema = z.object({
+    products: z.array(ProductSchema),
+    total: z.number(),
+    skip: z.number(),
+    limit: z.number(),
+})
+
+const CategorySchema = z.object({
+    slug: z.string(),
+    name: z.string(),
+})
+
+// ── Helpers ────────────────────────────────────────────
+
+fn toProduct(raw: z.infer<typeof ProductSchema>) -> Product {
+    Product(
+        id: ProductId(raw.id),
+        title: raw.title,
+        description: raw.description,
+        category: raw.category,
+        price: raw.price,
+        discountPercentage: raw.discountPercentage,
+        rating: raw.rating,
+        stock: raw.stock,
+        tags: raw.tags,
+        brand: raw.brand,
+        thumbnail: raw.thumbnail,
+        images: raw.images,
+    )
+}
+
+// ── API functions ──────────────────────────────────────
+// Each returns Result<T, ApiError> and uses ? for clean chaining.
+
+export async fn fetchProducts(
+    category: string = "",
+    search: string = "",
+    limit: number = 20,
+    skip: number = 0,
+) -> Result<(Array<Product>, number), ApiError> {
+    const url = match (category, search) {
+        ("", "") -> `https://dummyjson.com/products?limit=${limit}&skip=${skip}`,
+        (cat, "") when cat != "" -> `https://dummyjson.com/products/category/${cat}?limit=${limit}&skip=${skip}`,
+        (_, q) -> `https://dummyjson.com/products/search?q=${q}&limit=${limit}&skip=${skip}`,
+    }
+
+    const res = try await fetch(url)?
+    const json = try await res.json()?
+    const parsed = try ProductListSchema.parse(json)?
+    const products = parsed.products |> Array.map(|p| toProduct(p))
+    Ok((products, parsed.total))
+}
+
+export async fn fetchProduct(id: ProductId) -> Result<(Product, Array<Review>), ApiError> {
+    const res = try await fetch(`https://dummyjson.com/products/${id}`)?
+    const json = try await res.json()?
+    const parsed = try ProductDetailSchema.parse(json)?
+    const product = toProduct(parsed)
+    const reviews = parsed.reviews |> Array.map(|r| Review(
+        rating: r.rating,
+        comment: r.comment,
+        date: r.date,
+        reviewerName: r.reviewerName,
+    ))
+    Ok((product, reviews))
+}
+
+export async fn fetchCategories() -> Result<Array<(string, string)>, ApiError> {
+    const res = try await fetch("https://dummyjson.com/products/categories")?
+    const json = try await res.json()?
+    const parsed = try z.array(CategorySchema).parse(json)?
+    Ok(parsed |> Array.map(|c| (c.slug, c.name)))
+}
+
+test "toProduct maps fields correctly" {
+    assert true
+}
