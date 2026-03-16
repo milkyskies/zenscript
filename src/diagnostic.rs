@@ -131,21 +131,27 @@ pub fn render_diagnostics(filename: &str, source: &str, diagnostics: &[Diagnosti
 
 /// Convert parser errors to diagnostics.
 pub fn from_parse_errors(errors: &[crate::parser::ParseError]) -> Vec<Diagnostic> {
+    use crate::parser::ParseErrorKind;
+
     errors
         .iter()
         .map(|e| {
             let mut diag = Diagnostic::error(&e.message, e.span);
 
-            // Add helpful labels/hints for common errors
-            if e.message.contains("banned keyword") {
-                if let Some(help_start) = e.message.find(": ") {
-                    let help_text = &e.message[help_start + 2..];
-                    diag = diag.with_label("banned in Floe").with_help(help_text);
+            match &e.kind {
+                ParseErrorKind::BannedKeyword => {
+                    if let Some(help_start) = e.message.find(": ") {
+                        let help_text = &e.message[help_start + 2..];
+                        diag = diag.with_label("banned in Floe").with_help(help_text);
+                    }
                 }
-            } else if e.message.contains("expected") {
-                diag = diag.with_label("unexpected token here");
-            } else if e.message.contains("mismatched closing tag") {
-                diag = diag.with_label("mismatched tag");
+                ParseErrorKind::UnexpectedToken => {
+                    diag = diag.with_label("unexpected token here");
+                }
+                ParseErrorKind::MismatchedTag => {
+                    diag = diag.with_label("mismatched tag");
+                }
+                ParseErrorKind::General => {}
             }
 
             diag
@@ -214,6 +220,7 @@ mod tests {
         let parse_errors = vec![crate::parser::ParseError {
             message: "expected identifier, found Number".to_string(),
             span: Span::new(0, 3, 1, 1),
+            kind: crate::parser::ParseErrorKind::UnexpectedToken,
         }];
         let diags = from_parse_errors(&parse_errors);
         assert_eq!(diags.len(), 1);

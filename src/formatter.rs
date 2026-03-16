@@ -171,11 +171,7 @@ impl<'src> Formatter<'src> {
     }
 
     pub(crate) fn collect_idents(&self, node: &SyntaxNode) -> Vec<String> {
-        node.children_with_tokens()
-            .filter_map(|t| t.into_token())
-            .filter(|t| t.kind() == SyntaxKind::IDENT)
-            .map(|t| t.text().to_string())
-            .collect()
+        self.collect_idents_until(node, |_| false)
     }
 
     pub(crate) fn collect_idents_direct(&self, node: &SyntaxNode) -> Vec<String> {
@@ -183,40 +179,27 @@ impl<'src> Formatter<'src> {
     }
 
     pub(crate) fn collect_idents_before_lparen(&self, node: &SyntaxNode) -> Vec<String> {
-        let mut idents = Vec::new();
-        for t in node.children_with_tokens() {
-            if let Some(tok) = t.as_token() {
-                if tok.kind() == SyntaxKind::L_PAREN {
-                    break;
-                }
-                if tok.kind() == SyntaxKind::IDENT {
-                    idents.push(tok.text().to_string());
-                }
-            }
-        }
-        idents
+        self.collect_idents_until(node, |k| k == SyntaxKind::L_PAREN)
     }
 
     pub(crate) fn collect_idents_before_eq(&self, node: &SyntaxNode) -> Vec<String> {
-        let mut idents = Vec::new();
-        for t in node.children_with_tokens() {
-            if let Some(tok) = t.as_token() {
-                if tok.kind() == SyntaxKind::EQUAL {
-                    break;
-                }
-                if tok.kind() == SyntaxKind::IDENT {
-                    idents.push(tok.text().to_string());
-                }
-            }
-        }
-        idents
+        self.collect_idents_until(node, |k| k == SyntaxKind::EQUAL)
     }
 
     pub(crate) fn collect_idents_before_colon_or_eq(&self, node: &SyntaxNode) -> Vec<String> {
+        self.collect_idents_until(node, |k| k == SyntaxKind::EQUAL || k == SyntaxKind::COLON)
+    }
+
+    /// Collect IDENT tokens from direct children, stopping when `stop` returns true for a token kind.
+    fn collect_idents_until(
+        &self,
+        node: &SyntaxNode,
+        stop: impl Fn(SyntaxKind) -> bool,
+    ) -> Vec<String> {
         let mut idents = Vec::new();
         for t in node.children_with_tokens() {
             if let Some(tok) = t.as_token() {
-                if tok.kind() == SyntaxKind::EQUAL || tok.kind() == SyntaxKind::COLON {
+                if stop(tok.kind()) {
                     break;
                 }
                 if tok.kind() == SyntaxKind::IDENT {

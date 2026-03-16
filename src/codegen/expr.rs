@@ -1,4 +1,9 @@
 use super::*;
+use super::{ERROR_FIELD, OK_FIELD, TAG_FIELD, VALUE_FIELD};
+
+const DEEP_EQUAL_FN: &str = "__zenEq";
+const THROW_NOT_IMPLEMENTED: &str = "(() => { throw new Error(\"not implemented\"); })()";
+const THROW_UNREACHABLE: &str = "(() => { throw new Error(\"unreachable\"); })()";
 
 impl Codegen {
     // ── Expressions ──────────────────────────────────────────────
@@ -25,7 +30,7 @@ impl Codegen {
             ExprKind::Identifier(name) => {
                 if self.unit_variants.contains(name.as_str()) {
                     // Zero-arg union variant: `All` → `{ tag: "All" }`
-                    self.push("{ tag: \"");
+                    self.push(&format!("{{ {TAG_FIELD}: \""));
                     self.push(name);
                     self.push("\" }");
                 } else {
@@ -37,7 +42,7 @@ impl Codegen {
             ExprKind::Binary { left, op, right } => match op {
                 BinOp::Eq => {
                     self.needs_deep_equal = true;
-                    self.push("__zenEq(");
+                    self.push(&format!("{DEEP_EQUAL_FN}("));
                     self.emit_expr(left);
                     self.push(", ");
                     self.emit_expr(right);
@@ -45,7 +50,7 @@ impl Codegen {
                 }
                 BinOp::NotEq => {
                     self.needs_deep_equal = true;
-                    self.push("!__zenEq(");
+                    self.push(&format!("!{DEEP_EQUAL_FN}("));
                     self.emit_expr(left);
                     self.push(", ");
                     self.emit_expr(right);
@@ -130,7 +135,7 @@ impl Codegen {
 
                 self.push("{ ");
                 if is_variant {
-                    self.push("tag: \"");
+                    self.push(&format!("{TAG_FIELD}: \""));
                     self.push(type_name);
                     self.push("\"");
                     if !args.is_empty() || spread.is_some() {
@@ -161,7 +166,7 @@ impl Codegen {
                         .get(field.as_str())
                         .is_some_and(|(union_name, _)| union_name == type_name)
                 {
-                    self.push("{ tag: \"");
+                    self.push(&format!("{{ {TAG_FIELD}: \""));
                     self.push(field);
                     self.push("\" }");
                 } else {
@@ -232,24 +237,26 @@ impl Codegen {
             ExprKind::Try(inner) => {
                 let has_await = expr_contains_await(inner);
                 if has_await {
-                    self.push("await (async () => { try { return { ok: true as const, value: ");
+                    self.push(&format!("await (async () => {{ try {{ return {{ {OK_FIELD}: true as const, {VALUE_FIELD}: "));
                 } else {
-                    self.push("(() => { try { return { ok: true as const, value: ");
+                    self.push(&format!(
+                        "(() => {{ try {{ return {{ {OK_FIELD}: true as const, {VALUE_FIELD}: "
+                    ));
                 }
                 self.emit_expr(inner);
-                self.push(" }; } catch (_e) { return { ok: false as const, error: _e instanceof Error ? _e : new Error(String(_e)) }; } })()");
+                self.push(&format!(" }}; }} catch (_e) {{ return {{ {OK_FIELD}: false as const, {ERROR_FIELD}: _e instanceof Error ? _e : new Error(String(_e)) }}; }} }})()"));
             }
 
             // Ok(value) → { ok: true, value: value }
             ExprKind::Ok(inner) => {
-                self.push("{ ok: true as const, value: ");
+                self.push(&format!("{{ {OK_FIELD}: true as const, {VALUE_FIELD}: "));
                 self.emit_expr(inner);
                 self.push(" }");
             }
 
             // Err(error) → { ok: false, error: error }
             ExprKind::Err(inner) => {
-                self.push("{ ok: false as const, error: ");
+                self.push(&format!("{{ {OK_FIELD}: false as const, {ERROR_FIELD}: "));
                 self.emit_expr(inner);
                 self.push(" }");
             }
@@ -266,12 +273,12 @@ impl Codegen {
 
             // todo → throw new Error("not implemented")
             ExprKind::Todo => {
-                self.push("(() => { throw new Error(\"not implemented\"); })()");
+                self.push(THROW_NOT_IMPLEMENTED);
             }
 
             // unreachable → throw new Error("unreachable")
             ExprKind::Unreachable => {
-                self.push("(() => { throw new Error(\"unreachable\"); })()");
+                self.push(THROW_UNREACHABLE);
             }
 
             ExprKind::Unit => {
@@ -339,7 +346,7 @@ impl Codegen {
                     Some((op, rhs)) => match op {
                         BinOp::Eq => {
                             self.needs_deep_equal = true;
-                            self.push("(_x) => __zenEq(_x.");
+                            self.push(&format!("(_x) => {DEEP_EQUAL_FN}(_x."));
                             self.push(field);
                             self.push(", ");
                             self.emit_expr(rhs);
@@ -347,7 +354,7 @@ impl Codegen {
                         }
                         BinOp::NotEq => {
                             self.needs_deep_equal = true;
-                            self.push("(_x) => !__zenEq(_x.");
+                            self.push(&format!("(_x) => !{DEEP_EQUAL_FN}(_x."));
                             self.push(field);
                             self.push(", ");
                             self.emit_expr(rhs);
@@ -370,6 +377,43 @@ impl Codegen {
         }
     }
 
+    // ── Stdlib Helpers ─────────────────────────────────────────
+
+    /// Emit each argument via a sub-codegen, propagating `needs_deep_equal`, and collect output strings.
+    fn emit_arg_strings(&mut self, args: &[Arg]) -> Vec<String> {
+        let mut arg_strings = Vec::new();
+        for arg in args {
+            let mut sub = self.sub_codegen();
+            match arg {
+                Arg::Positional(e) => sub.emit_expr(e),
+                Arg::Named { value, .. } => sub.emit_expr(value),
+            }
+            if sub.needs_deep_equal {
+                self.needs_deep_equal = true;
+            }
+            arg_strings.push(sub.output);
+        }
+        arg_strings
+    }
+
+    /// Emit a single expression via a sub-codegen, propagating `needs_deep_equal`.
+    fn emit_expr_string(&mut self, expr: &Expr) -> String {
+        let mut sub = self.sub_codegen();
+        sub.emit_expr(expr);
+        if sub.needs_deep_equal {
+            self.needs_deep_equal = true;
+        }
+        sub.output
+    }
+
+    /// Check a stdlib template for deep-equal usage and expand it with the given arg strings.
+    fn apply_stdlib_template(&mut self, template: &str, arg_strings: &[String]) -> String {
+        if template.contains(DEEP_EQUAL_FN) {
+            self.needs_deep_equal = true;
+        }
+        expand_codegen_template(template, arg_strings)
+    }
+
     // ── Pipe Lowering ────────────────────────────────────────────
 
     /// Try to emit a stdlib call. Returns Some(output) if the callee is a stdlib function.
@@ -379,25 +423,8 @@ impl Codegen {
             && let Some(stdlib_fn) = self.stdlib.lookup(module, field)
         {
             let template = stdlib_fn.codegen.to_string();
-            if template.contains("__zenEq") {
-                self.needs_deep_equal = true;
-            }
-
-            // Collect emitted args using sub-codegen that shares state
-            let mut arg_strings = Vec::new();
-            for arg in args {
-                let mut sub = self.sub_codegen();
-                match arg {
-                    Arg::Positional(e) => sub.emit_expr(e),
-                    Arg::Named { value, .. } => sub.emit_expr(value),
-                }
-                if sub.needs_deep_equal {
-                    self.needs_deep_equal = true;
-                }
-                arg_strings.push(sub.output);
-            }
-
-            Some(expand_codegen_template(&template, &arg_strings))
+            let arg_strings = self.emit_arg_strings(args);
+            Some(self.apply_stdlib_template(&template, &arg_strings))
         } else {
             None
         }
@@ -415,32 +442,10 @@ impl Codegen {
             && let Some(stdlib_fn) = self.stdlib.lookup(module, field)
         {
             let template = stdlib_fn.codegen.to_string();
-            if template.contains("__zenEq") {
-                self.needs_deep_equal = true;
-            }
-
-            // First arg is the piped value
-            let mut sub = self.sub_codegen();
-            sub.emit_expr(left);
-            if sub.needs_deep_equal {
-                self.needs_deep_equal = true;
-            }
-            let mut arg_strings = vec![sub.output];
-
-            // Remaining args
-            for arg in extra_args {
-                let mut sub = self.sub_codegen();
-                match arg {
-                    Arg::Positional(e) => sub.emit_expr(e),
-                    Arg::Named { value, .. } => sub.emit_expr(value),
-                }
-                if sub.needs_deep_equal {
-                    self.needs_deep_equal = true;
-                }
-                arg_strings.push(sub.output);
-            }
-
-            Some(expand_codegen_template(&template, &arg_strings))
+            let left_str = self.emit_expr_string(left);
+            let mut arg_strings = vec![left_str];
+            arg_strings.extend(self.emit_arg_strings(extra_args));
+            Some(self.apply_stdlib_template(&template, &arg_strings))
         } else {
             None
         }
@@ -481,30 +486,10 @@ impl Codegen {
             }?;
 
             let template = stdlib_fn.codegen.to_string();
-            if template.contains("__zenEq") {
-                self.needs_deep_equal = true;
-            }
-
-            let mut sub = self.sub_codegen();
-            sub.emit_expr(left);
-            if sub.needs_deep_equal {
-                self.needs_deep_equal = true;
-            }
-            let mut arg_strings = vec![sub.output];
-
-            for arg in extra_args {
-                let mut sub = self.sub_codegen();
-                match arg {
-                    Arg::Positional(e) => sub.emit_expr(e),
-                    Arg::Named { value, .. } => sub.emit_expr(value),
-                }
-                if sub.needs_deep_equal {
-                    self.needs_deep_equal = true;
-                }
-                arg_strings.push(sub.output);
-            }
-
-            return Some(expand_codegen_template(&template, &arg_strings));
+            let left_str = self.emit_expr_string(left);
+            let mut arg_strings = vec![left_str];
+            arg_strings.extend(self.emit_arg_strings(extra_args));
+            return Some(self.apply_stdlib_template(&template, &arg_strings));
         }
         None
     }

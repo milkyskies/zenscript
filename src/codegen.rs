@@ -10,6 +10,12 @@ use crate::checker::ExprTypeMap;
 use crate::parser::ast::*;
 use crate::resolve::ResolvedImports;
 use crate::stdlib::StdlibRegistry;
+use crate::type_names;
+
+const TAG_FIELD: &str = "tag";
+const OK_FIELD: &str = "ok";
+const VALUE_FIELD: &str = "value";
+const ERROR_FIELD: &str = "error";
 
 /// Code generation result: the emitted TypeScript source and whether it contains JSX.
 pub struct CodegenOutput {
@@ -342,10 +348,9 @@ impl Codegen {
         self.push(")");
 
         // Check if return type is unit/void — if so, no implicit return needed
-        let is_unit_return = decl
-            .return_type
-            .as_ref()
-            .is_some_and(|rt| matches!(&rt.kind, TypeExprKind::Named { name, .. } if name == "()"));
+        let is_unit_return = decl.return_type.as_ref().is_some_and(
+            |rt| matches!(&rt.kind, TypeExprKind::Named { name, .. } if name == type_names::UNIT),
+        );
 
         if let Some(ret) = &decl.return_type {
             self.push(": ");
@@ -421,10 +426,9 @@ impl Codegen {
 
         self.push(")");
 
-        let is_unit_return = func
-            .return_type
-            .as_ref()
-            .is_some_and(|rt| matches!(&rt.kind, TypeExprKind::Named { name, .. } if name == "()"));
+        let is_unit_return = func.return_type.as_ref().is_some_and(
+            |rt| matches!(&rt.kind, TypeExprKind::Named { name, .. } if name == type_names::UNIT),
+        );
 
         if let Some(ret) = &func.return_type {
             self.push(": ");
@@ -534,7 +538,7 @@ impl Codegen {
                 self.emit_record_type(fields);
             }
             TypeDef::Union(variants) => {
-                self.emit_union_type(&decl.name, variants);
+                self.emit_union_type(variants);
             }
             TypeDef::Alias(type_expr) => {
                 // Brand and opaque types erase to their underlying type
@@ -558,7 +562,7 @@ impl Codegen {
         self.push(" }");
     }
 
-    fn emit_union_type(&mut self, _parent_name: &str, variants: &[Variant]) {
+    fn emit_union_type(&mut self, variants: &[Variant]) {
         for (i, variant) in variants.iter().enumerate() {
             if i > 0 {
                 self.push(" | ");
@@ -566,16 +570,16 @@ impl Codegen {
 
             if variant.fields.is_empty() {
                 // Simple variant: `{ tag: "Home" }`
-                self.push(&format!("{{ tag: \"{}\" }}", variant.name));
+                self.push(&format!("{{ {TAG_FIELD}: \"{}\" }}", variant.name));
             } else {
                 // Variant with fields: `{ tag: "Profile"; id: string }`
-                self.push(&format!("{{ tag: \"{}\"", variant.name));
+                self.push(&format!("{{ {TAG_FIELD}: \"{}\"", variant.name));
                 for field in &variant.fields {
                     self.push("; ");
                     if let Some(name) = &field.name {
                         self.push(name);
                     } else {
-                        self.push("value");
+                        self.push(VALUE_FIELD);
                     }
                     self.push(": ");
                     self.emit_type_expr(&field.type_ann);
@@ -593,28 +597,28 @@ impl Codegen {
                 name, type_args, ..
             } => {
                 // Brand<T, "Name"> erases to T
-                if name == "Brand" && type_args.len() == 2 {
+                if name == type_names::BRAND && type_args.len() == 2 {
                     self.emit_type_expr(&type_args[0]);
                     return;
                 }
                 // Option<T> becomes T | undefined
-                if name == "Option" && type_args.len() == 1 {
+                if name == type_names::OPTION && type_args.len() == 1 {
                     self.emit_type_expr(&type_args[0]);
                     self.push(" | undefined");
                     return;
                 }
                 // Result<T, E> becomes { ok: true; value: T } | { ok: false; error: E }
-                if name == "Result" && type_args.len() == 2 {
-                    self.push("{ ok: true; value: ");
+                if name == type_names::RESULT && type_args.len() == 2 {
+                    self.push(&format!("{{ {OK_FIELD}: true; {VALUE_FIELD}: "));
                     self.emit_type_expr(&type_args[0]);
-                    self.push(" } | { ok: false; error: ");
+                    self.push(&format!(" }} | {{ {OK_FIELD}: false; {ERROR_FIELD}: "));
                     self.emit_type_expr(&type_args[1]);
                     self.push(" }");
                     return;
                 }
 
                 // Unit type () becomes void in TypeScript
-                if name == "()" {
+                if name == type_names::UNIT {
                     self.push("void");
                     return;
                 }

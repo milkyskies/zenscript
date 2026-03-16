@@ -12,3 +12,25 @@ pub mod resolve;
 pub mod sourcemap;
 pub mod stdlib;
 pub mod syntax;
+pub mod type_names;
+
+use std::path::{Path, PathBuf};
+
+/// Find the project root directory (where node_modules lives).
+/// Prioritizes finding `node_modules` over `package.json` to handle
+/// pnpm workspaces where node_modules is hoisted to the workspace root.
+pub fn find_project_dir(start: &Path) -> PathBuf {
+    let mut dir = start.to_path_buf();
+    let mut package_json_dir: Option<PathBuf> = None;
+    loop {
+        if dir.join("node_modules").is_dir() {
+            return dir;
+        }
+        if package_json_dir.is_none() && dir.join("package.json").is_file() {
+            package_json_dir = Some(dir.clone());
+        }
+        if !dir.pop() {
+            return package_json_dir.unwrap_or_else(|| start.to_path_buf());
+        }
+    }
+}

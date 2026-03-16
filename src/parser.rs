@@ -13,11 +13,40 @@ use crate::lexer::token::{TemplatePart as LexTemplatePart, Token, TokenKind};
 use crate::lower::lower_program;
 use ast::*;
 
+/// Classification of parse errors for structured diagnostic handling.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ParseErrorKind {
+    /// A banned keyword was used (e.g. `let`, `var`).
+    BannedKeyword,
+    /// An unexpected token was encountered.
+    UnexpectedToken,
+    /// A JSX closing tag did not match the opening tag.
+    MismatchedTag,
+    /// General parse error (default).
+    General,
+}
+
+impl ParseErrorKind {
+    /// Classify a parse error message into a kind.
+    pub fn classify(message: &str) -> Self {
+        if message.contains("banned keyword") {
+            Self::BannedKeyword
+        } else if message.contains("expected") {
+            Self::UnexpectedToken
+        } else if message.contains("mismatched closing tag") {
+            Self::MismatchedTag
+        } else {
+            Self::General
+        }
+    }
+}
+
 /// A parse error with location and message.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParseError {
     pub message: String,
     pub span: Span,
+    pub kind: ParseErrorKind,
 }
 
 impl std::fmt::Display for ParseError {
@@ -28,6 +57,19 @@ impl std::fmt::Display for ParseError {
             self.span.line, self.span.column, self.message
         )
     }
+}
+
+/// Context for parameter parsing, determining which features are available.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ParamContext {
+    /// Regular function parameter: name, optional type, optional default.
+    Function,
+    /// Trait method parameter: allows `self` keyword.
+    Trait,
+    /// For-block function parameter: allows `self` keyword.
+    ForBlock,
+    /// Lambda parameter: allows object destructuring.
+    Lambda,
 }
 
 /// The Floe parser. Produces an AST from a token stream.
@@ -72,9 +114,13 @@ impl Parser {
             return Err(cst_parse
                 .errors
                 .into_iter()
-                .map(|e| ParseError {
-                    message: e.message,
-                    span: e.span,
+                .map(|e| {
+                    let kind = ParseErrorKind::classify(&e.message);
+                    ParseError {
+                        message: e.message,
+                        span: e.span,
+                        kind,
+                    }
                 })
                 .collect());
         }
@@ -346,7 +392,59 @@ impl Parser {
     }
 
     fn parse_param(&mut self) -> Result<Param, ParseError> {
+        self.parse_param_in_context(ParamContext::Function)
+    }
+
+    /// Unified parameter parser that handles all parameter contexts.
+    fn parse_param_in_context(&mut self, context: ParamContext) -> Result<Param, ParseError> {
         let start_span = self.current_span();
+
+        // Handle `self` keyword in trait and for-block contexts
+        if matches!(context, ParamContext::Trait | ParamContext::ForBlock)
+            && self.check(&TokenKind::SelfKw)
+        {
+            self.advance();
+            let end_span = self.previous_span();
+            return Ok(Param {
+                name: "self".to_string(),
+                type_ann: Option::None,
+                default: Option::None,
+                destructure: None,
+                span: self.merge_spans(start_span, end_span),
+            });
+        }
+
+        // Handle object destructuring in lambda context
+        if context == ParamContext::Lambda && self.check(&TokenKind::LeftBrace) {
+            self.advance(); // consume `{`
+            let mut fields = Vec::new();
+            while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+                fields.push(self.expect_identifier()?);
+                if !self.check(&TokenKind::Comma) {
+                    break;
+                }
+                self.advance();
+            }
+            self.expect(&TokenKind::RightBrace)?;
+            let end_span = self.previous_span();
+
+            let type_ann = if self.check(&TokenKind::Colon) {
+                self.advance();
+                Some(self.parse_type_expr()?)
+            } else {
+                None
+            };
+
+            return Ok(Param {
+                name: "_destructured".to_string(),
+                type_ann,
+                default: None,
+                destructure: Some(ParamDestructure::Object(fields)),
+                span: self.merge_spans(start_span, end_span),
+            });
+        }
+
+        // Regular parameter: name [: type] [= default]
         let name = self.expect_identifier()?;
 
         let type_ann = if self.check(&TokenKind::Colon) {
@@ -647,23 +745,7 @@ impl Parser {
     }
 
     fn parse_trait_param(&mut self) -> Result<Param, ParseError> {
-        let start_span = self.current_span();
-
-        // Handle `self` keyword as parameter
-        if self.check(&TokenKind::SelfKw) {
-            self.advance();
-            let end_span = self.previous_span();
-            return Ok(Param {
-                name: "self".to_string(),
-                type_ann: Option::None,
-                default: Option::None,
-                destructure: None,
-                span: self.merge_spans(start_span, end_span),
-            });
-        }
-
-        // Regular parameter
-        self.parse_param()
+        self.parse_param_in_context(ParamContext::Trait)
     }
 
     /// Parse a function declaration inside a `for` block.
@@ -705,23 +787,7 @@ impl Parser {
     /// Parse a parameter inside a `for` block function.
     /// Handles `self` as a special parameter name (no type annotation needed).
     fn parse_for_block_param(&mut self) -> Result<Param, ParseError> {
-        let start_span = self.current_span();
-
-        // Handle `self` keyword as parameter
-        if self.check(&TokenKind::SelfKw) {
-            self.advance();
-            let end_span = self.previous_span();
-            return Ok(Param {
-                name: "self".to_string(),
-                type_ann: Option::None, // type inferred from for block
-                default: Option::None,
-                destructure: None,
-                span: self.merge_spans(start_span, end_span),
-            });
-        }
-
-        // Regular parameter
-        self.parse_param()
+        self.parse_param_in_context(ParamContext::ForBlock)
     }
 
     // ── Test Blocks ──────────────────────────────────────────────
@@ -889,115 +955,113 @@ impl Parser {
                 && self.tokens[self.pos + 2].kind == TokenKind::ThinArrow)
     }
 
-    /// Heuristic: is the current `(` the start of a tuple type `(T, U)`?
-    /// True when parens contain a comma and are NOT followed by `->`.
-    fn is_tuple_type(&self) -> bool {
-        let mut depth = 0;
-        let mut has_comma = false;
+    /// Scan forward through balanced open/close delimiters starting at `self.pos`.
+    ///
+    /// - `check_inner` is called for every token while depth >= 1 (excluding
+    ///   the open/close tokens themselves). Return `Some(v)` to short-circuit.
+    /// - `on_close` is called when the matching close token brings depth back
+    ///   to 0, with the index of that close token. Return the final answer.
+    ///
+    /// Returns `None` if we hit Eof or run out of tokens without balancing.
+    fn lookahead_balanced<T>(
+        &self,
+        open: &TokenKind,
+        close: &TokenKind,
+        mut check_inner: impl FnMut(&TokenKind, usize) -> Option<T>,
+        on_close: impl FnOnce(usize) -> T,
+    ) -> Option<T> {
+        let mut depth: usize = 0;
         let mut i = self.pos;
         while i < self.tokens.len() {
-            match &self.tokens[i].kind {
-                TokenKind::LeftParen => depth += 1,
-                TokenKind::RightParen => {
-                    depth -= 1;
-                    if depth == 0 {
-                        // Must have a comma and NOT be followed by `->`
-                        if !has_comma {
-                            return false;
-                        }
-                        return !(i + 1 < self.tokens.len()
-                            && self.tokens[i + 1].kind == TokenKind::ThinArrow);
-                    }
+            let kind = &self.tokens[i].kind;
+            if *kind == TokenKind::Eof {
+                return None;
+            }
+            if std::mem::discriminant(kind) == std::mem::discriminant(open) {
+                depth += 1;
+            } else if std::mem::discriminant(kind) == std::mem::discriminant(close) {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(on_close(i));
                 }
-                TokenKind::Comma if depth == 1 => has_comma = true,
-                TokenKind::Eof => return false,
-                _ => {}
+            } else if depth >= 1
+                && let Some(v) = check_inner(kind, depth)
+            {
+                return Some(v);
             }
             i += 1;
         }
-        false
+        None
+    }
+
+    /// Heuristic: is the current `(` the start of a tuple type `(T, U)`?
+    /// True when parens contain a comma and are NOT followed by `->`.
+    fn is_tuple_type(&self) -> bool {
+        let has_comma = std::cell::Cell::new(false);
+        self.lookahead_balanced(
+            &TokenKind::LeftParen,
+            &TokenKind::RightParen,
+            |kind, depth| {
+                if depth == 1 && matches!(kind, TokenKind::Comma) {
+                    has_comma.set(true);
+                }
+                None
+            },
+            |i| {
+                has_comma.get()
+                    && !(i + 1 < self.tokens.len()
+                        && self.tokens[i + 1].kind == TokenKind::ThinArrow)
+            },
+        )
+        .unwrap_or(false)
     }
 
     /// Heuristic: is the current `(` the start of a tuple destructuring `(a, b) = ...`?
     /// Look ahead for `) =`.
     fn is_tuple_destructuring(&self) -> bool {
-        let mut depth = 0;
-        let mut i = self.pos;
-        while i < self.tokens.len() {
-            match &self.tokens[i].kind {
-                TokenKind::LeftParen => depth += 1,
-                TokenKind::RightParen => {
-                    depth -= 1;
-                    if depth == 0 {
-                        // Check: must be followed by `=` or `:` (type ann then `=`)
-                        if i + 1 < self.tokens.len() {
-                            return matches!(
-                                self.tokens[i + 1].kind,
-                                TokenKind::Equal | TokenKind::Colon
-                            );
-                        }
-                        return false;
-                    }
-                }
-                TokenKind::Eof => return false,
-                _ => {}
-            }
-            i += 1;
-        }
-        false
+        self.lookahead_balanced(
+            &TokenKind::LeftParen,
+            &TokenKind::RightParen,
+            |_, _| None,
+            |i| {
+                i + 1 < self.tokens.len()
+                    && matches!(self.tokens[i + 1].kind, TokenKind::Equal | TokenKind::Colon)
+            },
+        )
+        .unwrap_or(false)
     }
 
     /// Heuristic: is the current `(` the start of a function type?
     /// Look ahead for `) ->`.
     fn is_function_type(&self) -> bool {
-        let mut depth = 0;
-        let mut i = self.pos;
-        while i < self.tokens.len() {
-            match &self.tokens[i].kind {
-                TokenKind::LeftParen => depth += 1,
-                TokenKind::RightParen => {
-                    depth -= 1;
-                    if depth == 0 {
-                        // Check if followed by `->`
-                        return i + 1 < self.tokens.len()
-                            && self.tokens[i + 1].kind == TokenKind::ThinArrow;
-                    }
-                }
-                TokenKind::Eof => return false,
-                _ => {}
-            }
-            i += 1;
-        }
-        false
+        self.lookahead_balanced(
+            &TokenKind::LeftParen,
+            &TokenKind::RightParen,
+            |_, _| None,
+            |i| i + 1 < self.tokens.len() && self.tokens[i + 1].kind == TokenKind::ThinArrow,
+        )
+        .unwrap_or(false)
     }
 
     /// Heuristic: is the current `<` the start of generic type arguments in a call?
     /// Look ahead for `< types > (` pattern. Handles nesting.
     fn is_generic_call(&self) -> bool {
-        let mut depth = 0;
-        let mut i = self.pos;
-        while i < self.tokens.len() {
-            match &self.tokens[i].kind {
-                TokenKind::LessThan => depth += 1,
-                TokenKind::GreaterThan => {
-                    depth -= 1;
-                    if depth == 0 {
-                        // Must be followed by `(`
-                        return i + 1 < self.tokens.len()
-                            && self.tokens[i + 1].kind == TokenKind::LeftParen;
-                    }
-                }
+        self.lookahead_balanced(
+            &TokenKind::LessThan,
+            &TokenKind::GreaterThan,
+            |kind, _| {
                 // If we see something that can't be in a type, bail
-                TokenKind::LeftBrace
-                | TokenKind::RightBrace
-                | TokenKind::Semicolon
-                | TokenKind::Equal
-                | TokenKind::Eof => return false,
-                _ => {}
-            }
-            i += 1;
-        }
-        false
+                match kind {
+                    TokenKind::LeftBrace
+                    | TokenKind::RightBrace
+                    | TokenKind::Semicolon
+                    | TokenKind::Equal => Some(false),
+                    _ => None,
+                }
+            },
+            |i| i + 1 < self.tokens.len() && self.tokens[i + 1].kind == TokenKind::LeftParen,
+        )
+        .unwrap_or(false)
     }
 
     // ── Block Expression ─────────────────────────────────────────
@@ -1136,6 +1200,15 @@ impl Parser {
         ParseError {
             message: message.to_string(),
             span: self.current_span(),
+            kind: ParseErrorKind::classify(message),
+        }
+    }
+
+    fn error_with_kind(&self, message: &str, kind: ParseErrorKind) -> ParseError {
+        ParseError {
+            message: message.to_string(),
+            span: self.current_span(),
+            kind,
         }
     }
 

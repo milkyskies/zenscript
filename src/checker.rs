@@ -17,6 +17,7 @@ use crate::lexer::span::Span;
 use crate::parser::ast::*;
 use crate::resolve::ResolvedImports;
 use crate::stdlib::StdlibRegistry;
+use crate::type_names;
 use types::{TypeEnv, TypeInfo};
 
 // ── Checker ──────────────────────────────────────────────────────
@@ -56,7 +57,7 @@ pub struct Checker {
     dts_imports: HashMap<String, Vec<DtsExport>>,
     /// Counter for disambiguating probe lookups when the same binding name appears
     /// multiple times (e.g. two `const { data } = ...` destructures).
-    probe_counters: HashMap<String, usize>,
+    probe_counters: HashSet<String>,
     /// When inside a pipe, holds the type of the piped (left) value.
     /// The Call handler uses this to account for the implicit first argument.
     pipe_input_type: Option<Type>,
@@ -237,7 +238,7 @@ impl Checker {
             registering_types: false,
             resolved_imports: HashMap::new(),
             dts_imports: HashMap::new(),
-            probe_counters: HashMap::new(),
+            probe_counters: HashSet::new(),
             pipe_input_type: None,
             name_types: HashMap::new(),
             defined_sources: HashMap::new(),
@@ -426,7 +427,7 @@ impl Checker {
             type_args: inner_args,
             ..
         } = &type_arg.kind
-            && name == "Option"
+            && name == type_names::OPTION
             && inner_args.len() == 1
         {
             let option_type = self.resolve_type(type_arg);
@@ -568,14 +569,14 @@ impl Checker {
         self.used_names.insert(root.to_string());
 
         match name {
-            "number" => Type::Number,
-            "string" => Type::String,
-            "boolean" => Type::Bool,
-            "()" => Type::Unit,
-            "undefined" => Type::Undefined,
-            "unknown" => Type::Unknown,
-            "Error" | "Response" => Type::Named(name.to_string()),
-            "Result" => {
+            type_names::NUMBER => Type::Number,
+            type_names::STRING => Type::String,
+            type_names::BOOLEAN => Type::Bool,
+            type_names::UNIT => Type::Unit,
+            type_names::UNDEFINED => Type::Undefined,
+            type_names::UNKNOWN => Type::Unknown,
+            type_names::ERROR | type_names::RESPONSE => Type::Named(name.to_string()),
+            type_names::RESULT => {
                 let ok = type_args
                     .first()
                     .map(|t| self.resolve_type(t))
@@ -589,21 +590,21 @@ impl Checker {
                     err: Box::new(err),
                 }
             }
-            "Option" => {
+            type_names::OPTION => {
                 let inner = type_args
                     .first()
                     .map(|t| self.resolve_type(t))
                     .unwrap_or(Type::Unknown);
                 Type::Option(Box::new(inner))
             }
-            "Array" => {
+            type_names::ARRAY => {
                 let inner = type_args
                     .first()
                     .map(|t| self.resolve_type(t))
                     .unwrap_or(Type::Unknown);
                 Type::Array(Box::new(inner))
             }
-            "Brand" => {
+            type_names::BRAND => {
                 let base = type_args
                     .first()
                     .map(|t| self.resolve_type(t))
@@ -617,7 +618,7 @@ impl Checker {
                             None
                         }
                     })
-                    .unwrap_or_else(|| "unknown".to_string());
+                    .unwrap_or_else(|| type_names::UNKNOWN.to_string());
                 Type::Brand {
                     base: Box::new(base),
                     tag,
@@ -825,54 +826,86 @@ impl Checker {
 
     fn check_const(&mut self, decl: &ConstDecl, span: Span) {
         let value_type = self.check_expr(&decl.value);
-
         let declared_type = decl.type_ann.as_ref().map(|t| self.resolve_type(t));
+        let tsgo_type = self.find_and_consume_tsgo_probe(&decl.binding);
+        let final_type = self.resolve_const_type(value_type, declared_type, &tsgo_type, span);
 
-        // Check if tsgo resolved a more precise type for this const
-        let tsgo_type = {
-            let binding_name = match &decl.binding {
-                ConstBinding::Name(n) => n.clone(),
-                ConstBinding::Array(names) => names.join("_"),
-                ConstBinding::Object(names) => names.join("_"),
-                ConstBinding::Tuple(names) => names.join("_"),
-            };
-            // Try exact match first (__probe_name), then any indexed match (__probe_name_N)
-            // using consumed set to avoid reusing the same probe
-            let probe_key = format!("__probe_{binding_name}");
-            let probe_prefix = format!("__probe_{binding_name}_");
-            // Search for probe results, preferring inlined probes (more precise)
-            // over direct probes (which may have unresolved generics)
-            let mut found_export = None;
-            let mut found_inlined = None;
-            for exports in self.dts_imports.values() {
-                for export in exports {
-                    if !self.probe_counters.contains_key(&export.name)
-                        && (export.name == probe_key || export.name.starts_with(&probe_prefix))
-                    {
-                        if export.name.contains("inlined") {
-                            if found_inlined.is_none() {
-                                found_inlined = Some(export.clone());
-                            }
-                        } else if found_export.is_none() {
-                            found_export = Some(export.clone());
+        match &decl.binding {
+            ConstBinding::Name(name) => {
+                self.define_const_binding(name, final_type, decl.exported, span);
+            }
+            ConstBinding::Array(names) => {
+                let corrected_type = self.correct_usestate_option_type(&final_type, &decl.value);
+                let effective_type = corrected_type.as_ref().unwrap_or(&final_type);
+
+                for (i, name) in names.iter().enumerate() {
+                    let elem_ty = Self::array_element_type(effective_type, i);
+                    self.define_const_binding(name, elem_ty, false, span);
+                }
+            }
+            ConstBinding::Tuple(names) => {
+                for (i, name) in names.iter().enumerate() {
+                    let elem_ty = Self::tuple_element_type(&final_type, i);
+                    self.define_const_binding(name, elem_ty, false, span);
+                }
+            }
+            ConstBinding::Object(names) => {
+                self.define_object_destructured_bindings(
+                    names,
+                    &final_type,
+                    tsgo_type.is_some(),
+                    span,
+                );
+            }
+        }
+    }
+
+    /// Search dts_imports for a tsgo probe matching the binding name, consume it, and return its type.
+    fn find_and_consume_tsgo_probe(&mut self, binding: &ConstBinding) -> Option<Type> {
+        let binding_name = match binding {
+            ConstBinding::Name(n) => n.clone(),
+            ConstBinding::Array(names) => names.join("_"),
+            ConstBinding::Object(names) => names.join("_"),
+            ConstBinding::Tuple(names) => names.join("_"),
+        };
+        let probe_key = format!("__probe_{binding_name}");
+        let probe_prefix = format!("__probe_{binding_name}_");
+
+        let mut found_export = None;
+        let mut found_inlined = None;
+        for exports in self.dts_imports.values() {
+            for export in exports {
+                if !self.probe_counters.contains(&export.name)
+                    && (export.name == probe_key || export.name.starts_with(&probe_prefix))
+                {
+                    if export.name.contains("inlined") {
+                        if found_inlined.is_none() {
+                            found_inlined = Some(export.clone());
                         }
+                    } else if found_export.is_none() {
+                        found_export = Some(export.clone());
                     }
                 }
             }
-            // Prefer inlined probe (from const expression inlining) over direct probe
-            let found_export = found_inlined.or(found_export);
-            if let Some(ref export) = found_export {
-                self.probe_counters.insert(export.name.clone(), 0); // mark as consumed
-            }
-            found_export.map(|e| interop::wrap_boundary_type(&e.ts_type))
-        };
+        }
+        let found_export = found_inlined.or(found_export);
+        if let Some(ref export) = found_export {
+            self.probe_counters.insert(export.name.clone());
+        }
+        found_export.map(|e| interop::wrap_boundary_type(&e.ts_type))
+    }
 
-        let final_type = if let Some(ref tsgo_ty) = tsgo_type {
+    /// Determine the final type for a const binding given value type, declared type, and tsgo probe.
+    fn resolve_const_type(
+        &mut self,
+        value_type: Type,
+        declared_type: Option<Type>,
+        tsgo_type: &Option<Type>,
+        span: Span,
+    ) -> Type {
+        if let Some(tsgo_ty) = tsgo_type {
             tsgo_ty.clone()
         } else if let Some(ref declared) = declared_type {
-            // Reject narrowing from `unknown` to a concrete type — this is an unsafe cast.
-            // `const x: User = data` where data is unknown is not allowed.
-            // Use runtime validation (e.g. Zod) instead.
             if matches!(value_type, Type::Unknown) && !matches!(declared, Type::Unknown) {
                 self.diagnostics.push(
                     Diagnostic::error(
@@ -903,135 +936,99 @@ impl Checker {
             declared.clone()
         } else {
             value_type
-        };
+        }
+    }
 
-        match &decl.binding {
-            ConstBinding::Name(name) => {
-                self.check_no_redefinition(name, span);
-                self.name_types
-                    .insert(name.clone(), final_type.display_name());
-                self.env.define(name, final_type);
-                self.defined_sources
-                    .insert(name.clone(), "const".to_string());
-                if decl.exported {
-                    self.used_names.insert(name.clone());
-                }
-                self.defined_names.push((name.clone(), span));
-            }
-            ConstBinding::Array(names) => {
-                // Check if the call has explicit type args (e.g. useState<Option<number>>)
-                // that tsgo may have lost through type alias resolution
-                let corrected_type = self.correct_usestate_option_type(&final_type, &decl.value);
-                let effective_type = corrected_type.as_ref().unwrap_or(&final_type);
+    /// Infer the type of an element from an array/tuple destructuring at a given index.
+    fn array_element_type(effective_type: &Type, i: usize) -> Type {
+        match effective_type {
+            Type::Tuple(types) => types.get(i).cloned().unwrap_or(Type::Unknown),
+            Type::Unknown | Type::Var(_) => Type::Unknown,
+            other if i == 0 => other.clone(),
+            _ => Type::Unknown,
+        }
+    }
 
-                // Infer element types from the value type
-                for (i, name) in names.iter().enumerate() {
-                    let elem_ty = match effective_type {
-                        // Tuple destructuring: each name gets its positional type
-                        Type::Tuple(types) => types.get(i).cloned().unwrap_or(Type::Unknown),
-                        // Unknown: no info
-                        Type::Unknown | Type::Var(_) => Type::Unknown,
-                        // Known type (e.g., Array<Todo> from useState<Array<Todo>>):
-                        // first element gets the type, rest get Unknown
-                        other if i == 0 => other.clone(),
-                        _ => Type::Unknown,
-                    };
-                    self.check_no_redefinition(name, span);
-                    self.name_types.insert(name.clone(), elem_ty.display_name());
-                    self.env.define(name, elem_ty);
-                    self.defined_sources
-                        .insert(name.clone(), "const".to_string());
-                    self.defined_names.push((name.clone(), span));
-                }
-            }
-            ConstBinding::Tuple(names) => {
-                // Infer element types from the value type
-                for (i, name) in names.iter().enumerate() {
-                    let elem_ty = match &final_type {
-                        Type::Tuple(types) => types.get(i).cloned().unwrap_or(Type::Unknown),
-                        Type::Unknown | Type::Var(_) => Type::Unknown,
-                        _ => Type::Unknown,
-                    };
-                    self.check_no_redefinition(name, span);
-                    self.name_types.insert(name.clone(), elem_ty.display_name());
-                    self.env.define(name, elem_ty);
-                    self.defined_sources
-                        .insert(name.clone(), "const".to_string());
-                    self.defined_names.push((name.clone(), span));
-                }
-            }
-            ConstBinding::Object(names) => {
-                // If tsgo resolved this as a single-field destructure, assign directly
-                // (tsgo probes individual fields, so __probe_data gives data's type directly)
-                if tsgo_type.is_some() && names.len() == 1 {
-                    let name = &names[0];
-                    self.check_no_redefinition(name, span);
-                    self.name_types
-                        .insert(name.clone(), final_type.display_name());
-                    self.env.define(name, final_type.clone());
-                    self.defined_sources
-                        .insert(name.clone(), "const".to_string());
-                    self.defined_names.push((name.clone(), span));
-                    return;
-                }
+    /// Infer the type of a tuple element at a given index.
+    fn tuple_element_type(final_type: &Type, i: usize) -> Type {
+        match final_type {
+            Type::Tuple(types) => types.get(i).cloned().unwrap_or(Type::Unknown),
+            Type::Unknown | Type::Var(_) => Type::Unknown,
+            _ => Type::Unknown,
+        }
+    }
 
-                // Resolve the value type to find field types for destructuring
-                let concrete = {
-                    let resolve_fn = |type_expr: &crate::parser::ast::TypeExpr| -> Type {
-                        match &type_expr.kind {
+    /// Define a single const binding (handles no-redefinition check, name_types, env, etc.)
+    fn define_const_binding(&mut self, name: &str, ty: Type, exported: bool, span: Span) {
+        self.check_no_redefinition(name, span);
+        self.name_types.insert(name.to_string(), ty.display_name());
+        self.env.define(name, ty);
+        self.defined_sources
+            .insert(name.to_string(), "const".to_string());
+        if exported {
+            self.used_names.insert(name.to_string());
+        }
+        self.defined_names.push((name.to_string(), span));
+    }
+
+    /// Handle object destructuring for const bindings.
+    fn define_object_destructured_bindings(
+        &mut self,
+        names: &[String],
+        final_type: &Type,
+        has_tsgo: bool,
+        span: Span,
+    ) {
+        // If tsgo resolved this as a single-field destructure, assign directly
+        if has_tsgo && names.len() == 1 {
+            self.define_const_binding(&names[0], final_type.clone(), false, span);
+            return;
+        }
+
+        let concrete = {
+            let resolve_fn = |type_expr: &crate::parser::ast::TypeExpr| -> Type {
+                match &type_expr.kind {
+                    crate::parser::ast::TypeExprKind::Named { name, .. } => match name.as_str() {
+                        type_names::NUMBER => Type::Number,
+                        type_names::STRING => Type::String,
+                        type_names::BOOLEAN => Type::Bool,
+                        type_names::UNIT => Type::Unit,
+                        type_names::UNDEFINED => Type::Undefined,
+                        _ => Type::Named(name.to_string()),
+                    },
+                    crate::parser::ast::TypeExprKind::Array(inner) => {
+                        let inner_resolved = match &inner.kind {
                             crate::parser::ast::TypeExprKind::Named { name, .. } => {
                                 match name.as_str() {
-                                    "number" => Type::Number,
-                                    "string" => Type::String,
-                                    "boolean" => Type::Bool,
-                                    "()" => Type::Unit,
-                                    "undefined" => Type::Undefined,
+                                    type_names::NUMBER => Type::Number,
+                                    type_names::STRING => Type::String,
+                                    type_names::BOOLEAN => Type::Bool,
                                     _ => Type::Named(name.to_string()),
                                 }
                             }
-                            crate::parser::ast::TypeExprKind::Array(inner) => {
-                                let inner_resolved = match &inner.kind {
-                                    crate::parser::ast::TypeExprKind::Named { name, .. } => {
-                                        match name.as_str() {
-                                            "number" => Type::Number,
-                                            "string" => Type::String,
-                                            "boolean" => Type::Bool,
-                                            _ => Type::Named(name.to_string()),
-                                        }
-                                    }
-                                    _ => Type::Unknown,
-                                };
-                                Type::Array(Box::new(inner_resolved))
-                            }
                             _ => Type::Unknown,
-                        }
-                    };
-                    self.env.resolve_to_concrete(&final_type, &resolve_fn)
-                };
-
-                let field_map: Option<std::collections::HashMap<&str, &Type>> = match &concrete {
-                    Type::Record(fields) => {
-                        Some(fields.iter().map(|(n, t)| (n.as_str(), t)).collect())
+                        };
+                        Type::Array(Box::new(inner_resolved))
                     }
-                    _ => None,
-                };
-
-                for name in names {
-                    let field_ty = field_map
-                        .as_ref()
-                        .and_then(|m| m.get(name.as_str()))
-                        .cloned()
-                        .cloned()
-                        .unwrap_or(Type::Unknown);
-                    self.check_no_redefinition(name, span);
-                    self.name_types
-                        .insert(name.clone(), field_ty.display_name());
-                    self.env.define(name, field_ty);
-                    self.defined_sources
-                        .insert(name.clone(), "const".to_string());
-                    self.defined_names.push((name.clone(), span));
+                    _ => Type::Unknown,
                 }
-            }
+            };
+            self.env.resolve_to_concrete(final_type, &resolve_fn)
+        };
+
+        let field_map: Option<std::collections::HashMap<&str, &Type>> = match &concrete {
+            Type::Record(fields) => Some(fields.iter().map(|(n, t)| (n.as_str(), t)).collect()),
+            _ => None,
+        };
+
+        for name in names {
+            let field_ty = field_map
+                .as_ref()
+                .and_then(|m| m.get(name.as_str()))
+                .cloned()
+                .cloned()
+                .unwrap_or(Type::Unknown);
+            self.define_const_binding(name, field_ty, false, span);
         }
     }
 
@@ -1437,6 +1434,23 @@ impl Checker {
 
     // ── Type Compatibility ───────────────────────────────────────
 
+    /// Resolve a `Type::Named` to its concrete underlying type, if possible.
+    /// Returns `Some(concrete)` if the type was resolved, `None` if not a Named type.
+    fn resolve_named_to_concrete(&self, ty: &Type) -> Option<Type> {
+        if let Type::Named(name) = ty {
+            let resolved = self
+                .env
+                .resolve_to_concrete(ty, &expr::simple_resolve_type_expr);
+            if &resolved != ty {
+                Some(resolved)
+            } else {
+                self.env.lookup(name).cloned()
+            }
+        } else {
+            None
+        }
+    }
+
     fn types_compatible(&self, expected: &Type, actual: &Type) -> bool {
         // Unknown/Var as EXPECTED: anything can be assigned to unknown (widening)
         if matches!(expected, Type::Unknown | Type::Var(_)) {
@@ -1471,31 +1485,8 @@ impl Checker {
         }
 
         // Resolve Named types to concrete for structural comparison
-        // Uses env.resolve_to_concrete (immutable) to avoid borrow conflicts
-        let expected_concrete = if let Type::Named(name) = expected {
-            let resolved = self
-                .env
-                .resolve_to_concrete(expected, &expr::simple_resolve_type_expr);
-            if &resolved != expected {
-                Some(resolved)
-            } else {
-                self.env.lookup(name).cloned()
-            }
-        } else {
-            None
-        };
-        let actual_concrete = if let Type::Named(name) = actual {
-            let resolved = self
-                .env
-                .resolve_to_concrete(actual, &expr::simple_resolve_type_expr);
-            if &resolved != actual {
-                Some(resolved)
-            } else {
-                self.env.lookup(name).cloned()
-            }
-        } else {
-            None
-        };
+        let expected_concrete = self.resolve_named_to_concrete(expected);
+        let actual_concrete = self.resolve_named_to_concrete(actual);
 
         // Named<->Record structural comparison
         if let Some(Type::Record(ref exp_fields)) = expected_concrete

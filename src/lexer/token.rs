@@ -280,7 +280,7 @@ pub fn lookup_keyword(word: &str) -> Option<TokenKind> {
         "if" => Some(TokenKind::Banned(BannedKeyword::If)),
         "else" => Some(TokenKind::Banned(BannedKeyword::Else)),
 
-        _ => Option::None,
+        _ => None,
     }
 }
 
@@ -335,9 +335,9 @@ mod tests {
 
     #[test]
     fn lookup_identifiers_return_none() {
-        assert_eq!(lookup_keyword("myVar"), Option::None);
-        assert_eq!(lookup_keyword("Component"), Option::None);
-        assert_eq!(lookup_keyword("fetch"), Option::None);
+        assert_eq!(lookup_keyword("myVar"), None);
+        assert_eq!(lookup_keyword("Component"), None);
+        assert_eq!(lookup_keyword("fetch"), None);
     }
 
     #[test]

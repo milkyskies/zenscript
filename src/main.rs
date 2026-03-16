@@ -1,13 +1,16 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 
-use floe::checker::Checker;
+use floe::checker::{Checker, ExprTypeMap};
 use floe::codegen::Codegen;
 use floe::diagnostic;
+use floe::find_project_dir;
 use floe::parser::Parser as ZsParser;
-use floe::resolve;
+use floe::parser::ast::Program;
+use floe::resolve::{self, ResolvedImports};
 
 #[derive(Parser)]
 #[command(name = "floe", version, about = "The Floe compiler")]
@@ -91,29 +94,26 @@ fn main() -> Result<()> {
     }
 }
 
-// ── Build (stdin → stdout) ───────────────────────────────────────
+// ── Shared Compilation Pipeline ──────────────────────────────────
 
-fn cmd_build_stdin() -> Result<()> {
-    use std::io::Read;
+/// Result of parsing, resolving, and type-checking a single source file.
+struct CompileResult {
+    program: Program,
+    resolved: HashMap<String, ResolvedImports>,
+    expr_types: ExprTypeMap,
+}
 
-    let mut source = String::new();
-    std::io::stdin()
-        .read_to_string(&mut source)
-        .context("failed to read from stdin")?;
-
-    let filename = std::env::var("FLOE_FILENAME").unwrap_or_else(|_| "<stdin>".to_string());
-
-    let program = ZsParser::new(&source).parse_program().map_err(|errs| {
+/// Parse, resolve imports, and type-check a single source. Returns an error
+/// string (with rendered diagnostics) on failure.
+fn compile_source(file_path: &Path, filename: &str, source: &str) -> Result<CompileResult> {
+    let program = ZsParser::new(source).parse_program().map_err(|errs| {
         let diags = diagnostic::from_parse_errors(&errs);
-        let rendered = diagnostic::render_diagnostics(&filename, &source, &diags);
+        let rendered = diagnostic::render_diagnostics(filename, source, &diags);
         anyhow::anyhow!("{rendered}")
     })?;
 
-    // Resolve imports from other .fl files (using FLOE_FILENAME for path context)
-    let file_path = Path::new(&filename);
     let resolved = resolve::resolve_imports(file_path, &program);
 
-    // Resolve npm import types via tsgo
     let source_dir = file_path
         .parent()
         .unwrap_or(Path::new("."))
@@ -123,7 +123,6 @@ fn cmd_build_stdin() -> Result<()> {
     let mut tsgo_resolver = floe::interop::TsgoResolver::new(&project_dir);
     let dts_map = tsgo_resolver.resolve_imports(&program, &resolved);
 
-    // Type check
     let checker = if dts_map.is_empty() {
         Checker::with_imports(resolved.clone())
     } else {
@@ -135,11 +134,33 @@ fn cmd_build_stdin() -> Result<()> {
         .filter(|d| d.severity == diagnostic::Severity::Error)
         .collect();
     if !type_errors.is_empty() {
-        let rendered = diagnostic::render_diagnostics(&filename, &source, &check_diags);
+        let rendered = diagnostic::render_diagnostics(filename, source, &check_diags);
         return Err(anyhow::anyhow!("{rendered}"));
     }
 
-    let output = Codegen::with_imports(expr_types, &resolved).generate(&program);
+    Ok(CompileResult {
+        program,
+        resolved,
+        expr_types,
+    })
+}
+
+// ── Build (stdin -> stdout) ───────────────────────────────────────
+
+fn cmd_build_stdin() -> Result<()> {
+    use std::io::Read;
+
+    let mut source = String::new();
+    std::io::stdin()
+        .read_to_string(&mut source)
+        .context("failed to read from stdin")?;
+
+    let filename = std::env::var("FLOE_FILENAME").unwrap_or_else(|_| "<stdin>".to_string());
+    let file_path = Path::new(&filename);
+
+    let result = compile_source(file_path, &filename, &source)?;
+    let output =
+        Codegen::with_imports(result.expr_types, &result.resolved).generate(&result.program);
     print!("{}", output.code);
 
     Ok(())
@@ -178,46 +199,12 @@ fn cmd_build(path: &Path, out_dir: Option<&Path>) -> Result<()> {
 }
 
 fn compile_file(file: &Path, out_dir: Option<&Path>) -> Result<PathBuf> {
-    let source = std::fs::read_to_string(file)
-        .with_context(|| format!("failed to read {}", file.display()))?;
+    let source = read_fl_file(file)?;
 
     let filename = file.to_string_lossy();
-    let program = ZsParser::new(&source).parse_program().map_err(|errs| {
-        let diags = diagnostic::from_parse_errors(&errs);
-        let rendered = diagnostic::render_diagnostics(&filename, &source, &diags);
-        anyhow::anyhow!("{rendered}")
-    })?;
-
-    // Resolve imports from other .fl files
-    let resolved = resolve::resolve_imports(file, &program);
-
-    // Resolve npm import types via tsgo
-    let source_dir = file
-        .parent()
-        .unwrap_or(Path::new("."))
-        .canonicalize()
-        .unwrap_or_else(|_| file.parent().unwrap_or(Path::new(".")).to_path_buf());
-    let project_dir = find_project_dir(&source_dir);
-    let mut tsgo_resolver = floe::interop::TsgoResolver::new(&project_dir);
-    let dts_map = tsgo_resolver.resolve_imports(&program, &resolved);
-
-    // Type check
-    let checker = if dts_map.is_empty() {
-        Checker::with_imports(resolved.clone())
-    } else {
-        Checker::with_all_imports(resolved.clone(), dts_map)
-    };
-    let (check_diags, expr_types) = checker.check_full(&program);
-    let type_errors: Vec<_> = check_diags
-        .iter()
-        .filter(|d| d.severity == diagnostic::Severity::Error)
-        .collect();
-    if !type_errors.is_empty() {
-        let rendered = diagnostic::render_diagnostics(&filename, &source, &check_diags);
-        return Err(anyhow::anyhow!("{rendered}"));
-    }
-
-    let output = Codegen::with_imports(expr_types, &resolved).generate(&program);
+    let result = compile_source(file, &filename, &source)?;
+    let output =
+        Codegen::with_imports(result.expr_types, &result.resolved).generate(&result.program);
     let ext = if output.has_jsx { "tsx" } else { "ts" };
 
     let out_path = if let Some(dir) = out_dir {
@@ -246,15 +233,13 @@ fn cmd_check(path: &Path) -> Result<()> {
     let mut errors = 0;
 
     for file in &files {
-        let source = std::fs::read_to_string(file)
-            .with_context(|| format!("failed to read {}", file.display()))?;
+        let source = read_fl_file(file)?;
 
         let filename = file.to_string_lossy();
         match ZsParser::new(&source).parse_program() {
             Ok(program) => {
                 let resolved = resolve::resolve_imports(file, &program);
 
-                // Resolve npm import types via tsgo
                 let source_dir = file
                     .parent()
                     .unwrap_or(Path::new("."))
@@ -301,8 +286,6 @@ fn cmd_check(path: &Path) -> Result<()> {
 // ── Test ─────────────────────────────────────────────────────────
 
 fn cmd_test(path: &Path) -> Result<()> {
-    use floe::codegen::Codegen;
-
     let files = discover_fl_files(path)?;
     if files.is_empty() {
         bail!("no .fl files found in {}", path.display());
@@ -311,8 +294,7 @@ fn cmd_test(path: &Path) -> Result<()> {
     // Find all files that contain test blocks
     let mut test_files = Vec::new();
     for file in &files {
-        let source = std::fs::read_to_string(file)
-            .with_context(|| format!("failed to read {}", file.display()))?;
+        let source = read_fl_file(file)?;
 
         // Quick check: does the file contain "test " keyword?
         if source.contains("test ") {
@@ -437,8 +419,7 @@ fn cmd_fmt(path: &Path, check_only: bool) -> Result<()> {
     let mut formatted = 0;
 
     for file in &files {
-        let source = std::fs::read_to_string(file)
-            .with_context(|| format!("failed to read {}", file.display()))?;
+        let source = read_fl_file(file)?;
 
         let result = floe::formatter::format(&source);
 
@@ -580,6 +561,13 @@ export function App() {
     Ok(())
 }
 
+// ── File I/O Helpers ─────────────────────────────────────────────
+
+/// Read a .fl source file with error context.
+fn read_fl_file(path: &Path) -> Result<String> {
+    std::fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))
+}
+
 // ── File Discovery ───────────────────────────────────────────────
 
 fn discover_fl_files(path: &Path) -> Result<Vec<PathBuf>> {
@@ -617,21 +605,4 @@ fn collect_fl_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
         }
     }
     Ok(())
-}
-
-/// Find the project root by walking up from `start` looking for node_modules or package.json.
-fn find_project_dir(start: &Path) -> PathBuf {
-    let mut dir = start.to_path_buf();
-    let mut package_json_dir: Option<PathBuf> = None;
-    loop {
-        if dir.join("node_modules").is_dir() {
-            return dir;
-        }
-        if package_json_dir.is_none() && dir.join("package.json").is_file() {
-            package_json_dir = Some(dir.clone());
-        }
-        if !dir.pop() {
-            return package_json_dir.unwrap_or_else(|| start.to_path_buf());
-        }
-    }
 }

@@ -1,4 +1,5 @@
 use super::*;
+use crate::type_names;
 
 // ── Expression Checking ──────────────────────────────────────
 
@@ -509,35 +510,6 @@ impl Checker {
 
             ExprKind::Member { object, field } => {
                 let obj_ty = self.check_expr(object);
-                // Rule 6: No property access on unnarrowed unions
-                if let Type::Result { .. } = obj_ty {
-                    self.diagnostics.push(
-                        Diagnostic::error(
-                            format!(
-                                "cannot access `.{field}` on `Result` - use `match` or `?` first"
-                            ),
-                            expr.span,
-                        )
-                        .with_label("`Result` must be narrowed first")
-                        .with_help("use `match result { Ok(v) -> ..., Err(e) -> ... }`")
-                        .with_code("E006"),
-                    );
-                    return Type::Unknown;
-                }
-                if let Type::Union { name, .. } = &obj_ty {
-                    self.diagnostics.push(
-                        Diagnostic::error(
-                            format!(
-                                "cannot access `.{field}` on union `{name}` - use `match` first"
-                            ),
-                            expr.span,
-                        )
-                        .with_label("union must be narrowed first")
-                        .with_help("use `match` to narrow the union first")
-                        .with_code("E006"),
-                    );
-                    return Type::Unknown;
-                }
 
                 // Check for npm member access via tsgo probes (e.g. z.object, z.string)
                 if let ExprKind::Identifier(name) = &object.kind {
@@ -551,94 +523,16 @@ impl Checker {
                     }
                 }
 
-                // Error on member access on Promise — must await first
-                if let Type::Named(name) = &obj_ty
-                    && name.starts_with("Promise<")
+                // Allow stdlib module access (e.g. JSON.parse) before unknown check
+                if matches!(obj_ty, Type::Unknown)
+                    && let ExprKind::Identifier(name) = &object.kind
+                    && self.stdlib.is_module(name)
+                    && let Some(stdlib_fn) = self.stdlib.lookup(name, field)
                 {
-                    self.diagnostics.push(
-                        Diagnostic::error(
-                            format!("cannot access `.{field}` on `{name}` — use `await` first"),
-                            expr.span,
-                        )
-                        .with_label("must `await` the Promise before accessing members")
-                        .with_code("E021"),
-                    );
-                    return Type::Unknown;
+                    return stdlib_fn.return_type.clone();
                 }
 
-                // Error on member access on `unknown` — must narrow first
-                if matches!(obj_ty, Type::Unknown) {
-                    // Allow stdlib module access (e.g. JSON.parse) — those are handled elsewhere
-                    if let ExprKind::Identifier(name) = &object.kind
-                        && self.stdlib.is_module(name)
-                        && let Some(stdlib_fn) = self.stdlib.lookup(name, field)
-                    {
-                        return stdlib_fn.return_type.clone();
-                    }
-                    self.diagnostics.push(
-                        Diagnostic::error(
-                            format!("cannot access `.{field}` on `unknown`"),
-                            expr.span,
-                        )
-                        .with_label("`unknown` must be narrowed before member access")
-                        .with_help("use `match`, type validation (e.g. Zod), or pattern matching")
-                        .with_code("E020"),
-                    );
-                    return Type::Unknown;
-                }
-
-                // Resolve Named types to their concrete definition
-                let concrete = self.resolve_type_to_concrete(&obj_ty);
-
-                if let Type::Record(fields) = &concrete {
-                    if let Some((_, ty)) = fields.iter().find(|(n, _)| n == field) {
-                        return ty.clone();
-                    }
-                    // Field not found on a known record type
-                    let type_name = if let Type::Named(name) = &obj_ty {
-                        format!("`{name}`")
-                    } else {
-                        format!("`{}`", obj_ty.display_name())
-                    };
-                    self.diagnostics.push(
-                        Diagnostic::error(
-                            format!("type {type_name} has no field `{field}`"),
-                            expr.span,
-                        )
-                        .with_label("unknown field")
-                        .with_help(format!(
-                            "available fields: {}",
-                            fields
-                                .iter()
-                                .map(|(n, _)| format!("`{n}`"))
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        ))
-                        .with_code("E017"),
-                    );
-                    return Type::Unknown;
-                }
-
-                // Error on member access on primitive types
-                match &obj_ty {
-                    Type::Number | Type::String | Type::Bool | Type::Unit => {
-                        self.diagnostics.push(
-                            Diagnostic::error(
-                                format!(
-                                    "cannot access `.{field}` on type `{}`",
-                                    obj_ty.display_name()
-                                ),
-                                expr.span,
-                            )
-                            .with_label("not a record type")
-                            .with_code("E017"),
-                        );
-                        return Type::Unknown;
-                    }
-                    _ => {}
-                }
-
-                Type::Unknown
+                self.resolve_member_type(&obj_ty, field, expr.span)
             }
 
             ExprKind::Index { object, index } => {
@@ -681,7 +575,7 @@ impl Checker {
                                     for field in fields {
                                         // Infer type for well-known field names
                                         let field_ty = match field.as_str() {
-                                            "error" => Type::Named("Error".to_string()),
+                                            "error" => Type::Named(type_names::ERROR.to_string()),
                                             _ => Type::Unknown,
                                         };
                                         self.env.define(field, field_ty);
@@ -769,7 +663,7 @@ impl Checker {
                 self.inside_try = prev_inside_try;
                 Type::Result {
                     ok: Box::new(inner_ty),
-                    err: Box::new(Type::Named("Error".to_string())),
+                    err: Box::new(Type::Named(type_names::ERROR.to_string())),
                 }
             }
 
@@ -1020,37 +914,11 @@ impl Checker {
         };
 
         if let Some((module, func_name)) = member_info
-            && let Some(stdlib_fn) = self.stdlib.lookup(module, func_name)
+            && let Some(stdlib_fn) = self.stdlib.lookup(module, func_name).cloned()
         {
             self.used_names.insert(module.to_string());
-            // Resolve generic return type from piped value
-            // e.g. Array.append returns Array<T> → resolve T from left_ty's element
-            let ret = match (&stdlib_fn.return_type, left_ty) {
-                (Type::Array(_), Type::Array(elem)) => Type::Array(elem.clone()),
-                _ => stdlib_fn.return_type.clone(),
-            };
-            if let Some(first_param) = stdlib_fn.params.first()
-                && !self.types_compatible(first_param, left_ty)
-            {
-                self.diagnostics.push(
-                    Diagnostic::error(
-                        format!(
-                            "argument 1 to `{module}.{func_name}`: expected `{}`, found `{}`",
-                            first_param.display_name(),
-                            left_ty.display_name()
-                        ),
-                        right.span,
-                    )
-                    .with_label(format!("expected `{}`", first_param.display_name()))
-                    .with_code("E001"),
-                );
-            }
-            if let Type::Array(elem) = left_ty {
-                self.lambda_param_hint = Some((**elem).clone());
-            }
-            self.check_pipe_right_args(right);
-            self.lambda_param_hint = None;
-            return ret;
+            let display = format!("{module}.{func_name}");
+            return self.validate_stdlib_pipe_call(&stdlib_fn, &display, left_ty, right);
         }
 
         // Extract the bare function name from the right side
@@ -1073,70 +941,17 @@ impl Checker {
             let fallback_matches = self.stdlib.lookup_by_name(name);
 
             if let Some(m) = module
-                && self.stdlib.lookup(m, name).is_some()
+                && let Some(stdlib_fn) = self.stdlib.lookup(m, name).cloned()
             {
-                // Found via type-directed resolution — mark as used, check args
+                // Found via type-directed resolution
                 self.used_names.insert(name.to_string());
-                let stdlib_fn = self.stdlib.lookup(m, name).unwrap();
-                let ret = match (&stdlib_fn.return_type, left_ty) {
-                    (Type::Array(_), Type::Array(elem)) => Type::Array(elem.clone()),
-                    _ => stdlib_fn.return_type.clone(),
-                };
-                // Validate piped value against first parameter
-                if let Some(first_param) = stdlib_fn.params.first()
-                    && !self.types_compatible(first_param, left_ty)
-                {
-                    self.diagnostics.push(
-                        Diagnostic::error(
-                            format!(
-                                "argument 1 to `{m}.{name}`: expected `{}`, found `{}`",
-                                first_param.display_name(),
-                                left_ty.display_name()
-                            ),
-                            right.span,
-                        )
-                        .with_label(format!("expected `{}`", first_param.display_name()))
-                        .with_code("E001"),
-                    );
-                }
-                // Set lambda param hint from array element type
-                if let Type::Array(elem) = left_ty {
-                    self.lambda_param_hint = Some((**elem).clone());
-                }
-                self.check_pipe_right_args(right);
-                self.lambda_param_hint = None;
-                return ret;
+                let display = format!("{m}.{name}");
+                return self.validate_stdlib_pipe_call(&stdlib_fn, &display, left_ty, right);
             } else if !fallback_matches.is_empty() {
-                let stdlib_fn = fallback_matches[0];
-                // Validate piped value against first parameter
-                if let Some(first_param) = stdlib_fn.params.first()
-                    && !self.types_compatible(first_param, left_ty)
-                {
-                    self.diagnostics.push(
-                        Diagnostic::error(
-                            format!(
-                                "argument 1 to `{name}`: expected `{}`, found `{}`",
-                                first_param.display_name(),
-                                left_ty.display_name()
-                            ),
-                            right.span,
-                        )
-                        .with_label(format!("expected `{}`", first_param.display_name()))
-                        .with_code("E001"),
-                    );
-                }
                 // Found via name-based fallback
+                let stdlib_fn = fallback_matches[0].clone();
                 self.used_names.insert(name.to_string());
-                let ret = match (&stdlib_fn.return_type, left_ty) {
-                    (Type::Array(_), Type::Array(elem)) => Type::Array(elem.clone()),
-                    _ => stdlib_fn.return_type.clone(),
-                };
-                if let Type::Array(elem) = left_ty {
-                    self.lambda_param_hint = Some((**elem).clone());
-                }
-                self.check_pipe_right_args(right);
-                self.lambda_param_hint = None;
-                return ret;
+                return self.validate_stdlib_pipe_call(&stdlib_fn, name, left_ty, right);
             }
         }
 
@@ -1194,6 +1009,43 @@ impl Checker {
         }
 
         right_ty
+    }
+
+    /// Validate a stdlib function call in a pipe, checking the first parameter type,
+    /// resolving generic return types, and checking additional arguments.
+    fn validate_stdlib_pipe_call(
+        &mut self,
+        stdlib_fn: &crate::stdlib::StdlibFn,
+        display_name: &str,
+        left_ty: &Type,
+        right: &Expr,
+    ) -> Type {
+        let ret = match (&stdlib_fn.return_type, left_ty) {
+            (Type::Array(_), Type::Array(elem)) => Type::Array(elem.clone()),
+            _ => stdlib_fn.return_type.clone(),
+        };
+        if let Some(first_param) = stdlib_fn.params.first()
+            && !self.types_compatible(first_param, left_ty)
+        {
+            self.diagnostics.push(
+                Diagnostic::error(
+                    format!(
+                        "argument 1 to `{display_name}`: expected `{}`, found `{}`",
+                        first_param.display_name(),
+                        left_ty.display_name()
+                    ),
+                    right.span,
+                )
+                .with_label(format!("expected `{}`", first_param.display_name()))
+                .with_code("E001"),
+            );
+        }
+        if let Type::Array(elem) = left_ty {
+            self.lambda_param_hint = Some((**elem).clone());
+        }
+        self.check_pipe_right_args(right);
+        self.lambda_param_hint = None;
+        ret
     }
 
     /// Check arguments in the right side of a pipe without checking the callee identifier.
@@ -1334,13 +1186,117 @@ impl Checker {
 
     fn type_to_stdlib_module(ty: &Type) -> Option<&'static str> {
         match ty {
-            Type::Array(_) => Some("Array"),
-            Type::String => Some("String"),
-            Type::Number => Some("Number"),
-            Type::Option(_) => Some("Option"),
-            Type::Result { .. } => Some("Result"),
+            Type::Array(_) => Some(type_names::MOD_ARRAY),
+            Type::String => Some(type_names::MOD_STRING),
+            Type::Number => Some(type_names::MOD_NUMBER),
+            Type::Option(_) => Some(type_names::MOD_OPTION),
+            Type::Result { .. } => Some(type_names::MOD_RESULT),
             _ => None,
         }
+    }
+
+    /// Resolve the type of a member access (`obj_ty.field`), producing diagnostics for errors.
+    fn resolve_member_type(&mut self, obj_ty: &Type, field: &str, span: Span) -> Type {
+        // Rule 6: No property access on unnarrowed unions
+        if let Type::Result { .. } = obj_ty {
+            self.diagnostics.push(
+                Diagnostic::error(
+                    format!("cannot access `.{field}` on `Result` - use `match` or `?` first"),
+                    span,
+                )
+                .with_label("`Result` must be narrowed first")
+                .with_help("use `match result { Ok(v) -> ..., Err(e) -> ... }`")
+                .with_code("E006"),
+            );
+            return Type::Unknown;
+        }
+        if let Type::Union { name, .. } = obj_ty {
+            self.diagnostics.push(
+                Diagnostic::error(
+                    format!("cannot access `.{field}` on union `{name}` - use `match` first"),
+                    span,
+                )
+                .with_label("union must be narrowed first")
+                .with_help("use `match` to narrow the union first")
+                .with_code("E006"),
+            );
+            return Type::Unknown;
+        }
+
+        // Error on member access on Promise — must await first
+        if let Type::Named(name) = obj_ty
+            && name.starts_with("Promise<")
+        {
+            self.diagnostics.push(
+                Diagnostic::error(
+                    format!("cannot access `.{field}` on `{name}` — use `await` first"),
+                    span,
+                )
+                .with_label("must `await` the Promise before accessing members")
+                .with_code("E021"),
+            );
+            return Type::Unknown;
+        }
+
+        // Error on member access on `unknown` — must narrow first
+        if matches!(obj_ty, Type::Unknown) {
+            self.diagnostics.push(
+                Diagnostic::error(format!("cannot access `.{field}` on `unknown`"), span)
+                    .with_label("`unknown` must be narrowed before member access")
+                    .with_help("use `match`, type validation (e.g. Zod), or pattern matching")
+                    .with_code("E020"),
+            );
+            return Type::Unknown;
+        }
+
+        // Resolve Named types to their concrete definition
+        let concrete = self.resolve_type_to_concrete(obj_ty);
+
+        if let Type::Record(fields) = &concrete {
+            if let Some((_, ty)) = fields.iter().find(|(n, _)| n == field) {
+                return ty.clone();
+            }
+            let type_name = if let Type::Named(name) = obj_ty {
+                format!("`{name}`")
+            } else {
+                format!("`{}`", obj_ty.display_name())
+            };
+            self.diagnostics.push(
+                Diagnostic::error(format!("type {type_name} has no field `{field}`"), span)
+                    .with_label("unknown field")
+                    .with_help(format!(
+                        "available fields: {}",
+                        fields
+                            .iter()
+                            .map(|(n, _)| format!("`{n}`"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ))
+                    .with_code("E017"),
+            );
+            return Type::Unknown;
+        }
+
+        // Error on member access on primitive types
+        match obj_ty {
+            Type::Number | Type::String | Type::Bool | Type::Unit => {
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        format!(
+                            "cannot access `.{field}` on type `{}`",
+                            obj_ty.display_name()
+                        ),
+                        span,
+                    )
+                    .with_label("not a record type")
+                    .with_code("E017"),
+                );
+                return Type::Unknown;
+            }
+            _ => {}
+        }
+
+        Type::Unknown
     }
 
     /// Resolve a type to its concrete definition, following Named type lookups.
@@ -1365,11 +1321,11 @@ pub(crate) fn simple_resolve_type_expr(type_expr: &crate::parser::ast::TypeExpr)
     use crate::parser::ast::TypeExprKind;
     match &type_expr.kind {
         TypeExprKind::Named { name, .. } => match name.as_str() {
-            "number" => Type::Number,
-            "string" => Type::String,
-            "boolean" => Type::Bool,
-            "()" => Type::Unit,
-            "undefined" => Type::Undefined,
+            type_names::NUMBER => Type::Number,
+            type_names::STRING => Type::String,
+            type_names::BOOLEAN => Type::Bool,
+            type_names::UNIT => Type::Unit,
+            type_names::UNDEFINED => Type::Undefined,
             _ => Type::Named(name.to_string()),
         },
         TypeExprKind::Array(inner) => Type::Array(Box::new(simple_resolve_type_expr(inner))),
