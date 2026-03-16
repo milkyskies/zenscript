@@ -293,6 +293,14 @@ const updated = config |> Map.set("port", "3000")
 const port = Map.get(config, "port")     // Option<string>
 const keys = config |> Map.keys          // Array<string>
 const merged = Map.merge(defaults, config)
+
+// Set<T> — immutable unique collections
+const tags = Set.fromArray(["urgent", "bug", "frontend"])
+const updated = tags |> Set.add("backend")
+const isUrgent = tags |> Set.has("urgent")    // boolean
+const teamAll = Set.union(teamA, teamB)
+const overlap = Set.intersect(teamA, teamB)
+const diff = Set.diff(teamA, teamB)
 ```
 
 ## Imports

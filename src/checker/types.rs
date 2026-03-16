@@ -44,6 +44,10 @@ pub enum Type {
         key: Box<Type>,
         value: Box<Type>,
     },
+    /// Set type: Set<T>
+    Set {
+        element: Box<Type>,
+    },
     /// Tuple type
     Tuple(Vec<Type>),
     /// Record/struct type
@@ -105,6 +109,7 @@ impl Type {
             Type::Map { key, value } => {
                 format!("Map<{}, {}>", key.display_name(), value.display_name())
             }
+            Type::Set { element } => format!("Set<{}>", element.display_name()),
             Type::Tuple(types) => {
                 let t: Vec<_> = types.iter().map(|t| t.display_name()).collect();
                 format!("({})", t.join(", "))

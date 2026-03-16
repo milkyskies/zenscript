@@ -160,6 +160,28 @@ const _json_str = JSON.stringify([1, 2, 3]);
 
 const _json_parsed = (() => { try { return { ok: true as const, value: JSON.parse("{}") }; } catch (e) { return { ok: false as const, error: { message: String(e) } }; } })();
 
+const _set = new Set([1, 2, 3]);
+
+const _set_arr = [..._set];
+
+const _set_added = new Set([..._set, 4]);
+
+const _set_removed = new Set([..._set].filter(x => x !== 2));
+
+const _set_has = _set.has(1);
+
+const _set_size = _set.size;
+
+const _set_empty = _set.size === 0;
+
+const _set2 = new Set([2, 3, 4]);
+
+const _set_union = new Set([..._set, ..._set2]);
+
+const _set_inter = new Set([..._set].filter(x => _set2.has(x)));
+
+const _set_diff = new Set([..._set].filter(x => !_set2.has(x)));
+
 const _piped = [...[3, 1, 2]].sort((a, b) => a - b);
 
 const _pipe_chain = [...[1, 2, 3, 4, 5].filter((n) => n > 2).map((n) => n * 10)].reverse();

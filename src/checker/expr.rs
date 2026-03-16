@@ -926,8 +926,8 @@ impl Checker {
                 self.used_names.insert(name.to_string());
                 let display = format!("{m}.{name}");
                 return self.validate_stdlib_pipe_call(&stdlib_fn, &display, left_ty, right);
-            } else if !fallback_matches.is_empty() {
-                // Found via name-based fallback
+            } else if !fallback_matches.is_empty() && self.env.lookup(name).is_none() {
+                // Found via name-based fallback (only if not locally defined)
                 let stdlib_fn = fallback_matches[0].clone();
                 self.used_names.insert(name.to_string());
                 return self.validate_stdlib_pipe_call(&stdlib_fn, name, left_ty, right);
@@ -1087,6 +1087,9 @@ impl Checker {
                 Self::collect_generic_params_from_type(key, names, seen);
                 Self::collect_generic_params_from_type(value, names, seen);
             }
+            Type::Set { element } => {
+                Self::collect_generic_params_from_type(element, names, seen);
+            }
             _ => {}
         }
     }
@@ -1125,6 +1128,9 @@ impl Checker {
                 Self::unify_for_inference(pk, ak, generics, subs);
                 Self::unify_for_inference(pv, av, generics, subs);
             }
+            (Type::Set { element: pe }, Type::Set { element: ae }) => {
+                Self::unify_for_inference(pe, ae, generics, subs);
+            }
             (Type::Option(p), Type::Option(a)) => {
                 Self::unify_for_inference(p, a, generics, subs);
             }
@@ -1149,6 +1155,9 @@ impl Checker {
             Type::Map { key, value } => Type::Map {
                 key: Box::new(Self::substitute_generics(key, subs)),
                 value: Box::new(Self::substitute_generics(value, subs)),
+            },
+            Type::Set { element } => Type::Set {
+                element: Box::new(Self::substitute_generics(element, subs)),
             },
             Type::Option(inner) => Type::Option(Box::new(Self::substitute_generics(inner, subs))),
             Type::Tuple(types) => Type::Tuple(
@@ -1179,6 +1188,7 @@ impl Checker {
         match ty {
             Type::Array(_) => Some(type_names::MOD_ARRAY),
             Type::Map { .. } => Some(type_names::MOD_MAP),
+            Type::Set { .. } => Some(type_names::MOD_SET),
             Type::String => Some(type_names::MOD_STRING),
             Type::Number => Some(type_names::MOD_NUMBER),
             Type::Option(_) => Some(type_names::MOD_OPTION),

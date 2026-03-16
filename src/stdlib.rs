@@ -85,6 +85,11 @@ fn map_of(k: Type, v: Type) -> Type {
         value: Box::new(v),
     }
 }
+fn set_of(t: Type) -> Type {
+    Type::Set {
+        element: Box::new(t),
+    }
+}
 fn fun(params: Vec<Type>, ret: Type) -> Type {
     Type::Function {
         params,
@@ -214,6 +219,18 @@ fn build_stdlib() -> Vec<StdlibFn> {
         stdlib_fn!("Map", "size", [map_of(t.clone(), u.clone())], Type::Number, "$0.size"),
         stdlib_fn!("Map", "isEmpty", [map_of(t.clone(), u.clone())], Type::Bool, "$0.size === 0"),
         stdlib_fn!("Map", "merge", [map_of(t.clone(), u.clone()), map_of(t.clone(), u.clone())], map_of(t.clone(), u.clone()), "new Map([...$0, ...$1])"),
+        // ── Set ────────────────────────────────────────────────────
+        stdlib_fn!("Set", "empty", [], set_of(t.clone()), "new Set()"),
+        stdlib_fn!("Set", "fromArray", [array_of(t.clone())], set_of(t.clone()), "new Set($0)"),
+        stdlib_fn!("Set", "toArray", [set_of(t.clone())], array_of(t.clone()), "[...$0]"),
+        stdlib_fn!("Set", "add", [set_of(t.clone()), t.clone()], set_of(t.clone()), "new Set([...$0, $1])"),
+        stdlib_fn!("Set", "remove", [set_of(t.clone()), t.clone()], set_of(t.clone()), "new Set([...$0].filter(x => x !== $1))"),
+        stdlib_fn!("Set", "has", [set_of(t.clone()), t.clone()], Type::Bool, "$0.has($1)"),
+        stdlib_fn!("Set", "size", [set_of(t.clone())], Type::Number, "$0.size"),
+        stdlib_fn!("Set", "isEmpty", [set_of(t.clone())], Type::Bool, "$0.size === 0"),
+        stdlib_fn!("Set", "union", [set_of(t.clone()), set_of(t.clone())], set_of(t.clone()), "new Set([...$0, ...$1])"),
+        stdlib_fn!("Set", "intersect", [set_of(t.clone()), set_of(t.clone())], set_of(t.clone()), "new Set([...$0].filter(x => $1.has(x)))"),
+        stdlib_fn!("Set", "diff", [set_of(t.clone()), set_of(t.clone())], set_of(t.clone()), "new Set([...$0].filter(x => !$1.has(x)))"),
         // ── Pipe Utilities ────────────────────────────────────────
         stdlib_fn!("Pipe", "tap", [t.clone(), fun(vec![t.clone()], Type::Unit)], t.clone(), "(() => { const _v = $0; ($1)(_v); return _v; })()"),
         // ── JSON ───────────────────────────────────────────────
@@ -381,6 +398,85 @@ mod tests {
     }
 
     #[test]
+    fn lookup_set_empty() {
+        let reg = StdlibRegistry::new();
+        let f = reg.lookup("Set", "empty").unwrap();
+        assert_eq!(f.codegen, "new Set()");
+    }
+
+    #[test]
+    fn lookup_set_from_array() {
+        let reg = StdlibRegistry::new();
+        let f = reg.lookup("Set", "fromArray").unwrap();
+        assert_eq!(f.codegen, "new Set($0)");
+    }
+
+    #[test]
+    fn lookup_set_to_array() {
+        let reg = StdlibRegistry::new();
+        let f = reg.lookup("Set", "toArray").unwrap();
+        assert_eq!(f.codegen, "[...$0]");
+    }
+
+    #[test]
+    fn lookup_set_add() {
+        let reg = StdlibRegistry::new();
+        let f = reg.lookup("Set", "add").unwrap();
+        assert_eq!(f.codegen, "new Set([...$0, $1])");
+    }
+
+    #[test]
+    fn lookup_set_remove() {
+        let reg = StdlibRegistry::new();
+        let f = reg.lookup("Set", "remove").unwrap();
+        assert!(f.codegen.contains("filter"));
+    }
+
+    #[test]
+    fn lookup_set_has() {
+        let reg = StdlibRegistry::new();
+        let f = reg.lookup("Set", "has").unwrap();
+        assert_eq!(f.codegen, "$0.has($1)");
+    }
+
+    #[test]
+    fn lookup_set_size() {
+        let reg = StdlibRegistry::new();
+        let f = reg.lookup("Set", "size").unwrap();
+        assert_eq!(f.codegen, "$0.size");
+    }
+
+    #[test]
+    fn lookup_set_is_empty() {
+        let reg = StdlibRegistry::new();
+        let f = reg.lookup("Set", "isEmpty").unwrap();
+        assert_eq!(f.codegen, "$0.size === 0");
+    }
+
+    #[test]
+    fn lookup_set_union() {
+        let reg = StdlibRegistry::new();
+        let f = reg.lookup("Set", "union").unwrap();
+        assert_eq!(f.codegen, "new Set([...$0, ...$1])");
+    }
+
+    #[test]
+    fn lookup_set_intersect() {
+        let reg = StdlibRegistry::new();
+        let f = reg.lookup("Set", "intersect").unwrap();
+        assert!(f.codegen.contains("filter"));
+        assert!(f.codegen.contains("has"));
+    }
+
+    #[test]
+    fn lookup_set_diff() {
+        let reg = StdlibRegistry::new();
+        let f = reg.lookup("Set", "diff").unwrap();
+        assert!(f.codegen.contains("filter"));
+        assert!(f.codegen.contains("!$1.has"));
+    }
+
+    #[test]
     fn lookup_nonexistent() {
         let reg = StdlibRegistry::new();
         assert!(reg.lookup("Array", "nonexistent").is_none());
@@ -400,6 +496,7 @@ mod tests {
         assert!(reg.is_module("JSON"));
         assert!(reg.is_module("Pipe"));
         assert!(reg.is_module("Map"));
+        assert!(reg.is_module("Set"));
         assert!(!reg.is_module("Foo"));
     }
 
@@ -415,6 +512,7 @@ mod tests {
         assert!(reg.module_functions("Math").len() >= 14);
         assert!(reg.module_functions("JSON").len() >= 2);
         assert!(reg.module_functions("Map").len() >= 12);
+        assert!(reg.module_functions("Set").len() >= 11);
     }
 
     #[test]
