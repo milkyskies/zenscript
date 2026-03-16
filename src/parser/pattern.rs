@@ -213,6 +213,56 @@ impl Parser {
                 })
             }
 
+            // Array pattern: `[]`, `[a, b]`, `[first, ..rest]`
+            TokenKind::LeftBracket => {
+                self.advance(); // [
+                let mut elements = Vec::new();
+                let mut rest = None;
+
+                while !self.check(&TokenKind::RightBracket) && !self.is_at_end() {
+                    // Check for rest pattern: `..name`
+                    if self.check(&TokenKind::DotDot) {
+                        self.advance(); // ..
+                        // The rest binding name
+                        match self.current_kind() {
+                            TokenKind::Identifier(name) => {
+                                rest = Some(name.clone());
+                                self.advance();
+                            }
+                            TokenKind::Underscore => {
+                                rest = Some("_".to_string());
+                                self.advance();
+                            }
+                            _ => {
+                                return Err(
+                                    self.error("expected identifier after '..' in array pattern")
+                                );
+                            }
+                        }
+                        // After rest, only comma and ] are allowed
+                        if self.check(&TokenKind::Comma) {
+                            self.advance();
+                        }
+                        break;
+                    }
+
+                    elements.push(self.parse_pattern()?);
+
+                    if self.check(&TokenKind::Comma) {
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+
+                self.expect(&TokenKind::RightBracket)?;
+                let end_span = self.previous_span();
+                Ok(Pattern {
+                    kind: PatternKind::Array { elements, rest },
+                    span: self.merge_spans(start_span, end_span),
+                })
+            }
+
             // Tuple pattern: `(x, y)` or `(_, 0)`
             TokenKind::LeftParen => {
                 self.advance(); // (

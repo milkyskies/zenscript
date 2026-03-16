@@ -1323,6 +1323,43 @@ impl<'src> CstParser<'src> {
                 self.parse_comma_separated(Self::parse_record_pattern_field, TokenKind::RightBrace);
                 self.expect(TokenKind::RightBrace);
             }
+            Some(TokenKind::LeftBracket) => {
+                // Array pattern: [], [a, b], [first, ..rest]
+                self.bump(); // [
+                self.eat_trivia();
+                // Parse elements and optional rest pattern
+                while !self.at(TokenKind::RightBracket) && !self.at_end() {
+                    // Check for rest pattern: ..name
+                    if self.at(TokenKind::DotDot) {
+                        self.bump(); // ..
+                        self.eat_trivia();
+                        // Expect identifier or _ after ..
+                        if matches!(
+                            self.current_kind(),
+                            Some(TokenKind::Identifier(_)) | Some(TokenKind::Underscore)
+                        ) {
+                            self.bump();
+                        } else {
+                            self.error("expected identifier after '..' in array pattern");
+                        }
+                        self.eat_trivia();
+                        if self.at(TokenKind::Comma) {
+                            self.bump();
+                            self.eat_trivia();
+                        }
+                        break;
+                    }
+                    self.parse_pattern();
+                    self.eat_trivia();
+                    if self.at(TokenKind::Comma) {
+                        self.bump();
+                        self.eat_trivia();
+                    } else {
+                        break;
+                    }
+                }
+                self.expect(TokenKind::RightBracket);
+            }
             Some(TokenKind::LeftParen) => {
                 // Tuple pattern: (x, y)
                 self.bump(); // (

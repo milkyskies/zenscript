@@ -446,6 +446,92 @@ fn match_guard_no_guard() {
     }
 }
 
+// ── Array Pattern Matching ───────────────────────────────────
+
+#[test]
+fn match_array_empty() {
+    let expr = first_expr(r#"match items { [] -> "empty", _ -> "other" }"#);
+    match expr {
+        ExprKind::Match { arms, .. } => {
+            assert!(matches!(
+                arms[0].pattern.kind,
+                PatternKind::Array {
+                    ref elements,
+                    ref rest
+                } if elements.is_empty() && rest.is_none()
+            ));
+        }
+        _ => panic!("expected match"),
+    }
+}
+
+#[test]
+fn match_array_single_binding() {
+    let expr = first_expr("match items { [a] -> a, _ -> 0 }");
+    match expr {
+        ExprKind::Match { arms, .. } => {
+            if let PatternKind::Array { elements, rest } = &arms[0].pattern.kind {
+                assert_eq!(elements.len(), 1);
+                assert!(matches!(elements[0].kind, PatternKind::Binding(ref n) if n == "a"));
+                assert!(rest.is_none());
+            } else {
+                panic!("expected array pattern");
+            }
+        }
+        _ => panic!("expected match"),
+    }
+}
+
+#[test]
+fn match_array_rest_pattern() {
+    let expr = first_expr("match items { [first, ..rest] -> first, _ -> 0 }");
+    match expr {
+        ExprKind::Match { arms, .. } => {
+            if let PatternKind::Array { elements, rest } = &arms[0].pattern.kind {
+                assert_eq!(elements.len(), 1);
+                assert!(matches!(elements[0].kind, PatternKind::Binding(ref n) if n == "first"));
+                assert_eq!(rest.as_deref(), Some("rest"));
+            } else {
+                panic!("expected array pattern");
+            }
+        }
+        _ => panic!("expected match"),
+    }
+}
+
+#[test]
+fn match_array_two_plus_rest() {
+    let expr = first_expr("match items { [a, b, ..rest] -> a, _ -> 0 }");
+    match expr {
+        ExprKind::Match { arms, .. } => {
+            if let PatternKind::Array { elements, rest } = &arms[0].pattern.kind {
+                assert_eq!(elements.len(), 2);
+                assert_eq!(rest.as_deref(), Some("rest"));
+            } else {
+                panic!("expected array pattern");
+            }
+        }
+        _ => panic!("expected match"),
+    }
+}
+
+#[test]
+fn match_array_wildcard_rest() {
+    let expr = first_expr("match items { [_, .._] -> 1, _ -> 0 }");
+    match expr {
+        ExprKind::Match { arms, .. } => {
+            if let PatternKind::Array { elements, rest } = &arms[0].pattern.kind {
+                assert_eq!(elements.len(), 1);
+                assert!(matches!(elements[0].kind, PatternKind::Wildcard));
+                assert_eq!(rest.as_deref(), Some("_"));
+            } else {
+                panic!("expected array pattern");
+            }
+        }
+        _ => panic!("expected match"),
+    }
+}
+
 // ── Const Declaration ────────────────────────────────────────
 
 #[test]

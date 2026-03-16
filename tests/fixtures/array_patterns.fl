@@ -1,0 +1,20 @@
+const items = [1, 2, 3]
+
+const _result = match items {
+    [] -> "empty",
+    [only] -> only,
+    [first, ..rest] -> first,
+}
+
+// Two-element exact match
+const pair = [10, 20]
+const _sum = match pair {
+    [a, b] -> a + b,
+    _ -> 0,
+}
+
+// Rest pattern with multiple leading elements
+const _head = match items {
+    [a, b, ..rest] -> a + b,
+    _ -> 0,
+}

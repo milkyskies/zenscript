@@ -168,6 +168,50 @@ impl Checker {
             }
         }
 
+        // For array types, check if empty + non-empty are covered
+        if matches!(subject_ty, Type::Array(_)) {
+            let mut has_empty = false;
+            let mut has_nonempty_rest = false;
+
+            for arm in arms {
+                if arm.guard.is_some() {
+                    continue;
+                }
+                if let PatternKind::Array { elements, rest } = &arm.pattern.kind {
+                    if elements.is_empty() && rest.is_none() {
+                        has_empty = true;
+                    }
+                    if rest.is_some() {
+                        has_nonempty_rest = true;
+                    }
+                }
+            }
+
+            // If there are array patterns but they don't cover all cases
+            let has_any_array_pattern = arms
+                .iter()
+                .any(|a| matches!(a.pattern.kind, PatternKind::Array { .. }));
+            if has_any_array_pattern && !(has_empty && has_nonempty_rest) {
+                let missing = match (has_empty, has_nonempty_rest) {
+                    (false, false) => "empty array `[]` and non-empty array `[_, .._]`",
+                    (false, true) => "empty array `[]`",
+                    (true, false) => "non-empty array `[_, .._]`",
+                    _ => unreachable!(),
+                };
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        format!("non-exhaustive match on array: missing {missing}"),
+                        span,
+                    )
+                    .with_label("not all cases covered")
+                    .with_help(
+                        "add match arms for both `[]` and `[_, ..rest]`, or add a `_ ->` catch-all",
+                    )
+                    .with_code("E004"),
+                );
+            }
+        }
+
         // For bool, check true/false covered
         if matches!(subject_ty, Type::Bool) {
             let mut has_true = false;
@@ -296,6 +340,32 @@ impl Checker {
                     for pat in patterns {
                         self.check_pattern(pat, &Type::Unknown);
                     }
+                }
+            }
+            PatternKind::Array { elements, rest } => {
+                // Determine element type from subject
+                let elem_ty = if let Type::Array(inner) = subject_ty {
+                    inner.as_ref().clone()
+                } else {
+                    Type::Unknown
+                };
+
+                // Bind each element pattern
+                for pat in elements {
+                    self.check_pattern(pat, &elem_ty);
+                }
+
+                // Bind rest as array of same element type
+                if let Some(name) = rest
+                    && name != "_"
+                {
+                    let rest_ty = if let Type::Array(_) = subject_ty {
+                        subject_ty.clone()
+                    } else {
+                        Type::Array(Box::new(Type::Unknown))
+                    };
+                    self.env.define(name, rest_ty.clone());
+                    self.name_types.insert(name.clone(), rest_ty.display_name());
                 }
             }
         }

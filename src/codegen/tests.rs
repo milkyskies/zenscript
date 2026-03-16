@@ -988,3 +988,112 @@ fn string_literal_union_exported() {
     assert!(result.starts_with("export type Direction = "));
     assert!(result.contains(r#""north" | "south" | "east" | "west""#));
 }
+
+// ── Array Pattern Matching ──────────────────────────────────
+
+#[test]
+fn match_array_empty() {
+    let result = emit(r#"match items { [] -> "empty", _ -> "other" }"#);
+    assert!(
+        result.contains(".length === 0"),
+        "expected empty array check, got: {result}"
+    );
+    assert!(
+        result.contains("\"empty\""),
+        "expected empty branch, got: {result}"
+    );
+}
+
+#[test]
+fn match_array_single() {
+    let result = emit(r#"match items { [a] -> a, _ -> "none" }"#);
+    assert!(
+        result.contains(".length === 1"),
+        "expected single element check, got: {result}"
+    );
+    assert!(
+        result.contains("[0]"),
+        "expected index access for binding, got: {result}"
+    );
+}
+
+#[test]
+fn match_array_two_elements() {
+    let result = emit(r#"match items { [a, b] -> a, _ -> "none" }"#);
+    assert!(
+        result.contains(".length === 2"),
+        "expected two element check, got: {result}"
+    );
+}
+
+#[test]
+fn match_array_rest() {
+    let result = emit("match items { [first, ..rest] -> first, _ -> 0 }");
+    assert!(
+        result.contains(".length >= 1"),
+        "expected length >= 1 check, got: {result}"
+    );
+    assert!(
+        result.contains("[0]"),
+        "expected index access for first, got: {result}"
+    );
+    assert!(
+        result.contains(".slice(1)"),
+        "expected slice for rest, got: {result}"
+    );
+}
+
+#[test]
+fn match_array_two_plus_rest() {
+    let result = emit("match items { [a, b, ..rest] -> a, _ -> 0 }");
+    assert!(
+        result.contains(".length >= 2"),
+        "expected length >= 2 check, got: {result}"
+    );
+    assert!(
+        result.contains(".slice(2)"),
+        "expected slice(2) for rest, got: {result}"
+    );
+}
+
+#[test]
+fn match_array_empty_and_rest_exhaustive() {
+    // [] + [_, ..rest] covers all cases — should not add non-exhaustive throw
+    let result = emit(r#"match items { [] -> "empty", [first, ..rest] -> first }"#);
+    assert!(
+        result.contains(".length === 0"),
+        "expected empty check, got: {result}"
+    );
+    assert!(
+        result.contains(".length >= 1"),
+        "expected non-empty check, got: {result}"
+    );
+}
+
+#[test]
+fn match_array_wildcard_rest() {
+    // [_, ..rest] with underscore as first element
+    let result = emit("match items { [_, ..rest] -> rest, _ -> items }");
+    assert!(
+        result.contains(".length >= 1"),
+        "expected length >= 1, got: {result}"
+    );
+    assert!(
+        result.contains(".slice(1)"),
+        "expected slice(1) for rest, got: {result}"
+    );
+}
+
+#[test]
+fn match_array_literal_element() {
+    // Pattern with literal sub-pattern
+    let result = emit(r#"match items { [1] -> "one", _ -> "other" }"#);
+    assert!(
+        result.contains(".length === 1"),
+        "expected length check, got: {result}"
+    );
+    assert!(
+        result.contains("[0] === 1"),
+        "expected literal element check, got: {result}"
+    );
+}
