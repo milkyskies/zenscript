@@ -199,8 +199,7 @@ fn cmd_build(path: &Path, out_dir: Option<&Path>) -> Result<()> {
 }
 
 fn compile_file(file: &Path, out_dir: Option<&Path>) -> Result<PathBuf> {
-    let source = std::fs::read_to_string(file)
-        .with_context(|| format!("failed to read {}", file.display()))?;
+    let source = read_fl_file(file)?;
 
     let filename = file.to_string_lossy();
     let result = compile_source(file, &filename, &source)?;
@@ -234,8 +233,7 @@ fn cmd_check(path: &Path) -> Result<()> {
     let mut errors = 0;
 
     for file in &files {
-        let source = std::fs::read_to_string(file)
-            .with_context(|| format!("failed to read {}", file.display()))?;
+        let source = read_fl_file(file)?;
 
         let filename = file.to_string_lossy();
         match ZsParser::new(&source).parse_program() {
@@ -296,8 +294,7 @@ fn cmd_test(path: &Path) -> Result<()> {
     // Find all files that contain test blocks
     let mut test_files = Vec::new();
     for file in &files {
-        let source = std::fs::read_to_string(file)
-            .with_context(|| format!("failed to read {}", file.display()))?;
+        let source = read_fl_file(file)?;
 
         // Quick check: does the file contain "test " keyword?
         if source.contains("test ") {
@@ -422,8 +419,7 @@ fn cmd_fmt(path: &Path, check_only: bool) -> Result<()> {
     let mut formatted = 0;
 
     for file in &files {
-        let source = std::fs::read_to_string(file)
-            .with_context(|| format!("failed to read {}", file.display()))?;
+        let source = read_fl_file(file)?;
 
         let result = floe::formatter::format(&source);
 
@@ -563,6 +559,13 @@ export function App() {
     println!("  floe watch src/   - watch and recompile");
 
     Ok(())
+}
+
+// ── File I/O Helpers ─────────────────────────────────────────────
+
+/// Read a .fl source file with error context.
+fn read_fl_file(path: &Path) -> Result<String> {
+    std::fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))
 }
 
 // ── File Discovery ───────────────────────────────────────────────

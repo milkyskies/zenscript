@@ -1434,6 +1434,23 @@ impl Checker {
 
     // ── Type Compatibility ───────────────────────────────────────
 
+    /// Resolve a `Type::Named` to its concrete underlying type, if possible.
+    /// Returns `Some(concrete)` if the type was resolved, `None` if not a Named type.
+    fn resolve_named_to_concrete(&self, ty: &Type) -> Option<Type> {
+        if let Type::Named(name) = ty {
+            let resolved = self
+                .env
+                .resolve_to_concrete(ty, &expr::simple_resolve_type_expr);
+            if &resolved != ty {
+                Some(resolved)
+            } else {
+                self.env.lookup(name).cloned()
+            }
+        } else {
+            None
+        }
+    }
+
     fn types_compatible(&self, expected: &Type, actual: &Type) -> bool {
         // Unknown/Var as EXPECTED: anything can be assigned to unknown (widening)
         if matches!(expected, Type::Unknown | Type::Var(_)) {
@@ -1468,31 +1485,8 @@ impl Checker {
         }
 
         // Resolve Named types to concrete for structural comparison
-        // Uses env.resolve_to_concrete (immutable) to avoid borrow conflicts
-        let expected_concrete = if let Type::Named(name) = expected {
-            let resolved = self
-                .env
-                .resolve_to_concrete(expected, &expr::simple_resolve_type_expr);
-            if &resolved != expected {
-                Some(resolved)
-            } else {
-                self.env.lookup(name).cloned()
-            }
-        } else {
-            None
-        };
-        let actual_concrete = if let Type::Named(name) = actual {
-            let resolved = self
-                .env
-                .resolve_to_concrete(actual, &expr::simple_resolve_type_expr);
-            if &resolved != actual {
-                Some(resolved)
-            } else {
-                self.env.lookup(name).cloned()
-            }
-        } else {
-            None
-        };
+        let expected_concrete = self.resolve_named_to_concrete(expected);
+        let actual_concrete = self.resolve_named_to_concrete(actual);
 
         // Named<->Record structural comparison
         if let Some(Type::Record(ref exp_fields)) = expected_concrete

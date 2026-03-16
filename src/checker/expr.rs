@@ -914,37 +914,11 @@ impl Checker {
         };
 
         if let Some((module, func_name)) = member_info
-            && let Some(stdlib_fn) = self.stdlib.lookup(module, func_name)
+            && let Some(stdlib_fn) = self.stdlib.lookup(module, func_name).cloned()
         {
             self.used_names.insert(module.to_string());
-            // Resolve generic return type from piped value
-            // e.g. Array.append returns Array<T> → resolve T from left_ty's element
-            let ret = match (&stdlib_fn.return_type, left_ty) {
-                (Type::Array(_), Type::Array(elem)) => Type::Array(elem.clone()),
-                _ => stdlib_fn.return_type.clone(),
-            };
-            if let Some(first_param) = stdlib_fn.params.first()
-                && !self.types_compatible(first_param, left_ty)
-            {
-                self.diagnostics.push(
-                    Diagnostic::error(
-                        format!(
-                            "argument 1 to `{module}.{func_name}`: expected `{}`, found `{}`",
-                            first_param.display_name(),
-                            left_ty.display_name()
-                        ),
-                        right.span,
-                    )
-                    .with_label(format!("expected `{}`", first_param.display_name()))
-                    .with_code("E001"),
-                );
-            }
-            if let Type::Array(elem) = left_ty {
-                self.lambda_param_hint = Some((**elem).clone());
-            }
-            self.check_pipe_right_args(right);
-            self.lambda_param_hint = None;
-            return ret;
+            let display = format!("{module}.{func_name}");
+            return self.validate_stdlib_pipe_call(&stdlib_fn, &display, left_ty, right);
         }
 
         // Extract the bare function name from the right side
@@ -967,70 +941,17 @@ impl Checker {
             let fallback_matches = self.stdlib.lookup_by_name(name);
 
             if let Some(m) = module
-                && self.stdlib.lookup(m, name).is_some()
+                && let Some(stdlib_fn) = self.stdlib.lookup(m, name).cloned()
             {
-                // Found via type-directed resolution — mark as used, check args
+                // Found via type-directed resolution
                 self.used_names.insert(name.to_string());
-                let stdlib_fn = self.stdlib.lookup(m, name).unwrap();
-                let ret = match (&stdlib_fn.return_type, left_ty) {
-                    (Type::Array(_), Type::Array(elem)) => Type::Array(elem.clone()),
-                    _ => stdlib_fn.return_type.clone(),
-                };
-                // Validate piped value against first parameter
-                if let Some(first_param) = stdlib_fn.params.first()
-                    && !self.types_compatible(first_param, left_ty)
-                {
-                    self.diagnostics.push(
-                        Diagnostic::error(
-                            format!(
-                                "argument 1 to `{m}.{name}`: expected `{}`, found `{}`",
-                                first_param.display_name(),
-                                left_ty.display_name()
-                            ),
-                            right.span,
-                        )
-                        .with_label(format!("expected `{}`", first_param.display_name()))
-                        .with_code("E001"),
-                    );
-                }
-                // Set lambda param hint from array element type
-                if let Type::Array(elem) = left_ty {
-                    self.lambda_param_hint = Some((**elem).clone());
-                }
-                self.check_pipe_right_args(right);
-                self.lambda_param_hint = None;
-                return ret;
+                let display = format!("{m}.{name}");
+                return self.validate_stdlib_pipe_call(&stdlib_fn, &display, left_ty, right);
             } else if !fallback_matches.is_empty() {
-                let stdlib_fn = fallback_matches[0];
-                // Validate piped value against first parameter
-                if let Some(first_param) = stdlib_fn.params.first()
-                    && !self.types_compatible(first_param, left_ty)
-                {
-                    self.diagnostics.push(
-                        Diagnostic::error(
-                            format!(
-                                "argument 1 to `{name}`: expected `{}`, found `{}`",
-                                first_param.display_name(),
-                                left_ty.display_name()
-                            ),
-                            right.span,
-                        )
-                        .with_label(format!("expected `{}`", first_param.display_name()))
-                        .with_code("E001"),
-                    );
-                }
                 // Found via name-based fallback
+                let stdlib_fn = fallback_matches[0].clone();
                 self.used_names.insert(name.to_string());
-                let ret = match (&stdlib_fn.return_type, left_ty) {
-                    (Type::Array(_), Type::Array(elem)) => Type::Array(elem.clone()),
-                    _ => stdlib_fn.return_type.clone(),
-                };
-                if let Type::Array(elem) = left_ty {
-                    self.lambda_param_hint = Some((**elem).clone());
-                }
-                self.check_pipe_right_args(right);
-                self.lambda_param_hint = None;
-                return ret;
+                return self.validate_stdlib_pipe_call(&stdlib_fn, name, left_ty, right);
             }
         }
 
@@ -1088,6 +1009,43 @@ impl Checker {
         }
 
         right_ty
+    }
+
+    /// Validate a stdlib function call in a pipe, checking the first parameter type,
+    /// resolving generic return types, and checking additional arguments.
+    fn validate_stdlib_pipe_call(
+        &mut self,
+        stdlib_fn: &crate::stdlib::StdlibFn,
+        display_name: &str,
+        left_ty: &Type,
+        right: &Expr,
+    ) -> Type {
+        let ret = match (&stdlib_fn.return_type, left_ty) {
+            (Type::Array(_), Type::Array(elem)) => Type::Array(elem.clone()),
+            _ => stdlib_fn.return_type.clone(),
+        };
+        if let Some(first_param) = stdlib_fn.params.first()
+            && !self.types_compatible(first_param, left_ty)
+        {
+            self.diagnostics.push(
+                Diagnostic::error(
+                    format!(
+                        "argument 1 to `{display_name}`: expected `{}`, found `{}`",
+                        first_param.display_name(),
+                        left_ty.display_name()
+                    ),
+                    right.span,
+                )
+                .with_label(format!("expected `{}`", first_param.display_name()))
+                .with_code("E001"),
+            );
+        }
+        if let Type::Array(elem) = left_ty {
+            self.lambda_param_hint = Some((**elem).clone());
+        }
+        self.check_pipe_right_args(right);
+        self.lambda_param_hint = None;
+        ret
     }
 
     /// Check arguments in the right side of a pipe without checking the callee identifier.
