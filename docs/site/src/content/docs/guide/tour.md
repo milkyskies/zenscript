@@ -4,8 +4,6 @@ sidebar:
   order: 1
 ---
 
-A quick tour of Floe's syntax and features. No explanations, just code.
-
 ## Basics
 
 ```floe
