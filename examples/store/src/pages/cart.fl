@@ -109,7 +109,7 @@ export fn CartPage(props: {
     onUpdateQty: (ProductId, number) -> (),
     onRemove: (ProductId) -> (),
 }) -> JSX.Element {
-    const [orderStatus, setOrderStatus] = useState<OrderStatus>(OrderStatus.Pending)
+    const [orderStatus, setOrderStatus] = useState<OrderStatus>(Pending)
 
     fn handleCheckout() {
         const orderId = OrderId(Math.floor(Math.random() * 10_000))

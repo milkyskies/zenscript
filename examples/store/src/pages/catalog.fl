@@ -79,34 +79,6 @@ fn ProductCard(props: {
     </div>
 }
 
-// ── Filter button helpers ────────────────────────────────
-
-fn renderPriceButton(current: PriceRange, value: PriceRange, label: string, onChange: (PriceRange) -> ()) -> JSX.Element {
-    const isActive = current == value
-    <button
-        onClick={|| onChange(value)}
-        className={isActive |> match {
-            true -> "block w-full rounded px-3 py-1.5 text-left text-sm bg-indigo-600/20 text-indigo-300",
-            false -> "block w-full rounded px-3 py-1.5 text-left text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200",
-        }}
-    >
-        {label}
-    </button>
-}
-
-fn renderSortButton(current: SortOrder, value: SortOrder, label: string, onChange: (SortOrder) -> ()) -> JSX.Element {
-    const isActive = current == value
-    <button
-        onClick={|| onChange(value)}
-        className={isActive |> match {
-            true -> "block w-full rounded px-3 py-1.5 text-left text-sm bg-indigo-600/20 text-indigo-300",
-            false -> "block w-full rounded px-3 py-1.5 text-left text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200",
-        }}
-    >
-        {label}
-    </button>
-}
-
 // ── Filter sidebar ─────────────────────────────────────
 
 fn FilterSidebar(props: {
@@ -118,8 +90,21 @@ fn FilterSidebar(props: {
     sortOrder: SortOrder,
     onSortChange: (SortOrder) -> (),
 }) -> JSX.Element {
-    // TODO: needs compiler fix - tuple element access (.0, .1) not supported
-    // Using inline rendering instead of mapped arrays
+    const priceRanges: Array<(string, PriceRange)> = [
+        ("All Prices", Any),
+        ("Under $25", Under(25)),
+        ("$25 - $50", Between(25, 50)),
+        ("$50 - $100", Between(50, 100)),
+        ("$100 - $500", Between(100, 500)),
+        ("Over $500", Over(500)),
+    ]
+
+    const sortOptions: Array<(string, SortOrder)> = [
+        ("Price: Low to High", PriceLow),
+        ("Price: High to Low", PriceHigh),
+        ("Top Rated", Rating),
+        ("Name", Name),
+    ]
 
     <aside className="w-64 shrink-0 space-y-6">
         <div>
@@ -152,22 +137,36 @@ fn FilterSidebar(props: {
         <div>
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-zinc-400">Price</h3>
             <div className="space-y-1">
-                {renderPriceButton(props.priceRange, PriceRange.Any, "All Prices", props.onPriceRangeChange)}
-                {renderPriceButton(props.priceRange, Under(25), "Under $25", props.onPriceRangeChange)}
-                {renderPriceButton(props.priceRange, Between(25, 50), "$25 - $50", props.onPriceRangeChange)}
-                {renderPriceButton(props.priceRange, Between(50, 100), "$50 - $100", props.onPriceRangeChange)}
-                {renderPriceButton(props.priceRange, Between(100, 500), "$100 - $500", props.onPriceRangeChange)}
-                {renderPriceButton(props.priceRange, Over(500), "Over $500", props.onPriceRangeChange)}
+                {priceRanges |> Array.map(|pair: (string, PriceRange)|
+                    <button
+                        key={pair.0}
+                        onClick={|| props.onPriceRangeChange(pair.1)}
+                        className={(props.priceRange == pair.1) |> match {
+                            true -> "block w-full rounded px-3 py-1.5 text-left text-sm bg-indigo-600/20 text-indigo-300",
+                            false -> "block w-full rounded px-3 py-1.5 text-left text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200",
+                        }}
+                    >
+                        {pair.0}
+                    </button>
+                )}
             </div>
         </div>
 
         <div>
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-zinc-400">Sort By</h3>
             <div className="space-y-1">
-                {renderSortButton(props.sortOrder, SortOrder.PriceLow, "Price: Low to High", props.onSortChange)}
-                {renderSortButton(props.sortOrder, SortOrder.PriceHigh, "Price: High to Low", props.onSortChange)}
-                {renderSortButton(props.sortOrder, SortOrder.Rating, "Top Rated", props.onSortChange)}
-                {renderSortButton(props.sortOrder, SortOrder.Name, "Name", props.onSortChange)}
+                {sortOptions |> Array.map(|pair: (string, SortOrder)|
+                    <button
+                        key={pair.0}
+                        onClick={|| props.onSortChange(pair.1)}
+                        className={(props.sortOrder == pair.1) |> match {
+                            true -> "block w-full rounded px-3 py-1.5 text-left text-sm bg-indigo-600/20 text-indigo-300",
+                            false -> "block w-full rounded px-3 py-1.5 text-left text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200",
+                        }}
+                    >
+                        {pair.0}
+                    </button>
+                )}
             </div>
         </div>
     </aside>
@@ -279,8 +278,8 @@ export fn CatalogPage(props: {
 }) -> JSX.Element {
     const [category, setCategory] = useState("")
     const [search, setSearch] = useState("")
-    const [sortOrder, setSortOrder] = useState<SortOrder>(SortOrder.Rating)
-    const [priceRange, setPriceRange] = useState<PriceRange>(PriceRange.Any)
+    const [sortOrder, setSortOrder] = useState<SortOrder>(Rating)
+    const [priceRange, setPriceRange] = useState<PriceRange>(Any)
 
     <div>
         <div className="mb-6 flex items-center gap-4">
