@@ -670,9 +670,7 @@ impl<'src> Lowerer<'src> {
                     saw_colon = true;
                     continue;
                 }
-                if saw_colon
-                    && let Some(expr) = self.token_to_expr(token)
-                {
+                if saw_colon && let Some(expr) = self.token_to_expr(token) {
                     return Some(expr);
                 }
             }
