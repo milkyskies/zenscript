@@ -1,25 +1,6 @@
 import trusted { useState, Suspense } from "react"
 import trusted { useSuspenseQuery, QueryClient, QueryClientProvider, QueryErrorResetBoundary } from "@tanstack/react-query"
 import trusted { ErrorBoundary } from "react-error-boundary"
-import trusted { z } from "zod"
-
-const PostSchema = z.object({
-    id: z.number(),
-    title: z.string(),
-    body: z.string(),
-    userId: z.number(),
-})
-
-const PostArraySchema = z.array(PostSchema)
-
-const UserSchema = z.object({
-    id: z.number(),
-    name: z.string(),
-    email: z.string(),
-    company: z.object({
-        name: z.string(),
-    }),
-})
 
 type Post = {
     id: number,
@@ -38,34 +19,22 @@ type User = {
 const queryClient = QueryClient({
     defaultOptions: {
         queries: {
-            staleTime: 60000,
+            staleTime: 60_000,
             retry: 1,
         },
     },
 })
 
 async fn fetchUser(userId: number) -> Result<User, Error> {
-    const res = try await fetch(`https://jsonplaceholder.typicode.com/users/${userId}`)?
-    const json = try await res.json()?
-    const parsed = try UserSchema.parse(json)?
-    Ok(User(
-        id: parsed.id,
-        name: parsed.name,
-        email: parsed.email,
-        company: parsed.company,
-    ))
+    await Http.get(`https://jsonplaceholder.typicode.com/users/${userId}`)?
+        |> Http.json?
+        |> parse<User>
 }
 
 async fn fetchPosts(url: string) -> Result<Array<Post>, Error> {
-    const res = try await fetch(url)?
-    const json = try await res.json()?
-    const parsed = try PostArraySchema.parse(json)?
-    Ok(parsed |> Array.map(|p| Post(
-        id: p.id,
-        title: p.title,
-        body: p.body,
-        userId: p.userId,
-    )))
+    await Http.get(url)?
+        |> Http.json?
+        |> parse<Array<Post>>
 }
 
 fn PostAuthor(props: { userId: number }) -> JSX.Element {
