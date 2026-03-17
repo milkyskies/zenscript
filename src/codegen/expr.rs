@@ -169,6 +169,12 @@ impl Codegen {
                     self.push(&format!("{{ {TAG_FIELD}: \""));
                     self.push(field);
                     self.push("\" }");
+                } else if field.chars().all(|c| c.is_ascii_digit()) {
+                    // Tuple index access: pair.0 → pair[0]
+                    self.emit_expr(object);
+                    self.push("[");
+                    self.push(field);
+                    self.push("]");
                 } else {
                     self.emit_expr(object);
                     self.push(".");

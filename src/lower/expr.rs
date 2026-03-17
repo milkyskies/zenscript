@@ -149,23 +149,26 @@ impl<'src> Lowerer<'src> {
             SyntaxKind::MEMBER_EXPR => {
                 let exprs = self.lower_child_exprs(node);
                 let object = exprs.into_iter().next()?;
-                // Collect idents including banned keywords and other keywords used as field names
-                let mut idents = self.collect_idents(node);
+                // Find the field name: the token AFTER the DOT
+                let mut found_dot = false;
+                let mut field = String::new();
                 for token in node.children_with_tokens() {
-                    if let Some(token) = token.as_token()
-                        && matches!(
-                            token.kind(),
-                            SyntaxKind::BANNED
-                                | SyntaxKind::KW_PARSE
-                                | SyntaxKind::KW_MATCH
-                                | SyntaxKind::KW_FOR
-                                | SyntaxKind::KW_TYPE
-                        )
-                    {
-                        idents.push(token.text().to_string());
+                    if let Some(token) = token.as_token() {
+                        if token.kind() == SyntaxKind::DOT {
+                            found_dot = true;
+                        } else if found_dot
+                            && !matches!(token.kind(), SyntaxKind::WHITESPACE | SyntaxKind::COMMENT)
+                        {
+                            field = token.text().to_string();
+                            break;
+                        }
                     }
                 }
-                let field = idents.last()?.clone();
+                if field.is_empty() {
+                    // Fallback to last ident
+                    let idents = self.collect_idents(node);
+                    field = idents.last()?.clone();
+                }
                 Some(Expr {
                     span,
                     kind: ExprKind::Member {
