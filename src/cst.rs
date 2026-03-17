@@ -2066,34 +2066,18 @@ impl<'src> CstParser<'src> {
     }
 
     fn is_jsx_text_token(&self) -> bool {
-        matches!(
+        // In JSX children, almost everything is text EXCEPT:
+        // - `<` starts a child element or closing tag
+        // - `{` starts an expression
+        // - `}` ends a parent expression (shouldn't happen in children)
+        // - EOF
+        !matches!(
             self.current_kind(),
-            Some(TokenKind::Identifier(_))
-                | Some(TokenKind::Number(_))
-                | Some(TokenKind::String(_))
-                | Some(TokenKind::Whitespace)
-                | Some(TokenKind::Bang)
-                | Some(TokenKind::BangEqual)
-                | Some(TokenKind::Dot)
-                | Some(TokenKind::Comma)
-                | Some(TokenKind::Colon)
-                | Some(TokenKind::Semicolon)
-                | Some(TokenKind::Question)
-                | Some(TokenKind::Star)
-                | Some(TokenKind::Plus)
-                | Some(TokenKind::Minus)
-                | Some(TokenKind::Percent)
-                | Some(TokenKind::Slash)
-                | Some(TokenKind::Equal)
-                | Some(TokenKind::EqualEqual)
-                | Some(TokenKind::GreaterEqual)
-                | Some(TokenKind::LessEqual)
-                | Some(TokenKind::AmpAmp)
-                | Some(TokenKind::PipePipe)
-                | Some(TokenKind::ThinArrow)
-                | Some(TokenKind::RightParen)
-                | Some(TokenKind::RightBracket)
-                | Some(TokenKind::Underscore)
+            Some(TokenKind::LessThan)
+                | Some(TokenKind::LeftBrace)
+                | Some(TokenKind::RightBrace)
+                | Some(TokenKind::Eof)
+                | None
         )
     }
 
