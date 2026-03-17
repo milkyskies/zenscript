@@ -1679,6 +1679,70 @@ fn object_literal_shorthand() {
     }
 }
 
+// ── Bug #334: Object literal keys should not be treated as variable refs ──
+
+#[test]
+fn object_literal_value_is_number_not_key() {
+    // `{ staleTime: 60000 }` — the value should be Number("60000"), not Identifier("staleTime")
+    let expr = first_expr("{ staleTime: 60000, retry: 1 }");
+    match expr {
+        ExprKind::Object(fields) => {
+            assert_eq!(fields.len(), 2);
+            assert_eq!(fields[0].0, "staleTime");
+            assert!(
+                matches!(fields[0].1.kind, ExprKind::Number(ref n) if n == "60000"),
+                "expected Number(60000), got {:?}",
+                fields[0].1.kind
+            );
+            assert_eq!(fields[1].0, "retry");
+            assert!(
+                matches!(fields[1].1.kind, ExprKind::Number(ref n) if n == "1"),
+                "expected Number(1), got {:?}",
+                fields[1].1.kind
+            );
+        }
+        other => panic!("expected object literal, got {other:?}"),
+    }
+}
+
+#[test]
+fn object_literal_value_is_string_not_key() {
+    let expr = first_expr(r#"{ name: "Alice" }"#);
+    match expr {
+        ExprKind::Object(fields) => {
+            assert_eq!(fields.len(), 1);
+            assert_eq!(fields[0].0, "name");
+            assert!(
+                matches!(fields[0].1.kind, ExprKind::String(ref s) if s == "Alice"),
+                "expected String(Alice), got {:?}",
+                fields[0].1.kind
+            );
+        }
+        other => panic!("expected object literal, got {other:?}"),
+    }
+}
+
+// ── Bug #333: Lambda with object destructured params ────────
+
+#[test]
+fn lambda_object_destructure_binds_variables() {
+    // `|{ x, y }| x + y` — x and y should be bound by the destructure
+    let expr = first_expr("|{ x, y }| x + y");
+    match expr {
+        ExprKind::Arrow { params, .. } => {
+            assert_eq!(params.len(), 1);
+            let param = &params[0];
+            match &param.destructure {
+                Some(ParamDestructure::Object(fields)) => {
+                    assert_eq!(fields, &["x".to_string(), "y".to_string()]);
+                }
+                other => panic!("expected Object destructure, got {other:?}"),
+            }
+        }
+        other => panic!("expected arrow, got {other:?}"),
+    }
+}
+
 // ── Bug: Lambda parameter destructuring ─────────────────────
 // `|{ x, y }| expr` should parse with destructured params
 

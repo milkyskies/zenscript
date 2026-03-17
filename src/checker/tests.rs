@@ -2825,3 +2825,58 @@ const x = greet("Ryan")
         diags.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
 }
+
+// ── Bug #334: Object literal keys should not be resolved as variables ──
+
+#[test]
+fn object_literal_keys_not_resolved_as_variables() {
+    let diags = check(
+        r#"
+fn _test() {
+    const config = { staleTime: 60000, retry: 1 }
+    config
+}
+"#,
+    );
+    assert!(
+        !has_error_containing(&diags, "not defined"),
+        "object keys should not be resolved as variables, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn object_literal_shorthand_still_resolves_variable() {
+    // Shorthand `{ name }` should still require `name` to be defined
+    let diags = check(
+        r#"
+fn _test() {
+    const obj = { undefinedVar }
+    obj
+}
+"#,
+    );
+    assert!(
+        has_error_containing(&diags, "not defined"),
+        "shorthand object field should require variable to be defined"
+    );
+}
+
+// ── Bug #333: Lambda object destructuring binds variables ──
+
+#[test]
+fn lambda_object_destructure_binds_variables() {
+    let diags = check(
+        r#"
+fn _test() {
+    const f = |{ x, y }| x + y
+    f({ x: 1, y: 2 })
+}
+"#,
+    );
+    assert!(
+        !has_error_containing(&diags, "not defined"),
+        "destructured lambda params should be in scope, got: {:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}
