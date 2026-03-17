@@ -72,6 +72,7 @@ function compileFloe(
     const output = execFileSync(compiler, ["build", "--emit-stdout", filename], {
       encoding: "utf-8",
       timeout: 30_000,
+      stdio: ["pipe", "pipe", "pipe"], // capture stderr instead of printing
     });
 
     return {
