@@ -6,7 +6,7 @@ import { for string, for Array } from "../todo"
 export fn HomePage() -> JSX.Element {
     const [todos, setTodos] = useState<Array<Todo>>([])
     const [input, setInput] = useState("")
-    const [filter, setFilter] = useState<Filter>(Filter.All)
+    const [filter, setFilter] = useState<Filter>(All)
     const [error, setError] = useState("")
 
     const visible = todos |> filterBy(filter)
@@ -68,7 +68,7 @@ export fn HomePage() -> JSX.Element {
 
         <div className="flex gap-2 mb-6">
             <button
-                onClick={|| setFilter(Filter.All)}
+                onClick={|| setFilter(All)}
                 className={match filter {
                     All -> "rounded-full px-3 py-1 text-sm font-medium bg-indigo-600 text-white",
                     _ -> "rounded-full px-3 py-1 text-sm font-medium bg-zinc-800 text-zinc-400 hover:text-zinc-100",
@@ -77,7 +77,7 @@ export fn HomePage() -> JSX.Element {
                 All
             </button>
             <button
-                onClick={|| setFilter(Filter.Active)}
+                onClick={|| setFilter(Active)}
                 className={match filter {
                     Active -> "rounded-full px-3 py-1 text-sm font-medium bg-indigo-600 text-white",
                     _ -> "rounded-full px-3 py-1 text-sm font-medium bg-zinc-800 text-zinc-400 hover:text-zinc-100",
@@ -86,7 +86,7 @@ export fn HomePage() -> JSX.Element {
                 Active
             </button>
             <button
-                onClick={|| setFilter(Filter.Completed)}
+                onClick={|| setFilter(Completed)}
                 className={match filter {
                     Completed -> "rounded-full px-3 py-1 text-sm font-medium bg-indigo-600 text-white",
                     _ -> "rounded-full px-3 py-1 text-sm font-medium bg-zinc-800 text-zinc-400 hover:text-zinc-100",
