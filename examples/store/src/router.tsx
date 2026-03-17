@@ -25,8 +25,8 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="min-h-screen bg-zinc-950 text-zinc-100">
-        <nav className="border-b border-zinc-800 px-6 py-4">
+      <div className="flex h-screen flex-col bg-zinc-950 text-zinc-100">
+        <nav className="shrink-0 border-b border-zinc-800 px-6 py-4">
           <div className="mx-auto flex max-w-6xl items-center gap-6">
             <span className="text-lg font-bold text-indigo-400">
               Floe Store
@@ -50,7 +50,7 @@ function RootComponent() {
             </Link>
           </div>
         </nav>
-        <main className="mx-auto max-w-6xl px-6 py-8">
+        <main className="mx-auto max-w-6xl flex-1 overflow-y-auto px-6 py-8">
           <Outlet />
         </main>
       </div>
