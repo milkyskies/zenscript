@@ -94,7 +94,7 @@ fn OrderSummary(props: {
         >
             {props.orderStatus |> match {
                 Pending -> "Checkout",
-                Confirmed(orderId) -> `Order #${orderId.value} confirmed!`,
+                Confirmed(OrderId(n)) -> `Order #${n} confirmed!`,
                 Shipped(tracking) -> `Shipped: ${tracking}`,
                 Failed(reason) -> `Failed: ${reason}`,
             }}
