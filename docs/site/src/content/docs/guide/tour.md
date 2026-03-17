@@ -149,6 +149,14 @@ const (x, y) = point
 type UserId = Brand<string, "UserId">
 type OrderId = Brand<string, "OrderId">
 
+// Newtypes — single-variant wrappers
+type OrderId = OrderId(number)
+const id = OrderId(42)
+const OrderId(n) = id   // destructure to get inner value
+
+// Opaque types — only the defining module can create/read
+opaque type HashedPassword = string
+
 // String literal unions (for npm interop)
 type Method = "GET" | "POST" | "PUT" | "DELETE"
 
@@ -158,6 +166,18 @@ type ButtonProps = {
     onClick: fn() -> (),
     label: string,
 }
+
+// Tuple index access
+const pair = ("hello", 42)
+const first = pair.0    // "hello"
+const second = pair.1   // 42
+
+// Default parameter values
+fn greet(name: string, greeting: string = "Hello") -> string {
+    `${greeting}, ${name}!`
+}
+greet("Alice")                // "Hello, Alice!"
+greet("Alice", "Hey")         // "Hey, Alice!"
 ```
 
 ## Error Handling
@@ -197,6 +217,50 @@ fn validateForm(input: FormInput) -> Result<ValidForm, Array<string>> {
 // parse<T> — compiler-generated runtime validation
 const user = json |> parse<User>?
 const items = data |> parse<Array<Product>>?
+```
+
+## Async
+
+```floe
+// Async functions
+async fn fetchUser(id: string) -> Result<User, Error> {
+    const response = await Http.get(`/api/users/${id}`)?
+    const user = await response |> Http.json?
+    Ok(user)
+}
+
+// npm functions might throw — wrap with try
+import { parseYaml } from "yaml-lib"
+const config = try parseYaml(rawText)   // Result<T, Error>
+
+// Async closures
+const data = useSuspenseQuery({
+    queryKey: ["users"],
+    queryFn: async fn() fetchUsers(),
+})
+```
+
+## Stdlib
+
+```floe
+// Map<K, V>
+const config = Map.fromArray([("host", "localhost"), ("port", "8080")])
+const updated = config |> Map.set("port", "3000")
+const port = config |> Map.get("port")   // Option<string>
+
+// Set<T>
+const tags = Set.fromArray(["urgent", "bug"])
+const withNew = tags |> Set.add("frontend")
+const common = Set.intersect(teamA, teamB)
+
+// Http — pipe-friendly fetch returning Result
+const users = await Http.get("https://api.example.com/users")? |> Http.json?
+const result = await Http.post(url, { name: "Alice" })?
+
+// Structural equality — == does deep comparison
+const a = User(name: "Alice", age: 30)
+const b = User(name: "Alice", age: 30)
+const same = a == b   // true (compares fields, not references)
 ```
 
 ## For Blocks
@@ -286,5 +350,23 @@ fn add(a: number, b: number) -> number { a + b }
 test "addition" {
     assert add(1, 2) == 3
     assert add(-1, 1) == 0
+}
+```
+
+## Placeholders
+
+```floe
+// todo — compile-time warning, throws at runtime
+fn processPayment(order: Order) -> Result<Receipt, Error> {
+    todo
+}
+
+// unreachable — asserts a code path is impossible
+match direction {
+    "north" -> go(0, 1),
+    "south" -> go(0, -1),
+    "east" -> go(1, 0),
+    "west" -> go(-1, 0),
+    _ -> unreachable,
 }
 ```
