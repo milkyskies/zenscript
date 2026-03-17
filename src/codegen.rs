@@ -275,6 +275,21 @@ impl Codegen {
                 self.push(&format!("import \"{}\";", decl.source));
             }
         } else {
+            // Determine which specifiers are type-only (not runtime values)
+            let type_only_names: std::collections::HashSet<String> =
+                if let Some(resolved) = self.resolved_imports.get(&decl.source) {
+                    decl.specifiers
+                        .iter()
+                        .filter(|spec| {
+                            resolved.type_decls.iter().any(|t| t.name == spec.name)
+                                && !resolved.function_decls.iter().any(|f| f.name == spec.name)
+                                && !resolved.const_names.contains(&spec.name)
+                        })
+                        .map(|spec| spec.name.clone())
+                        .collect()
+                } else {
+                    std::collections::HashSet::new()
+                };
             self.push("import { ");
             let mut first = true;
             for spec in &decl.specifiers {
@@ -282,6 +297,9 @@ impl Codegen {
                     self.push(", ");
                 }
                 first = false;
+                if type_only_names.contains(&spec.name) {
+                    self.push("type ");
+                }
                 self.push(&spec.name);
                 if let Some(alias) = &spec.alias {
                     self.push(" as ");
