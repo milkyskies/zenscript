@@ -948,7 +948,17 @@ impl Codegen {
     /// })()
     /// ```
     fn emit_collect_block(&mut self, items: &[Item]) {
-        self.push("(() => {");
+        // Check if any item contains await — if so, emit async IIFE
+        let has_await = items.iter().any(|item| match &item.kind {
+            ItemKind::Expr(e) => expr_contains_await(e),
+            ItemKind::Const(c) => expr_contains_await(&c.value),
+            _ => false,
+        });
+        if has_await {
+            self.push("(async () => {");
+        } else {
+            self.push("(() => {");
+        }
         self.newline();
         self.indent += 1;
 
