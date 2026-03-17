@@ -463,13 +463,14 @@ impl<'src> Lowerer<'src> {
                     if child.kind() == SyntaxKind::OBJECT_FIELD {
                         let idents = self.collect_idents(&child);
                         if let Some(key) = idents.first() {
-                            let value = self.lower_first_expr(&child).unwrap_or_else(|| {
-                                // Shorthand: { name } means { name: name }
-                                Expr {
-                                    span: self.node_span(&child),
-                                    kind: ExprKind::Identifier(key.clone()),
-                                }
-                            });
+                            let value =
+                                self.lower_object_field_value(&child).unwrap_or_else(|| {
+                                    // Shorthand: { name } means { name: name }
+                                    Expr {
+                                        span: self.node_span(&child),
+                                        kind: ExprKind::Identifier(key.clone()),
+                                    }
+                                });
                             fields.push((key.clone(), value));
                         }
                     }
@@ -637,6 +638,44 @@ impl<'src> Lowerer<'src> {
 
     pub(super) fn lower_token_expr_in_node(&mut self, node: &SyntaxNode) -> Option<Expr> {
         self.lower_token_expr(node)
+    }
+
+    /// Lower the value expression from an OBJECT_FIELD node.
+    /// An OBJECT_FIELD contains: IDENT COLON expr (or just IDENT for shorthand).
+    /// We must skip the key IDENT and COLON tokens to find the value expression,
+    /// otherwise `lower_first_expr` would pick up the key IDENT as the value.
+    fn lower_object_field_value(&mut self, node: &SyntaxNode) -> Option<Expr> {
+        // Check if there's a colon — if not, it's shorthand (no value to lower)
+        let has_colon = node
+            .children_with_tokens()
+            .any(|t| t.as_token().is_some_and(|t| t.kind() == SyntaxKind::COLON));
+
+        if !has_colon {
+            // Shorthand: { name } — caller will create Identifier expr
+            return None;
+        }
+
+        // First, try child expression nodes (these are unambiguous — they're always the value)
+        for child in node.children() {
+            if let Some(expr) = self.lower_expr_node(&child) {
+                return Some(expr);
+            }
+        }
+
+        // Then try tokens, but only those after the colon
+        let mut saw_colon = false;
+        for child_or_token in node.children_with_tokens() {
+            if let Some(token) = child_or_token.as_token() {
+                if token.kind() == SyntaxKind::COLON {
+                    saw_colon = true;
+                    continue;
+                }
+                if saw_colon && let Some(expr) = self.token_to_expr(token) {
+                    return Some(expr);
+                }
+            }
+        }
+        None
     }
 
     pub(super) fn lower_token_expr_after_lambda_delim(
