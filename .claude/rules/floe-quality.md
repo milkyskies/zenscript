@@ -1,9 +1,26 @@
 ---
 paths:
   - "**/*.fl"
+  - "src/**/*.rs"
 ---
 
-# Floe File Quality Gate
+# Floe Quality Rules
+
+## Never work around compiler bugs
+
+When example app code fails due to a compiler limitation, **fix the compiler** — never simplify or restructure the app code to avoid the bug.
+
+The example apps should showcase ideal Floe code. If valid-looking Floe code doesn't compile, the fix goes in `src/`, not in `examples/`.
+
+## Always write tests
+
+Every compiler change must include tests:
+- **Parser changes**: add parser unit tests
+- **Checker changes**: add checker unit tests
+- **Codegen changes**: add codegen snapshot tests
+- **Bug fixes**: add a regression test that reproduces the bug
+
+## Floe File Quality Gate
 
 When creating or modifying `.fl` files, **always run these commands** before considering the work done:
 
@@ -15,4 +32,11 @@ floe build <file-or-directory>
 
 Order: fmt -> check -> build. Fix any errors before proceeding.
 
-This applies to example apps, test fixtures, and any other `.fl` files touched during a task.
+## End-to-end verification
+
+After compiler changes, verify the full pipeline:
+1. `floe check` passes on example apps
+2. `floe build` produces valid TypeScript
+3. `pnpm dev` / `pnpm build` in example apps succeeds (Vite compiles the generated TS)
+
+A feature is not done until the generated code actually runs.
