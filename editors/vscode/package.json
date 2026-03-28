@@ -31,8 +31,8 @@
         ],
         "configuration": "./language-configuration.json",
         "icon": {
-          "light": "./icons/floe-light.png",
-          "dark": "./icons/floe-dark.png"
+          "light": "../../assets/logo.svg",
+          "dark": "../../assets/logo.svg"
         }
       }
     ],
