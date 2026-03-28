@@ -1067,14 +1067,11 @@ pub(super) fn lambda_event_completions(
         return None;
     }
 
-    // Check if this param is a lambda parameter by scanning backwards for `|param|`
+    // Check if this param is a lambda parameter by scanning backwards for `(param) =>`
     let pre_chain = &before[..chain_start];
-    let pipe_pattern = format!("|{param_name}|");
-    if !pre_chain.contains(&pipe_pattern) {
-        let alt_pattern = format!("|{param_name}");
-        if !pre_chain.contains(&alt_pattern) {
-            return None;
-        }
+    let arrow_pattern = format!("({param_name}) =>");
+    if !pre_chain.contains(&arrow_pattern) {
+        return None;
     }
 
     // Now check if this lambda is used as an event handler callback
@@ -1092,8 +1089,8 @@ pub(super) fn lambda_event_completions(
         "onKeyPress",
     ];
 
-    // Find the `={|` pattern before the lambda
-    let lambda_start = before.rfind(&format!("|{param_name}|"))?;
+    // Find the `={(` pattern before the lambda
+    let lambda_start = before.rfind(&format!("({param_name}) =>"))?;
     let before_lambda = before[..lambda_start].trim_end();
     let before_eq = before_lambda.strip_suffix('{')?;
     let before_eq = before_eq.trim_end().strip_suffix('=')?;

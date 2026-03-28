@@ -705,7 +705,7 @@ fn jsx_attribute_completions_all() {
 
 #[test]
 fn lambda_event_completions_on_change() {
-    let source = r#"<input onChange={|e| e.}"#;
+    let source = r#"<input onChange={(e) => e.}"#;
     let offset = source.len();
     let items = lambda_event_completions(source, offset, "");
     assert!(items.is_some(), "should provide event completions");
@@ -716,7 +716,7 @@ fn lambda_event_completions_on_change() {
 
 #[test]
 fn lambda_event_completions_target_value() {
-    let source = r#"<input onChange={|e| e.target.}"#;
+    let source = r#"<input onChange={(e) => e.target.}"#;
     let offset = source.len();
     let items = lambda_event_completions(source, offset, "");
     assert!(
@@ -730,7 +730,7 @@ fn lambda_event_completions_target_value() {
 
 #[test]
 fn lambda_event_completions_not_in_normal_lambda() {
-    let source = r#"const f = |x| x."#;
+    let source = r#"const f = (x) => x."#;
     let offset = source.len();
     let items = lambda_event_completions(source, offset, "");
     assert!(
