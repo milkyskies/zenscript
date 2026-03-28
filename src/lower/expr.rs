@@ -682,15 +682,15 @@ impl<'src> Lowerer<'src> {
         &mut self,
         node: &SyntaxNode,
     ) -> Option<Expr> {
-        // For `fn(params) body` lambdas, find token expr after the closing `)`.
-        let mut found_rparen = false;
+        // For `(params) => body` arrows, find token expr after the `=>`.
+        let mut found_arrow = false;
         for token in node.children_with_tokens() {
             if let Some(token) = token.as_token() {
-                if token.kind() == SyntaxKind::R_PAREN {
-                    found_rparen = true;
+                if token.kind() == SyntaxKind::FAT_ARROW {
+                    found_arrow = true;
                     continue;
                 }
-                if found_rparen && let Some(expr) = self.token_to_expr(token) {
+                if found_arrow && let Some(expr) = self.token_to_expr(token) {
                     return Some(expr);
                 }
             }

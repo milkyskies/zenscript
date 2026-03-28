@@ -584,14 +584,14 @@ impl Formatter<'_> {
             self.write("async ");
         }
 
-        self.write("fn(");
+        self.write("(");
         for (i, param) in params.iter().enumerate() {
             if i > 0 {
                 self.write(", ");
             }
             self.fmt_param(param);
         }
-        self.write(") ");
+        self.write(") => ");
 
         for child in node.children() {
             if child.kind() != SyntaxKind::PARAM {

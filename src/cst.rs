@@ -1233,7 +1233,10 @@ impl<'src> CstParser<'src> {
             }
 
             Some(TokenKind::LeftParen) => {
-                if self.peek_is(TokenKind::RightParen) {
+                if self.is_arrow_expr() {
+                    // Arrow closure: `(params) => body`
+                    self.parse_arrow_closure();
+                } else if self.peek_is(TokenKind::RightParen) {
                     // Unit value: ()
                     self.builder.start_node(SyntaxKind::TUPLE_EXPR.into());
                     self.bump(); // (
@@ -1265,19 +1268,18 @@ impl<'src> CstParser<'src> {
                 self.parse_dot_shorthand();
             }
 
-            Some(TokenKind::Async) if self.peek_is(TokenKind::Fn) => {
-                // `async fn(params) expr`
-                self.builder.start_node(SyntaxKind::ARROW_EXPR.into());
-                self.bump(); // async
-                self.eat_trivia();
-                self.parse_fn_lambda_inner();
-                self.builder.finish_node();
+            Some(TokenKind::Async)
+                if self.peek_is(TokenKind::LeftParen) && self.is_async_arrow_expr() =>
+            {
+                // `async (params) => body`
+                self.parse_arrow_closure();
             }
 
             Some(TokenKind::Fn) if self.peek_is(TokenKind::LeftParen) => {
-                // `fn(params) expr`
-                self.builder.start_node(SyntaxKind::ARROW_EXPR.into());
-                self.parse_fn_lambda_inner();
+                // `fn(params) expr` is the old syntax — emit error pointing to =>
+                self.builder.start_node(SyntaxKind::ERROR.into());
+                self.error("anonymous functions use arrow syntax: `(params) => body` instead of `fn(params) body`");
+                self.bump(); // fn
                 self.builder.finish_node();
             }
 
@@ -1466,16 +1468,26 @@ impl<'src> CstParser<'src> {
 
     // ── Fn Lambda ────────────────────────────────────────────────
 
-    /// Parse `fn(params) body` lambda inner (without wrapping in ARROW_EXPR).
-    fn parse_fn_lambda_inner(&mut self) {
-        self.expect(TokenKind::Fn);
-        self.eat_trivia();
+    /// Parse `(params) => body` or `async (params) => body` arrow closure.
+    fn parse_arrow_closure(&mut self) {
+        self.builder.start_node(SyntaxKind::ARROW_EXPR.into());
+
+        // Optional `async` keyword
+        if self.at(TokenKind::Async) {
+            self.bump(); // async
+            self.eat_trivia();
+        }
+
         self.expect(TokenKind::LeftParen);
         self.eat_trivia();
         self.parse_comma_separated(Self::parse_param, TokenKind::RightParen);
         self.expect(TokenKind::RightParen);
         self.eat_trivia();
+        self.expect(TokenKind::FatArrow);
+        self.eat_trivia();
         self.parse_expr();
+
+        self.builder.finish_node();
     }
 
     // ── Match Expression ─────────────────────────────────────────
@@ -2223,6 +2235,58 @@ impl<'src> CstParser<'src> {
         false
     }
 
+    /// Heuristic: is the current `(` the start of an arrow closure `(params) => body`?
+    /// Scans to matching `)` and checks if followed by `=>`.
+    fn is_arrow_expr(&self) -> bool {
+        self.is_paren_followed_by(TokenKind::FatArrow)
+    }
+
+    /// Heuristic: is the current `async` the start of `async (params) => body`?
+    /// Skips past `async`, then checks if `(...)` is followed by `=>`.
+    fn is_async_arrow_expr(&self) -> bool {
+        // Current token is `async`, skip to the `(` after it
+        let mut i = self.pos + 1;
+        while i < self.tokens.len() && self.tokens[i].kind.is_trivia() {
+            i += 1;
+        }
+        if i >= self.tokens.len() || self.tokens[i].kind != TokenKind::LeftParen {
+            return false;
+        }
+        // Now scan from `(` to matching `)`, then check for `=>`
+        self.is_paren_followed_by_at(i, TokenKind::FatArrow)
+    }
+
+    /// Check if the `(` at position `start` has a matching `)` followed by `kind`.
+    fn is_paren_followed_by_at(&self, start: usize, kind: TokenKind) -> bool {
+        let mut depth = 0;
+        let mut i = start;
+        while i < self.tokens.len() {
+            match &self.tokens[i].kind {
+                TokenKind::LeftParen => depth += 1,
+                TokenKind::RightParen => {
+                    depth -= 1;
+                    if depth == 0 {
+                        // Found matching `)` — check next non-trivia token
+                        i += 1;
+                        while i < self.tokens.len() && self.tokens[i].kind.is_trivia() {
+                            i += 1;
+                        }
+                        return i < self.tokens.len() && self.tokens[i].kind == kind;
+                    }
+                }
+                TokenKind::Eof => return false,
+                _ => {}
+            }
+            i += 1;
+        }
+        false
+    }
+
+    /// Check if the `(` at the current position has a matching `)` followed by `kind`.
+    fn is_paren_followed_by(&self, kind: TokenKind) -> bool {
+        self.is_paren_followed_by_at(self.pos, kind)
+    }
+
     /// Heuristic: is the current `(` a tuple expression `(a, b)`?
     /// Scans to matching `)` and checks if there's a comma at depth 1.
     fn is_paren_tuple_expr(&self) -> bool {
@@ -2666,13 +2730,13 @@ mod tests {
     // ── Lambda / arrow functions ──────────────────────────────────
 
     #[test]
-    fn lambda_fn_style() {
-        assert_no_errors("fn(x) x + 1");
+    fn lambda_arrow_style() {
+        assert_no_errors("(x) => x + 1");
     }
 
     #[test]
     fn lambda_zero_arg() {
-        assert_no_errors("fn() 42");
+        assert_no_errors("() => 42");
     }
 
     // ── For blocks ────────────────────────────────────────────────

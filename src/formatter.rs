@@ -301,21 +301,21 @@ impl<'src> Formatter<'src> {
     }
 
     pub(crate) fn fmt_token_expr_after_lambda_delim(&mut self, node: &SyntaxNode) {
-        // For `fn(params) body`, find token expr after the closing `)`.
-        let mut found_rparen = false;
+        // For `(params) => body`, find token expr after the `=>`.
+        let mut found_arrow = false;
         for t in node.children_with_tokens() {
             if let Some(tok) = t.as_token() {
-                if tok.kind() == SyntaxKind::R_PAREN {
-                    found_rparen = true;
+                if tok.kind() == SyntaxKind::FAT_ARROW {
+                    found_arrow = true;
                     continue;
                 }
-                if found_rparen && !tok.kind().is_trivia() {
+                if found_arrow && !tok.kind().is_trivia() {
                     self.write(tok.text());
                     return;
                 }
             }
             if let Some(child) = t.into_node()
-                && found_rparen
+                && found_arrow
                 && child.kind() != SyntaxKind::PARAM
             {
                 self.fmt_node(&child);
