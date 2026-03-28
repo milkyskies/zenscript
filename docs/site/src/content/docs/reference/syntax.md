@@ -218,9 +218,9 @@ Dot shorthand for field access:
 ### Function Types
 
 ```floe
-fn() -> ()                  // takes nothing, returns nothing
-fn(string) -> number        // takes string, returns number
-fn(number, number) -> boolean  // takes two numbers, returns boolean
+() => ()                    // takes nothing, returns nothing
+(string) => number          // takes string, returns number
+(number, number) => boolean    // takes two numbers, returns boolean
 ```
 
 ### JSX

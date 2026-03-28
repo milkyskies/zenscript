@@ -44,7 +44,7 @@ type BaseProps {
 
 type ButtonProps {
   ...BaseProps,
-  onClick: fn() -> (),
+  onClick: () => (),
   label: string,
 }
 // ButtonProps has: className, disabled, onClick, label
@@ -250,7 +250,7 @@ Tuples compile to TypeScript readonly tuples: `(number, string)` becomes `readon
 
 ```floe
 type Name = string
-type Callback = fn(Event) -> ()
+type Callback = (Event) => ()
 ```
 
 ## What's Banned

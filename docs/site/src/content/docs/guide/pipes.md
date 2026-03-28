@@ -145,7 +145,8 @@ Floe has three arrow-like operators:
 
 ```
 fn(x) anonymous closures  fn(a) a + 1
-->    match arms / types   Ok(x) -> x, fn(string) -> number
+->    match arms / returns Ok(x) -> x, fn add(a) -> number
+=>    function types       (string) => number
 |>    pipe data             data |> transform
 ```
 
