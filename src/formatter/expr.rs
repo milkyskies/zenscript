@@ -976,6 +976,7 @@ impl Formatter<'_> {
             SyntaxKind::OK_EXPR => "Ok",
             SyntaxKind::ERR_EXPR => "Err",
             SyntaxKind::SOME_EXPR => "Some",
+            SyntaxKind::VALUE_EXPR => "Value",
             _ => unreachable!(),
         };
         self.write(keyword);

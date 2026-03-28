@@ -104,6 +104,17 @@ export type ShippingInfo {
     address: string,
 }
 
+// Settable fields for partial shipping updates (PATCH-style).
+
+// Value(x) = set to x, Clear = set to null, Unchanged = omit from update.
+
+export type ShippingUpdate {
+    name: Settable<string> = Unchanged,
+    email: Settable<string> = Unchanged,
+    phone: Settable<string> = Unchanged,
+    address: Settable<string> = Unchanged,
+}
+
 // ── Traits ─────────────────────────────────────────────
 
 export trait Display {

@@ -175,6 +175,49 @@ impl Checker {
             }
         }
 
+        // For Settable types, check Value, Clear, and Unchanged are covered
+        if subject_ty.is_settable() {
+            let mut has_value = false;
+            let mut has_clear = false;
+            let mut has_unchanged = false;
+            for arm in arms {
+                if arm.guard.is_none() {
+                    match &arm.pattern.kind {
+                        PatternKind::Variant { name, .. } if name == "Value" => has_value = true,
+                        PatternKind::Variant { name, .. } if name == "Clear" => has_clear = true,
+                        PatternKind::Variant { name, .. } if name == "Unchanged" => {
+                            has_unchanged = true
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            if !has_value || !has_clear || !has_unchanged {
+                let mut missing = vec![];
+                if !has_value {
+                    missing.push("`Value`");
+                }
+                if !has_clear {
+                    missing.push("`Clear`");
+                }
+                if !has_unchanged {
+                    missing.push("`Unchanged`");
+                }
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        format!(
+                            "non-exhaustive match on `Settable`: missing {}",
+                            missing.join(" and ")
+                        ),
+                        span,
+                    )
+                    .with_label("not all cases covered")
+                    .with_help("add match arms for the missing cases")
+                    .with_code("E004"),
+                );
+            }
+        }
+
         // For array types, check if empty + non-empty are covered
         if matches!(subject_ty, Type::Array(_)) {
             let mut has_empty = false;

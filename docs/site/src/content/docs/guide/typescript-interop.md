@@ -90,6 +90,7 @@ Floe has no `null` or `undefined`. When importing from TypeScript, the compiler 
 | `T \| undefined` | `Option<T>` |
 | `T \| null \| undefined` | `Option<T>` |
 | `x?: T` (function param) | `x: Option<T> = None` |
+| `x?: T \| null` | `Settable<T> = Unchanged` |
 | `any` | `unknown` |
 
 Optional parameters (`?`) become `Option<T>` with a default of `None`, so you can omit them when calling:

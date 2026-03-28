@@ -71,6 +71,15 @@ type Config {
 // Config(baseUrl: "https://api.com")           → uses all defaults
 // Config(baseUrl: "https://api.com", timeout: 10000) → overrides timeout
 
+// Settable<T> — three-state type for partial updates (PATCH-style)
+type UpdateUser {
+    name: Settable<string> = Unchanged,
+    email: Settable<string> = Unchanged,
+}
+// Value(x) = set, Clear = null, Unchanged = omit key
+// UpdateUser(name: Value("Ryan"), email: Clear)  → { name: "Ryan", email: null }
+// UpdateUser(name: Value("Ryan"))                → { name: "Ryan" }
+
 // Union type (discriminated)
 type Route {
     | Home

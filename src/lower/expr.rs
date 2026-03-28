@@ -431,6 +431,11 @@ impl<'src> Lowerer<'src> {
                 Some(self.expr(ExprKind::Some(Box::new(inner)), span))
             }
 
+            SyntaxKind::VALUE_EXPR => {
+                let inner = self.lower_first_expr_in(node)?;
+                Some(self.expr(ExprKind::Value(Box::new(inner)), span))
+            }
+
             SyntaxKind::GROUPED_EXPR => {
                 let inner = self.lower_first_expr_in(node)?;
                 Some(self.expr(ExprKind::Grouped(Box::new(inner)), span))
@@ -690,6 +695,8 @@ impl<'src> Lowerer<'src> {
             SyntaxKind::IDENT => Some(self.expr(ExprKind::Identifier(text.to_string()), span)),
             SyntaxKind::UNDERSCORE => Some(self.expr(ExprKind::Placeholder, span)),
             SyntaxKind::KW_NONE => Some(self.expr(ExprKind::None, span)),
+            SyntaxKind::KW_CLEAR => Some(self.expr(ExprKind::Clear, span)),
+            SyntaxKind::KW_UNCHANGED => Some(self.expr(ExprKind::Unchanged, span)),
             SyntaxKind::KW_TODO => Some(self.expr(ExprKind::Todo, span)),
             SyntaxKind::KW_UNREACHABLE => Some(self.expr(ExprKind::Unreachable, span)),
             SyntaxKind::KW_SELF => Some(self.expr(ExprKind::Identifier("self".to_string()), span)),

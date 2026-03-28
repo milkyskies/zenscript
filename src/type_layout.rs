@@ -24,6 +24,7 @@ pub const TYPE_UNIT: &str = "()";
 pub const TYPE_UNDEFINED: &str = "undefined";
 pub const TYPE_UNKNOWN: &str = "unknown";
 pub const TYPE_OPTION: &str = "Option";
+pub const TYPE_SETTABLE: &str = "Settable";
 pub const TYPE_RESULT: &str = "Result";
 pub const TYPE_ARRAY: &str = "Array";
 pub const TYPE_ERROR: &str = "Error";

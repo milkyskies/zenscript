@@ -966,6 +966,12 @@ impl Codegen {
                     self.push(" | undefined");
                     return;
                 }
+                // Settable<T> becomes T | null | undefined
+                if name == type_layout::TYPE_SETTABLE && type_args.len() == 1 {
+                    self.emit_type_expr(&type_args[0]);
+                    self.push(" | null | undefined");
+                    return;
+                }
                 // Result<T, E> becomes { ok: true; value: T } | { ok: false; error: E }
                 if name == type_layout::TYPE_RESULT && type_args.len() == 2 {
                     self.push(&format!("{{ {OK_FIELD}: true; {VALUE_FIELD}: "));

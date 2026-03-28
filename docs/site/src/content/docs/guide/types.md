@@ -209,6 +209,30 @@ const found = Some("hello")
 const missing = None
 ```
 
+### Settable
+
+For fields that can be set, cleared, or left unchanged. Useful for partial updates (PATCH-style APIs):
+
+```floe
+type UpdateUser {
+  name: Settable<string> = Unchanged,
+  email: Settable<string> = Unchanged,
+}
+
+// Set a value
+UpdateUser(name: Value("Ryan"), email: Clear)
+// → { name: "Ryan", email: null }
+
+// Leave fields unchanged (omitted from output)
+UpdateUser(name: Value("Ryan"))
+// → { name: "Ryan" }
+```
+
+Three variants:
+- `Value(x)` — set the field to `x`
+- `Clear` — set the field to `null`
+- `Unchanged` — omit the field entirely (default)
+
 ### The `?` Operator
 
 Propagate errors concisely:

@@ -306,6 +306,8 @@ module.exports = grammar({
         $.parenthesized_expression,
         $.unit_value,
         $.none,
+        $.clear,
+        $.unchanged,
         $.todo,
         $.unreachable,
         $.mock_expression,
@@ -351,6 +353,10 @@ module.exports = grammar({
     unit_value: ($) => prec(2, seq("(", ")")),
 
     none: ($) => "None",
+
+    clear: ($) => "Clear",
+
+    unchanged: ($) => "Unchanged",
 
     todo: ($) => "todo",
 
@@ -535,6 +541,7 @@ module.exports = grammar({
         seq("Ok", "(", field("value", $._expression), ")"),
         seq("Err", "(", field("value", $._expression), ")"),
         seq("Some", "(", field("value", $._expression), ")"),
+        seq("Value", "(", field("value", $._expression), ")"),
       ),
 
     // ── Lambdas ─────────────────────────────────────────────

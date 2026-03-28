@@ -311,6 +311,65 @@ fn constructor_all_defaults() {
     assert!(result.contains("timeout: 5000, retries: 3"));
 }
 
+// ── Settable ────────────────────────────────────────────────
+
+#[test]
+fn settable_value_emits_value() {
+    let result = emit(
+        r#"
+        type Dto { name: Settable<string> = Unchanged }
+        const d = Dto(name: Value("Ryan"))
+        "#,
+    );
+    assert!(result.contains(r#"name: "Ryan""#));
+}
+
+#[test]
+fn settable_clear_emits_null() {
+    let result = emit(
+        r#"
+        type Dto { name: Settable<string> = Unchanged }
+        const d = Dto(name: Clear)
+        "#,
+    );
+    assert!(result.contains("name: null"));
+}
+
+#[test]
+fn settable_unchanged_omits_field() {
+    let result = emit(
+        r#"
+        type Dto { name: Settable<string> = Unchanged, age: Settable<number> = Unchanged }
+        const d = Dto(name: Value("Ryan"))
+        "#,
+    );
+    // Constructor line should have name but not age
+    let const_line = result.lines().find(|l| l.starts_with("const d")).unwrap();
+    assert!(const_line.contains(r#"name: "Ryan""#));
+    assert!(!const_line.contains("age"));
+}
+
+#[test]
+fn settable_all_unchanged_empty_object() {
+    let result = emit(
+        r#"
+        type Dto { name: Settable<string> = Unchanged }
+        const d = Dto()
+        "#,
+    );
+    assert!(result.contains("{  }"));
+}
+
+#[test]
+fn settable_type_emits_nullable() {
+    let result = emit(
+        r#"
+        type Dto { name: Settable<string> = Unchanged }
+        "#,
+    );
+    assert!(result.contains("string | null | undefined"));
+}
+
 // ── Match ────────────────────────────────────────────────────
 
 #[test]

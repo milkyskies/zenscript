@@ -33,6 +33,7 @@ pub(super) fn format_type(ty: &crate::checker::Type) -> String {
         Type::Map { key, value } => format!("Map<{}, {}>", format_type(key), format_type(value)),
         Type::Set { element } => format!("Set<{}>", format_type(element)),
         Type::Option(inner) => format!("Option<{}>", format_type(inner)),
+        Type::Settable(inner) => format!("Settable<{}>", format_type(inner)),
         Type::Result { ok, err } => {
             format!("Result<{}, {}>", format_type(ok), format_type(err))
         }
