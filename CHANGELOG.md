@@ -5,6 +5,18 @@ All notable changes to Floe will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.3](https://github.com/milkyskies/floe/compare/v0.1.2...v0.1.3) (2026-03-28)
+
+
+### Features
+
+* [[#422](https://github.com/milkyskies/floe/issues/422)] Generate .d.ts stubs so TS resolves .fl imports ([#429](https://github.com/milkyskies/floe/issues/429)) ([95c0f12](https://github.com/milkyskies/floe/commit/95c0f12f3132fd06ae029dab95f2e775250cb09c))
+
+
+### Bug Fixes
+
+* stop release workflow from overwriting release-please changelog ([#430](https://github.com/milkyskies/floe/issues/430)) ([b7d5d14](https://github.com/milkyskies/floe/commit/b7d5d14ba9497512e66da25cec0d7884a6f36fe7))
+
 ## [0.1.2](https://github.com/milkyskies/floe/compare/v0.1.1...v0.1.2) (2026-03-28)
 
 
