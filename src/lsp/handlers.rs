@@ -37,6 +37,7 @@ impl LanguageServer for FloeLsp {
                 references_provider: Some(OneOf::Left(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
+                document_formatting_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
             server_info: Some(ServerInfo {
@@ -715,6 +716,34 @@ impl LanguageServer for FloeLsp {
         } else {
             Ok(Some(actions))
         }
+    }
+
+    // ── Formatting ───────────────────────────────────────────────
+
+    async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
+        let uri = params.text_document.uri;
+
+        let docs = self.documents.read().await;
+        let Some(doc) = docs.get(&uri) else {
+            return Ok(None);
+        };
+
+        let formatted = crate::formatter::format(&doc.content);
+
+        if formatted == doc.content {
+            return Ok(None);
+        }
+
+        let last_line = doc.content.lines().count().saturating_sub(1) as u32;
+        let last_char = doc.content.lines().last().map_or(0, |l| l.len()) as u32;
+
+        Ok(Some(vec![TextEdit {
+            range: Range {
+                start: Position::new(0, 0),
+                end: Position::new(last_line, last_char),
+            },
+            new_text: formatted,
+        }]))
     }
 }
 
