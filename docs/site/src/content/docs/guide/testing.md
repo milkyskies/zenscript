@@ -65,45 +65,21 @@ test "validation" {
 
 ## Generating test data with `mock<T>`
 
-`mock<T>` is a compiler built-in that generates test data from type definitions. No external libraries needed - the compiler emits object literals directly.
+`mock<T>` generates test data from type definitions at compile time -- no faker.js or factories needed.
 
 ```floe
-type User {
-  id: string,
-  name: string,
-  age: number,
-}
-
 test "user creation" {
   const user = mock<User>
-  // { id: "mock-id-1", name: "mock-name-2", age: 3 }
   assert user.name |> String.length > 0
 }
-```
 
-Override specific fields when you need control:
-
-```floe
 test "admin has correct role" {
   const admin = mock<User>(name: "Alice")
-  // { id: "mock-id-1", name: "Alice", age: 2 }
   assert admin.name == "Alice"
 }
 ```
 
-Works with all Floe types:
-
-| Type | Generated Value |
-|------|----------------|
-| `string` | `"mock-fieldname-N"` |
-| `number` | Sequential integers |
-| `boolean` | Alternates true/false |
-| `Array<T>` | Array with 1 element |
-| Record types | All fields mocked recursively |
-| Unions | First variant |
-| `Option<T>` | The inner value (not undefined) |
-
-Since mock data is generated at compile time, it's always in sync with your types - add a field and mock data updates automatically.
+See [Type-Driven Features](/guide/type-driven-features/) for the full guide on `mock<T>`, generation rules, and complex type examples.
 
 ## Running tests
 

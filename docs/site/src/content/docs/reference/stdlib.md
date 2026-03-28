@@ -504,7 +504,7 @@ const items = data |> parse<Array<Product>>?
 const point = raw |> parse<{ x: number, y: number }>?
 ```
 
-`parse<T>(value)` returns `Result<T, Error>`. Use `?` to unwrap or `match` to handle errors. See [Error Handling](/guide/error-handling/) for details.
+`parse<T>(value)` returns `Result<T, Error>`. Use `?` to unwrap or `match` to handle errors.
 
 ### `mock<T>`
 
@@ -516,19 +516,8 @@ const testUser = mock<User>
 
 const admin = mock<User>(name: "Alice")
 // { id: "mock-id-1", name: "Alice", age: 2 }
-
-const point = mock<{ x: number, y: number }>
-// { x: 1, y: 2 }
 ```
 
-`mock<T>` returns `T` directly. Override specific fields with named arguments. See [Testing](/guide/testing/) for details.
+`mock<T>` returns `T` directly. Override specific fields with named arguments.
 
-| Type | Generated Value |
-|------|----------------|
-| `string` | `"mock-fieldname-N"` |
-| `number` | Sequential integers |
-| `boolean` | Alternates true/false |
-| `Array<T>` | Array with 1 element |
-| Record types | All fields mocked recursively |
-| Unions | First variant |
-| `Option<T>` | The inner value |
+See [Type-Driven Features](/guide/type-driven-features/) for the full guide on both `parse<T>` and `mock<T>`, including supported types, generated output, and common patterns.
