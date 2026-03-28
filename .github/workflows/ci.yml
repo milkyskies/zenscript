@@ -46,5 +46,15 @@ jobs:
       - name: Build release for LSP tests
         run: cargo build
 
+      - name: Floe check examples
+        run: |
+          ./target/debug/floe check examples/todo-app/src/
+          ./target/debug/floe check examples/store/src/
+
+      - name: Floe build examples
+        run: |
+          ./target/debug/floe build examples/todo-app/src/
+          ./target/debug/floe build examples/store/src/
+
       - name: LSP integration tests
         run: python3 scripts/test-lsp.py ./target/debug/floe
