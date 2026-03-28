@@ -127,25 +127,26 @@ If either is wrong, stop and fix it before proceeding.
 glb update <num> --claim
 ```
 
-Commit semi-frequently - don't save everything for one giant commit. Use **conventional commits** (`feat:`, `fix:`, `chore:`, `docs:`, `ci:`, `refactor:`, `test:`). Append `!` for breaking changes (e.g. `feat!:`). These prefixes drive automatic version bumps and changelog generation via release-please.
+Commit semi-frequently - don't save everything for one giant commit. Individual commit messages inside PRs don't need conventional commit prefixes - use whatever messages are descriptive.
 
 **Before every commit**, run `cargo fmt` (and `floe fmt` if you touched `.fl` files). Never commit unformatted code.
 
-**Use conventional commits.** All commit messages must be prefixed:
+**PR titles use conventional commit prefixes.** The repo uses squash merges, so the PR title becomes the single commit on main. Only the PR title matters for versioning and changelog generation.
+
+Prefixes:
 - `feat:` — new feature or language syntax
 - `fix:` — bug fix
 - `chore:` — maintenance, deps, CI, docs, refactoring
 - `test:` — adding or updating tests only
 
+Append `!` for breaking changes (e.g. `feat!:`).
+
 Examples:
 ```
-feat: add use keyword for callback flattening
-fix: checker resolves pipe expressions to unknown type
-chore: remove Brand type in favor of newtypes
-test: add codegen snapshot tests for tuples
+feat: [#260] Add use keyword for callback flattening
+fix: [#384] Checker resolves pipe expressions to unknown type
+chore: [#257] Remove Brand type in favor of newtypes
 ```
-
-PR titles follow the same convention: `feat: [#260] Add use keyword`
 
 ### 4. Quality Gate
 
