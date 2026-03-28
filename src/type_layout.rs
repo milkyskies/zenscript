@@ -113,3 +113,22 @@ pub fn variant_field_accessor(
         }
     }
 }
+
+// ── Type → stdlib module mapping ─────────────────────────────
+
+/// Map a checker `Type` to the corresponding stdlib module name.
+/// Used by both checker (for type-directed pipe validation) and
+/// codegen (for type-directed pipe emission).
+pub fn type_to_stdlib_module(ty: &crate::checker::Type) -> Option<&'static str> {
+    use crate::checker::Type;
+    match ty {
+        Type::Array(_) => Some(MOD_ARRAY),
+        Type::Map { .. } => Some(MOD_MAP),
+        Type::Set { .. } => Some(MOD_SET),
+        Type::String => Some(MOD_STRING),
+        Type::Number => Some(MOD_NUMBER),
+        Type::Option(_) => Some(MOD_OPTION),
+        Type::Result { .. } => Some(MOD_RESULT),
+        _ => None,
+    }
+}
