@@ -168,341 +168,7 @@ impl Checker {
                 callee,
                 type_args,
                 args,
-            } => {
-                // Check for stdlib call: Array.sort(arr), Option.map(opt, fn), etc.
-                if let ExprKind::Member { object, field } = &callee.kind
-                    && let ExprKind::Identifier(module) = &object.kind
-                    && let Some(stdlib_fn) = self.stdlib.lookup(module, field)
-                {
-                    self.unused.used_names.insert(module.clone());
-                    let ret = stdlib_fn.return_type.clone();
-                    for arg in args {
-                        match arg {
-                            Arg::Positional(e) | Arg::Named { value: e, .. } => {
-                                self.check_expr(e);
-                            }
-                        }
-                    }
-                    return ret;
-                }
-
-                // Check for untrusted import call without try
-                if let ExprKind::Identifier(name) = &callee.kind
-                    && !self.ctx.inside_try
-                    && self.untrusted_imports.contains(name)
-                {
-                    self.diagnostics.push(
-                        Diagnostic::error(
-                            format!("calling untrusted import `{name}` requires `try`"),
-                            expr.span,
-                        )
-                        .with_label("untrusted import")
-                        .with_help(format!(
-                            "use `try {name}(...)` or mark the import as `trusted`"
-                        ))
-                        .with_code("E014"),
-                    );
-                }
-
-                // Save pipe context before checking callee (which would consume it)
-                let piped_ty = self.ctx.pipe_input_type.take();
-                let piped_ty_was_none = piped_ty.is_none();
-
-                // Infer lambda param type from piped array element type
-                // e.g. [1,2,3] |> Array.map(|x| ...) → x: number
-                if let Some(ref piped) = piped_ty
-                    && let Type::Array(elem_ty) = piped
-                {
-                    self.ctx.lambda_param_hint = Some((**elem_ty).clone());
-                }
-
-                // Detect placeholder args for partial application
-                let placeholder_count = args
-                    .iter()
-                    .filter(|a| match a {
-                        Arg::Positional(e) | Arg::Named { value: e, .. } => {
-                            matches!(e.kind, ExprKind::Placeholder)
-                        }
-                    })
-                    .count();
-                let has_placeholder = placeholder_count > 0;
-
-                // Multiple `_` in one call is not allowed
-                if placeholder_count > 1 {
-                    self.diagnostics.push(
-                        Diagnostic::error(
-                            "only one `_` placeholder allowed per call - use `(x, y) => f(x, y)` for multiple parameters",
-                            expr.span,
-                        )
-                        .with_label("multiple `_` placeholders")
-                        .with_code("E023"),
-                    );
-                }
-
-                let callee_ty = self.check_expr(callee);
-                let mut arg_types: Vec<Type> = args
-                    .iter()
-                    .map(|arg| match arg {
-                        Arg::Positional(e) | Arg::Named { value: e, .. } => self.check_expr(e),
-                    })
-                    .collect();
-                // Clear any unconsumed hint
-                self.ctx.lambda_param_hint = None;
-
-                // Handle piped value insertion:
-                // - If the call has placeholders, the piped value replaces the `_`
-                //   (e.g. `5 |> add(3, _)` → add(3, 5))
-                // - Otherwise, the piped value is inserted as the first arg
-                //   (e.g. `5 |> add(3)` → add(5, 3))
-                if let Some(piped_ty) = piped_ty {
-                    if has_placeholder {
-                        // Replace placeholder types with the piped type
-                        for (i, arg) in args.iter().enumerate() {
-                            let is_placeholder = match arg {
-                                Arg::Positional(e) | Arg::Named { value: e, .. } => {
-                                    matches!(e.kind, ExprKind::Placeholder)
-                                }
-                            };
-                            if is_placeholder {
-                                arg_types[i] = piped_ty.clone();
-                            }
-                        }
-                    } else {
-                        arg_types.insert(0, piped_ty);
-                    }
-                }
-
-                match callee_ty {
-                    Type::Function {
-                        params,
-                        return_type,
-                    } => {
-                        let callee_name = match &callee.kind {
-                            ExprKind::Identifier(name) => name.as_str(),
-                            _ => "<anonymous>",
-                        };
-
-                        // Validate named argument labels against parameter names
-                        if let Some(param_names) = self.fn_param_names.get(callee_name) {
-                            for arg in args.iter() {
-                                if let Arg::Named { label, .. } = arg
-                                    && !param_names.iter().any(|p| p == label)
-                                {
-                                    self.diagnostics.push(
-                                        Diagnostic::error(
-                                            format!(
-                                                "unknown argument `{label}` in call to `{callee_name}`"
-                                            ),
-                                            expr.span,
-                                        )
-                                        .with_label(format!(
-                                            "`{label}` is not a parameter of `{callee_name}`"
-                                        ))
-                                        .with_help(format!(
-                                            "expected one of: {}",
-                                            param_names
-                                                .iter()
-                                                .map(|n| format!("`{n}`"))
-                                                .collect::<Vec<_>>()
-                                                .join(", ")
-                                        ))
-                                        .with_code("E015"),
-                                    );
-                                }
-                            }
-                        }
-
-                        // For partial application (non-pipe), the number of actual
-                        // (non-placeholder) args must fit within the function's params,
-                        // and the total arg count (including placeholders) must match.
-                        if has_placeholder && piped_ty_was_none {
-                            // Non-pipe partial application: `add(10, _)`
-                            // Total args (with placeholders) should equal param count
-                            let required_params = self
-                                .fn_required_params
-                                .get(callee_name)
-                                .copied()
-                                .unwrap_or(params.len());
-                            if arg_types.len() < required_params || arg_types.len() > params.len() {
-                                let expected_msg = if required_params == params.len() {
-                                    format!(
-                                        "{} argument{}",
-                                        params.len(),
-                                        if params.len() == 1 { "" } else { "s" }
-                                    )
-                                } else {
-                                    format!("{} to {} arguments", required_params, params.len())
-                                };
-                                self.diagnostics.push(
-                                    Diagnostic::error(
-                                        format!(
-                                            "`{callee_name}` expects {expected_msg}, found {}",
-                                            arg_types.len()
-                                        ),
-                                        expr.span,
-                                    )
-                                    .with_label("wrong number of arguments")
-                                    .with_code("E001"),
-                                );
-                            }
-
-                            // Type-check only the non-placeholder arguments
-                            for (i, (arg_ty, param_ty)) in
-                                arg_types.iter().zip(params.iter()).enumerate()
-                            {
-                                let is_placeholder = match &args[i] {
-                                    Arg::Positional(e) | Arg::Named { value: e, .. } => {
-                                        matches!(e.kind, ExprKind::Placeholder)
-                                    }
-                                };
-                                if is_placeholder {
-                                    continue;
-                                }
-                                if !self.types_compatible(param_ty, arg_ty) {
-                                    self.diagnostics.push(
-                                        Diagnostic::error(
-                                            format!(
-                                                "argument {} to `{callee_name}`: expected `{}`, found `{}`",
-                                                i + 1,
-                                                param_ty.display_name(),
-                                                arg_ty.display_name()
-                                            ),
-                                            expr.span,
-                                        )
-                                        .with_label(format!(
-                                            "expected `{}`",
-                                            param_ty.display_name()
-                                        ))
-                                        .with_code("E001"),
-                                    );
-                                }
-                            }
-
-                            // Return a function type for the remaining (placeholder) params
-                            let placeholder_param_types: Vec<Type> = args
-                                .iter()
-                                .enumerate()
-                                .filter_map(|(i, arg)| {
-                                    let is_placeholder = match arg {
-                                        Arg::Positional(e) | Arg::Named { value: e, .. } => {
-                                            matches!(e.kind, ExprKind::Placeholder)
-                                        }
-                                    };
-                                    if is_placeholder {
-                                        params.get(i).cloned()
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect();
-
-                            // Substitute generics before building the partial type
-                            let generic_params =
-                                Self::collect_generic_params(&params, &return_type);
-                            let return_type = if !generic_params.is_empty() {
-                                let substitutions = if !type_args.is_empty() {
-                                    let resolved: Vec<Type> =
-                                        type_args.iter().map(|t| self.resolve_type(t)).collect();
-                                    generic_params.into_iter().zip(resolved).collect()
-                                } else {
-                                    Self::infer_generic_params(&generic_params, &params, &arg_types)
-                                };
-                                if substitutions.is_empty() {
-                                    *return_type
-                                } else {
-                                    Self::substitute_generics(&return_type, &substitutions)
-                                }
-                            } else {
-                                *return_type
-                            };
-
-                            Type::Function {
-                                params: placeholder_param_types,
-                                return_type: Box::new(return_type),
-                            }
-                        } else {
-                            // Normal call or pipe-with-placeholder (already resolved)
-                            // Check argument count, accounting for default parameters
-                            let required_params = self
-                                .fn_required_params
-                                .get(callee_name)
-                                .copied()
-                                .unwrap_or(params.len());
-                            if arg_types.len() < required_params || arg_types.len() > params.len() {
-                                let expected_msg = if required_params == params.len() {
-                                    format!(
-                                        "{} argument{}",
-                                        params.len(),
-                                        if params.len() == 1 { "" } else { "s" }
-                                    )
-                                } else {
-                                    format!("{} to {} arguments", required_params, params.len())
-                                };
-                                self.diagnostics.push(
-                                    Diagnostic::error(
-                                        format!(
-                                            "`{callee_name}` expects {expected_msg}, found {}",
-                                            arg_types.len()
-                                        ),
-                                        expr.span,
-                                    )
-                                    .with_label("wrong number of arguments")
-                                    .with_code("E001"),
-                                );
-                            }
-
-                            // Substitute generic params if we can resolve them
-                            let generic_params =
-                                Self::collect_generic_params(&params, &return_type);
-                            let return_type = if !generic_params.is_empty() {
-                                let substitutions = if !type_args.is_empty() {
-                                    // Explicit type args: useState<Array<Todo>>
-                                    let resolved: Vec<Type> =
-                                        type_args.iter().map(|t| self.resolve_type(t)).collect();
-                                    generic_params.into_iter().zip(resolved).collect()
-                                } else {
-                                    // Infer from arguments: useState("") → S = string
-                                    Self::infer_generic_params(&generic_params, &params, &arg_types)
-                                };
-                                if substitutions.is_empty() {
-                                    *return_type
-                                } else {
-                                    Self::substitute_generics(&return_type, &substitutions)
-                                }
-                            } else {
-                                *return_type
-                            };
-
-                            // Check argument types (after substitution)
-                            for (i, (arg_ty, param_ty)) in
-                                arg_types.iter().zip(params.iter()).enumerate()
-                            {
-                                if !self.types_compatible(param_ty, arg_ty) {
-                                    self.diagnostics.push(
-                                        Diagnostic::error(
-                                            format!(
-                                                "argument {} to `{callee_name}`: expected `{}`, found `{}`",
-                                                i + 1,
-                                                param_ty.display_name(),
-                                                arg_ty.display_name()
-                                            ),
-                                            expr.span,
-                                        )
-                                        .with_label(format!(
-                                            "expected `{}`",
-                                            param_ty.display_name()
-                                        ))
-                                        .with_code("E001"),
-                                    );
-                                }
-                            }
-
-                            return_type
-                        }
-                    }
-                    _ => Type::Unknown,
-                }
-            }
+            } => self.check_call(callee, type_args, args, expr.span),
 
             ExprKind::Construct {
                 type_name,
@@ -1092,6 +758,274 @@ impl Checker {
                 // Dot shorthand produces a function
                 Type::Unknown
             }
+        }
+    }
+
+    // ── Call Expression Checking ──────────────────────────────────
+
+    fn check_call(
+        &mut self,
+        callee: &Expr,
+        type_args: &[TypeExpr],
+        args: &[Arg],
+        span: Span,
+    ) -> Type {
+        // Check for stdlib call: Array.sort(arr), Option.map(opt, fn), etc.
+        if let ExprKind::Member { object, field } = &callee.kind
+            && let ExprKind::Identifier(module) = &object.kind
+            && let Some(stdlib_fn) = self.stdlib.lookup(module, field)
+        {
+            self.unused.used_names.insert(module.clone());
+            let ret = stdlib_fn.return_type.clone();
+            for arg in args {
+                match arg {
+                    Arg::Positional(e) | Arg::Named { value: e, .. } => {
+                        self.check_expr(e);
+                    }
+                }
+            }
+            return ret;
+        }
+
+        // Check for untrusted import call without try
+        if let ExprKind::Identifier(name) = &callee.kind
+            && !self.ctx.inside_try
+            && self.untrusted_imports.contains(name)
+        {
+            self.diagnostics.push(
+                Diagnostic::error(
+                    format!("calling untrusted import `{name}` requires `try`"),
+                    span,
+                )
+                .with_label("untrusted import")
+                .with_help(format!(
+                    "use `try {name}(...)` or mark the import as `trusted`"
+                ))
+                .with_code("E014"),
+            );
+        }
+
+        // Save pipe context before checking callee (which would consume it)
+        let piped_ty = self.ctx.pipe_input_type.take();
+        let piped_ty_was_none = piped_ty.is_none();
+
+        // Infer lambda param type from piped array element type
+        if let Some(ref piped) = piped_ty
+            && let Type::Array(elem_ty) = piped
+        {
+            self.ctx.lambda_param_hint = Some((**elem_ty).clone());
+        }
+
+        // Detect placeholder args for partial application
+        let placeholder_count = args
+            .iter()
+            .filter(|a| match a {
+                Arg::Positional(e) | Arg::Named { value: e, .. } => {
+                    matches!(e.kind, ExprKind::Placeholder)
+                }
+            })
+            .count();
+        let has_placeholder = placeholder_count > 0;
+
+        if placeholder_count > 1 {
+            self.diagnostics.push(
+                Diagnostic::error(
+                    "only one `_` placeholder allowed per call - use `(x, y) => f(x, y)` for multiple parameters",
+                    span,
+                )
+                .with_label("multiple `_` placeholders")
+                .with_code("E023"),
+            );
+        }
+
+        let callee_ty = self.check_expr(callee);
+        let mut arg_types: Vec<Type> = args
+            .iter()
+            .map(|arg| match arg {
+                Arg::Positional(e) | Arg::Named { value: e, .. } => self.check_expr(e),
+            })
+            .collect();
+        self.ctx.lambda_param_hint = None;
+
+        // Handle piped value insertion
+        if let Some(piped_ty) = piped_ty {
+            if has_placeholder {
+                for (i, arg) in args.iter().enumerate() {
+                    let is_placeholder = match arg {
+                        Arg::Positional(e) | Arg::Named { value: e, .. } => {
+                            matches!(e.kind, ExprKind::Placeholder)
+                        }
+                    };
+                    if is_placeholder {
+                        arg_types[i] = piped_ty.clone();
+                    }
+                }
+            } else {
+                arg_types.insert(0, piped_ty);
+            }
+        }
+
+        match callee_ty {
+            Type::Function {
+                params,
+                return_type,
+            } => {
+                let callee_name = match &callee.kind {
+                    ExprKind::Identifier(name) => name.as_str(),
+                    _ => "<anonymous>",
+                };
+
+                // Validate named argument labels
+                if let Some(param_names) = self.fn_param_names.get(callee_name) {
+                    for arg in args.iter() {
+                        if let Arg::Named { label, .. } = arg
+                            && !param_names.iter().any(|p| p == label)
+                        {
+                            self.diagnostics.push(
+                                Diagnostic::error(
+                                    format!(
+                                        "unknown argument `{label}` in call to `{callee_name}`"
+                                    ),
+                                    span,
+                                )
+                                .with_label(format!(
+                                    "`{label}` is not a parameter of `{callee_name}`"
+                                ))
+                                .with_help(format!(
+                                    "expected one of: {}",
+                                    param_names
+                                        .iter()
+                                        .map(|n| format!("`{n}`"))
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                ))
+                                .with_code("E015"),
+                            );
+                        }
+                    }
+                }
+
+                let required_params = self
+                    .fn_required_params
+                    .get(callee_name)
+                    .copied()
+                    .unwrap_or(params.len());
+
+                // Validate argument count
+                if arg_types.len() < required_params || arg_types.len() > params.len() {
+                    let expected_msg = if required_params == params.len() {
+                        format!(
+                            "{} argument{}",
+                            params.len(),
+                            if params.len() == 1 { "" } else { "s" }
+                        )
+                    } else {
+                        format!("{} to {} arguments", required_params, params.len())
+                    };
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            format!(
+                                "`{callee_name}` expects {expected_msg}, found {}",
+                                arg_types.len()
+                            ),
+                            span,
+                        )
+                        .with_label("wrong number of arguments")
+                        .with_code("E001"),
+                    );
+                }
+
+                // Resolve generics
+                let generic_params = Self::collect_generic_params(&params, &return_type);
+                let return_type = if !generic_params.is_empty() {
+                    let substitutions = if !type_args.is_empty() {
+                        let resolved: Vec<Type> =
+                            type_args.iter().map(|t| self.resolve_type(t)).collect();
+                        generic_params.into_iter().zip(resolved).collect()
+                    } else {
+                        Self::infer_generic_params(&generic_params, &params, &arg_types)
+                    };
+                    if substitutions.is_empty() {
+                        *return_type
+                    } else {
+                        Self::substitute_generics(&return_type, &substitutions)
+                    }
+                } else {
+                    *return_type
+                };
+
+                if has_placeholder && piped_ty_was_none {
+                    // Partial application: type-check non-placeholder args, return function
+                    for (i, (arg_ty, param_ty)) in arg_types.iter().zip(params.iter()).enumerate() {
+                        let is_placeholder = match &args[i] {
+                            Arg::Positional(e) | Arg::Named { value: e, .. } => {
+                                matches!(e.kind, ExprKind::Placeholder)
+                            }
+                        };
+                        if is_placeholder {
+                            continue;
+                        }
+                        if !self.types_compatible(param_ty, arg_ty) {
+                            self.diagnostics.push(
+                                Diagnostic::error(
+                                    format!(
+                                        "argument {} to `{callee_name}`: expected `{}`, found `{}`",
+                                        i + 1,
+                                        param_ty.display_name(),
+                                        arg_ty.display_name()
+                                    ),
+                                    span,
+                                )
+                                .with_label(format!("expected `{}`", param_ty.display_name()))
+                                .with_code("E001"),
+                            );
+                        }
+                    }
+
+                    let placeholder_param_types: Vec<Type> = args
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, arg)| {
+                            let is_placeholder = match arg {
+                                Arg::Positional(e) | Arg::Named { value: e, .. } => {
+                                    matches!(e.kind, ExprKind::Placeholder)
+                                }
+                            };
+                            if is_placeholder {
+                                params.get(i).cloned()
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+
+                    Type::Function {
+                        params: placeholder_param_types,
+                        return_type: Box::new(return_type),
+                    }
+                } else {
+                    // Normal call: check all argument types
+                    for (i, (arg_ty, param_ty)) in arg_types.iter().zip(params.iter()).enumerate() {
+                        if !self.types_compatible(param_ty, arg_ty) {
+                            self.diagnostics.push(
+                                Diagnostic::error(
+                                    format!(
+                                        "argument {} to `{callee_name}`: expected `{}`, found `{}`",
+                                        i + 1,
+                                        param_ty.display_name(),
+                                        arg_ty.display_name()
+                                    ),
+                                    span,
+                                )
+                                .with_label(format!("expected `{}`", param_ty.display_name()))
+                                .with_code("E001"),
+                            );
+                        }
+                    }
+                    return_type
+                }
+            }
+            _ => Type::Unknown,
         }
     }
 
