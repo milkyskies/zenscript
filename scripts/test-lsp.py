@@ -408,6 +408,77 @@ export fn add(a: number, b: number) {
 }
 """
 
+# ── Test data for hover improvements (#403) ─────────
+
+HOVER_TYPE_BODY = """\
+type Product {
+    id: number,
+    title: string,
+    price: number,
+    tags: Array<string>,
+}
+
+type Status {
+    | Active
+    | Inactive(reason: string)
+}
+
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE"
+
+type UserId = number
+"""
+
+HOVER_DEFAULT_PARAMS = """\
+fn fetchProducts(
+    category: string = "",
+    limit: number = 20,
+) -> string {
+    category
+}
+
+const result = fetchProducts()
+"""
+
+HOVER_MEMBER_ACCESS = """\
+type User {
+    id: number,
+    name: string,
+    email: string,
+}
+
+fn getInfo(user: User) -> string {
+    user.name
+}
+"""
+
+HOVER_DESTRUCTURE = """\
+fn getPair() -> (string, number) {
+    ("hello", 42)
+}
+
+const (name, age) = getPair()
+"""
+
+HOVER_MATCH_BINDING = """\
+type Shape {
+    | Circle(radius: number)
+    | Rect(width: number, height: number)
+}
+
+fn area(s: Shape) -> number {
+    match s {
+        Circle(r) -> r * r,
+        Rect(w, h) -> w * h,
+    }
+}
+"""
+
+HOVER_STDLIB_MEMBER = """\
+const nums = [1, 2, 3]
+const doubled = nums |> Array.map((n) => n * 2)
+const joined = "a,b,c" |> String.split(",")
+"""
+
 MATCH_EXHAUSTIVE = """\
 type Direction {
     | North
@@ -2060,6 +2131,112 @@ def main():
     names = symbol_names(lsp.document_symbols(URI))
     check("GenericFn: identity in symbols", "identity" in names, f"Names: {names}")
     check("GenericFn: pair in symbols", "pair" in names, f"Names: {names}")
+
+    # ── 25. Hover Improvements (#403) ────────────────────
+    print(f"\n{BOLD}25. Hover Improvements (#403){NC}")
+
+    # --- Issue 1: Type definitions should show full body ---
+    lsp.open_doc(URI, HOVER_TYPE_BODY)
+    lsp.collect_notifications("textDocument/publishDiagnostics", timeout=1)
+
+    # Hover on "Product" (line 0, char 5) — should show fields
+    h = hover_text(lsp.hover(URI, 0, 5))
+    check(
+        "Hover #403.1: type Product shows field list",
+        h is not None and "id: number" in h and "title: string" in h and "price: number" in h,
+        f"Got: {h}",
+    )
+
+    # Hover on "Status" (union) — should show variants
+    h = hover_text(lsp.hover(URI, 7, 5))
+    check(
+        "Hover #403.1: type Status shows variants",
+        h is not None and "Active" in h and "Inactive" in h,
+        f"Got: {h}",
+    )
+
+    # --- Issue 2: Record fields should show (property) type on hover ---
+    # Hover on "title" field in Product (line 2, char 4)
+    h = hover_text(lsp.hover(URI, 2, 4))
+    check(
+        "Hover #403.2: field title shows (property) type",
+        h is not None and "title" in h and "string" in h,
+        f"Got: {h}",
+    )
+
+    # Hover on "id" field in Product (line 1, char 4)
+    # Should show "(property) id: number", NOT "parameter id: ..." from some other function
+    h = hover_text(lsp.hover(URI, 1, 4))
+    check(
+        "Hover #403.2: field id shows correct (property) info, not parameter",
+        h is not None and "number" in h and "parameter" not in h,
+        f"Got: {h}",
+    )
+
+    # --- Issue 3: Stdlib module hover should not dump all members ---
+    lsp.open_doc(URI, HOVER_STDLIB_MEMBER)
+    lsp.collect_notifications("textDocument/publishDiagnostics", timeout=1)
+
+    # Hover on "Array" in Array.map (line 1, char 25)
+    h = hover_text(lsp.hover(URI, 1, 25))
+    check(
+        "Hover #403.3: module Array hover exists",
+        h is not None and "Array" in h,
+        f"Got: {h}",
+    )
+
+    # --- Issue 4: Stdlib method hover (e.g., Array.map) ---
+    # Hover on "map" in Array.map (line 1, char 31)
+    h = hover_text(lsp.hover(URI, 1, 31))
+    check(
+        "Hover #403.4: Array.map shows method signature",
+        h is not None and "map" in h and "->" in h,
+        f"Got: {h}",
+    )
+
+    # Hover on "split" in String.split (line 2, char 38)
+    h = hover_text(lsp.hover(URI, 2, 38))
+    check(
+        "Hover #403.4: String.split shows method signature",
+        h is not None and "split" in h and "->" in h,
+        f"Got: {h}",
+    )
+
+    # --- Issue 6: Property access shows field type ---
+    lsp.open_doc(URI, HOVER_MEMBER_ACCESS)
+    lsp.collect_notifications("textDocument/publishDiagnostics", timeout=1)
+
+    # Hover on "name" in user.name (line 7, char 9)
+    h = hover_text(lsp.hover(URI, 7, 9))
+    check(
+        "Hover #403.6: user.name shows field type string",
+        h is not None and "string" in h,
+        f"Got: {h}",
+    )
+
+    # --- Issue 9: Destructured tuple bindings show types ---
+    lsp.open_doc(URI, HOVER_DESTRUCTURE)
+    lsp.collect_notifications("textDocument/publishDiagnostics", timeout=1)
+
+    # Hover on "name" in const (name, age) (line 4, char 7)
+    h = hover_text(lsp.hover(URI, 4, 7))
+    check(
+        "Hover #403.9: destructured tuple 'name' shows type",
+        h is not None and ("string" in h or "name" in h),
+        f"Got: {h}",
+    )
+
+    # --- Issue 10/11: Default values shown in function hover ---
+    lsp.open_doc(URI, HOVER_DEFAULT_PARAMS)
+    lsp.collect_notifications("textDocument/publishDiagnostics", timeout=1)
+
+    # Hover on "fetchProducts" (line 0, char 3)
+    h = hover_text(lsp.hover(URI, 0, 3))
+    check(
+        "Hover #403.10: fn with defaults shows = values",
+        h is not None and '= ""' in h and "= 20" in h,
+        f"Got: {h}",
+    )
 
     # ── Done ─────────────────────────────────────────────
     lsp.shutdown()

@@ -107,9 +107,13 @@ impl LanguageServer for FloeLsp {
         let is_member_access =
             word_start > 0 && doc.content.as_bytes().get(word_start - 1) == Some(&b'.');
 
-        // Check symbol index first
+        // Check symbol index first — prefer the symbol whose span contains the cursor
         let symbols = doc.index.find_by_name(word);
-        if let Some(sym) = symbols.first() {
+        let best_sym = symbols
+            .iter()
+            .find(|s| offset >= s.start && offset <= s.end)
+            .or_else(|| symbols.first());
+        if let Some(sym) = best_sym {
             let detail = enrich_hover_detail(sym, &doc.type_map);
             return Ok(Some(Hover {
                 contents: HoverContents::Markup(MarkupContent {
@@ -120,7 +124,7 @@ impl LanguageServer for FloeLsp {
             }));
         }
 
-        // Check for member access (e.g. z.object, UserSchema.parse)
+        // Check for member access (e.g. z.object, Array.map, user.name)
         if is_member_access {
             let bytes = doc.content.as_bytes();
             let dot_pos = word_start - 1;
@@ -131,6 +135,17 @@ impl LanguageServer for FloeLsp {
                 obj_start -= 1;
             }
             let obj_name = &doc.content[obj_start..dot_pos];
+
+            // Check stdlib module method (e.g., Array.map, String.split)
+            if let Some(hover_text) = stdlib_hover::hover_stdlib_method(obj_name, word) {
+                return Ok(Some(Hover {
+                    contents: HoverContents::Markup(MarkupContent {
+                        kind: MarkupKind::Markdown,
+                        value: hover_text,
+                    }),
+                    range: None,
+                }));
+            }
 
             // Check tsgo member probes (npm imports like z.object)
             if let Some(ty) = doc.type_map.get(&format!("__member_{obj_name}_{word}")) {
@@ -143,8 +158,21 @@ impl LanguageServer for FloeLsp {
                 }));
             }
 
-            // Show object type + member for any other member access
+            // Resolve field type from type_map: look for __field_{type}_{field}
+            // or fall back to showing the object type
             if let Some(obj_ty) = doc.type_map.get(obj_name) {
+                // Try to find the specific field type
+                if let Some(field_ty) = doc.type_map.get(&format!("__field_{obj_ty}_{word}")) {
+                    return Ok(Some(Hover {
+                        contents: HoverContents::Markup(MarkupContent {
+                            kind: MarkupKind::Markdown,
+                            value: format!("```floe\n(property) {word}: {field_ty}\n```"),
+                        }),
+                        range: None,
+                    }));
+                }
+
+                // Fall back to showing object type + member
                 return Ok(Some(Hover {
                     contents: HoverContents::Markup(MarkupContent {
                         kind: MarkupKind::Markdown,

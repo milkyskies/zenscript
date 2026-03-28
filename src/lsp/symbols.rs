@@ -113,17 +113,7 @@ impl SymbolIndex {
                 ItemKind::Function(decl) => {
                     let vis = if decl.exported { "export " } else { "" };
                     let async_kw = if decl.async_fn { "async " } else { "" };
-                    let params: Vec<String> = decl
-                        .params
-                        .iter()
-                        .map(|p| {
-                            if let Some(ty) = &p.type_ann {
-                                format!("{}: {}", p.name, type_expr_to_string(ty))
-                            } else {
-                                p.name.clone()
-                            }
-                        })
-                        .collect();
+                    let params: Vec<String> = decl.params.iter().map(format_param).collect();
                     let ret = decl
                         .return_type
                         .as_ref()
@@ -185,16 +175,98 @@ impl SymbolIndex {
                 ItemKind::TypeDecl(decl) => {
                     let vis = if decl.exported { "export " } else { "" };
                     let opaque = if decl.opaque { "opaque " } else { "" };
+                    let type_params = if decl.type_params.is_empty() {
+                        String::new()
+                    } else {
+                        format!("<{}>", decl.type_params.join(", "))
+                    };
+
+                    // Build detailed type body for hover
+                    let body = match &decl.def {
+                        TypeDef::Record(entries) => {
+                            let fields: Vec<String> = entries
+                                .iter()
+                                .filter_map(|e| e.as_field())
+                                .map(|f| {
+                                    format!("    {}: {}", f.name, type_expr_to_string(&f.type_ann))
+                                })
+                                .collect();
+                            if fields.is_empty() {
+                                " {}".to_string()
+                            } else {
+                                format!(" {{\n{},\n}}", fields.join(",\n"))
+                            }
+                        }
+                        TypeDef::Union(variants) => {
+                            let vs: Vec<String> = variants
+                                .iter()
+                                .map(|v| {
+                                    if v.fields.is_empty() {
+                                        format!("    | {}", v.name)
+                                    } else {
+                                        let fs: Vec<String> = v
+                                            .fields
+                                            .iter()
+                                            .map(|f| {
+                                                if let Some(name) = &f.name {
+                                                    format!(
+                                                        "{}: {}",
+                                                        name,
+                                                        type_expr_to_string(&f.type_ann)
+                                                    )
+                                                } else {
+                                                    type_expr_to_string(&f.type_ann)
+                                                }
+                                            })
+                                            .collect();
+                                        format!("    | {}({})", v.name, fs.join(", "))
+                                    }
+                                })
+                                .collect();
+                            format!("\n{}", vs.join("\n"))
+                        }
+                        TypeDef::Alias(ty) => {
+                            format!(" = {}", type_expr_to_string(ty))
+                        }
+                        TypeDef::StringLiteralUnion(variants) => {
+                            let vs: Vec<String> =
+                                variants.iter().map(|v| format!("\"{}\"", v)).collect();
+                            format!(" = {}", vs.join(" | "))
+                        }
+                    };
+
                     symbols.push(Symbol {
                         name: decl.name.clone(),
                         kind: SymbolKind::TYPE_PARAMETER,
                         start: item.span.start,
                         end: item.span.end,
                         import_source: None,
-                        detail: format!("{vis}{opaque}type {}", decl.name),
+                        detail: format!("{vis}{opaque}type {}{type_params}{body}", decl.name),
                         first_param_type: None,
                         return_type_str: None,
                     });
+
+                    // Index record fields
+                    if let TypeDef::Record(entries) = &decl.def {
+                        for entry in entries {
+                            if let Some(field) = entry.as_field() {
+                                symbols.push(Symbol {
+                                    name: field.name.clone(),
+                                    kind: SymbolKind::PROPERTY,
+                                    start: field.span.start,
+                                    end: field.span.end,
+                                    import_source: None,
+                                    detail: format!(
+                                        "(property) {}: {}",
+                                        field.name,
+                                        type_expr_to_string(&field.type_ann)
+                                    ),
+                                    first_param_type: None,
+                                    return_type_str: None,
+                                });
+                            }
+                        }
+                    }
 
                     // Index union variants
                     if let TypeDef::Union(variants) = &decl.def {
@@ -447,6 +519,37 @@ impl SymbolIndex {
     pub(super) fn all_completions(&self) -> Vec<&Symbol> {
         self.symbols.iter().collect()
     }
+}
+
+/// Convert a simple expression to a short display string for default values.
+fn expr_to_short_string(expr: &Expr) -> String {
+    match &expr.kind {
+        ExprKind::Number(n) => n.clone(),
+        ExprKind::String(s) => format!("\"{}\"", s),
+        ExprKind::Bool(b) => b.to_string(),
+        ExprKind::Identifier(name) => name.clone(),
+        ExprKind::Array(items) if items.is_empty() => "[]".to_string(),
+        ExprKind::Unary { op, operand } => {
+            let op_str = match op {
+                UnaryOp::Neg => "-",
+                UnaryOp::Not => "!",
+            };
+            format!("{}{}", op_str, expr_to_short_string(operand))
+        }
+        _ => "...".to_string(),
+    }
+}
+
+/// Format a function parameter including type annotation and default value.
+fn format_param(p: &Param) -> String {
+    let mut s = p.name.clone();
+    if let Some(ty) = &p.type_ann {
+        s.push_str(&format!(": {}", type_expr_to_string(ty)));
+    }
+    if let Some(default) = &p.default {
+        s.push_str(&format!(" = {}", expr_to_short_string(default)));
+    }
+    s
 }
 
 pub(super) fn type_expr_to_string(ty: &TypeExpr) -> String {

@@ -93,6 +93,29 @@ pub(super) fn hover_stdlib_module(word: &str) -> Option<String> {
     Some(lines.join("\n"))
 }
 
+/// Generate hover text for a specific stdlib method on a module (e.g., Array.map, String.split).
+/// Returns None if the module or function is not found.
+pub(super) fn hover_stdlib_method(module: &str, method: &str) -> Option<String> {
+    let registry = StdlibRegistry::new();
+    if !registry.is_module(module) {
+        return None;
+    }
+
+    let functions = registry.module_functions(module);
+    let matching: Vec<_> = functions.iter().filter(|f| f.name == method).collect();
+
+    if matching.is_empty() {
+        return None;
+    }
+
+    let mut lines = Vec::new();
+    for f in &matching {
+        lines.push(format!("```floe\n{}\n```", format_fn_signature(f)));
+    }
+    lines.push(format!("Stdlib function from `{module}`."));
+    Some(lines.join("\n"))
+}
+
 /// Generate hover text for a bare stdlib function name (sort, map, trim, etc.).
 /// Returns None if the word is not a stdlib function.
 pub(super) fn hover_stdlib_function(word: &str) -> Option<String> {
