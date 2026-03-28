@@ -5,6 +5,13 @@ All notable changes to Floe will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.6](https://github.com/milkyskies/floe/compare/v0.1.5...v0.1.6) (2026-03-28)
+
+
+### Bug Fixes
+
+* pass tag name to release workflow for correct ref checkout ([#448](https://github.com/milkyskies/floe/issues/448)) ([019745a](https://github.com/milkyskies/floe/commit/019745afa8c1dae84a6d03c7f087511c0b4450ad))
+
 ## [0.1.5](https://github.com/milkyskies/floe/compare/v0.1.4...v0.1.5) (2026-03-28)
 
 
