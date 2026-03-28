@@ -253,12 +253,11 @@ type Name = string
 type Callback = (Event) => ()
 ```
 
-## What's Banned
+## Differences from TypeScript
 
-| Banned | Why | Use Instead |
-|--------|-----|-------------|
-| `any` | Disables type checking | `unknown` + narrowing |
-| `null` | Nullable reference bugs | `Option<T>` |
-| `undefined` | Redundant with null | `Option<T>` |
-| `enum` | Compiles to runtime objects | Union types |
-| `interface` | Redundant with type | `type` |
+| TypeScript | Floe equivalent |
+|------------|----------------|
+| `any` | `unknown` + narrowing |
+| `null`, `undefined` | `Option<T>` |
+| `enum` | Union types |
+| `interface` | `type` |

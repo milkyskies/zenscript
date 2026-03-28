@@ -1,4 +1,4 @@
-# Floe — Compiler Architecture Blueprint v2
+# Floe — Design Decisions
 
 ## Vision
 
@@ -1802,10 +1802,10 @@ const c = { ...a, ...b }    // WARNING: 'y' from 'a' is overwritten by 'b'
 | Question | Decision | Rationale |
 |----------|----------|-----------|
 | Syntax style | TS keywords + Gleam match/pipe | Familiar to React devs, 30min learning curve |
-| Function style | `fn` for named, `fn(x)` for inline closures, `.field` for shorthand | One keyword, two closure forms, no overlap |
+| Function style | `fn` for named, `(x) => expr` for inline closures, `.field` for shorthand | One keyword, two closure forms, no overlap |
 | Arrow `->` | Match arms, return types | "Maps to" for control flow and declarations |
 | Fat arrow `=>` | Function types | `(T) => U` mirrors TypeScript's function type syntax |
-| `const name = fn(x) ...` | Compile error | If it has a name, use `fn`. No two ways to name a function. |
+| `const name = (x) => ...` | Compile error | If it has a name, use `fn`. No two ways to name a function. |
 | Dot shorthand | `.field` in callback position creates implicit closure | Covers 80% of inline callbacks (filter, map, sort) |
 | Qualified variants | `Type.Variant` when ambiguous, bare when unambiguous | Compiler errors on ambiguous bare variants with helpful suggestion |
 | Pipe semantics | First-arg default, `_` placeholder | Gleam approach — clean 90% of the time |
@@ -1826,7 +1826,7 @@ const c = { ...a, ...b }    // WARNING: 'y' from 'a' is overwritten by 'b'
 | Array sort | Returns new array, numeric default | No mutation footgun, no lexicographic surprise |
 | Numeric parsing | `Number.parse` returns `Result` | No silent `NaN`, no partial parse, no octal weirdness |
 | Iteration | Own values only, no prototype chain | `for...in` prototype leakage is eliminated |
-| Implicit return | Last expression in a block is the return value; `return` keyword is banned | No silent `undefined` returns, less noise |
+| Implicit return | Last expression in a block is the return value; no `return` keyword | No silent `undefined` returns, less noise |
 | Spread overlap | Warning on statically-known key overlap | Catches silent overwrites at compile time |
 | Compiler language | Rust | Fast, WASM-ready for browser playground, good LSP story |
 | Inline tests | `test "name" { assert expr }` co-located with code | Gleam/Rust-inspired; type-checked always, stripped from production output |
