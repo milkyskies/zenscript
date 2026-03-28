@@ -1,6 +1,7 @@
 pub mod checker;
 pub mod codegen;
 pub mod cst;
+pub mod desugar;
 pub mod diagnostic;
 pub mod formatter;
 pub mod interop;

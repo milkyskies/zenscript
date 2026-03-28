@@ -6,6 +6,7 @@ use clap::{Parser, Subcommand};
 
 use floe::checker::{Checker, ExprTypeMap};
 use floe::codegen::Codegen;
+use floe::desugar;
 use floe::diagnostic;
 use floe::find_project_dir;
 use floe::parser::Parser as ZsParser;
@@ -156,7 +157,8 @@ fn cmd_build_file_stdout(path: &Path) -> Result<()> {
         .with_context(|| format!("failed to read {}", path.display()))?;
     let filename = path.display().to_string();
 
-    let result = compile_source(path, &filename, &source)?;
+    let mut result = compile_source(path, &filename, &source)?;
+    desugar::desugar_program(&mut result.program);
     let output =
         Codegen::with_imports(result.expr_types, &result.resolved).generate(&result.program);
     print!("{}", output.code);
@@ -177,7 +179,8 @@ fn cmd_build_stdin() -> Result<()> {
     let filename = std::env::var("FLOE_FILENAME").unwrap_or_else(|_| "<stdin>".to_string());
     let file_path = Path::new(&filename);
 
-    let result = compile_source(file_path, &filename, &source)?;
+    let mut result = compile_source(file_path, &filename, &source)?;
+    desugar::desugar_program(&mut result.program);
     let output =
         Codegen::with_imports(result.expr_types, &result.resolved).generate(&result.program);
     print!("{}", output.code);
@@ -221,7 +224,8 @@ fn compile_file(file: &Path, out_dir: Option<&Path>) -> Result<PathBuf> {
     let source = read_fl_file(file)?;
 
     let filename = file.to_string_lossy();
-    let result = compile_source(file, &filename, &source)?;
+    let mut result = compile_source(file, &filename, &source)?;
+    desugar::desugar_program(&mut result.program);
     let output =
         Codegen::with_imports(result.expr_types, &result.resolved).generate(&result.program);
     let ext = if output.has_jsx { "tsx" } else { "ts" };
@@ -359,7 +363,7 @@ fn cmd_test(path: &Path) -> Result<()> {
     let mut total_files = 0;
     let mut errors = 0;
 
-    for (file, source, filename, program) in &test_files {
+    for (file, source, filename, program) in &mut test_files {
         // Resolve imports
         let resolved = resolve::resolve_imports(file, program);
 
@@ -376,7 +380,8 @@ fn cmd_test(path: &Path) -> Result<()> {
             continue;
         }
 
-        // Generate code in test mode
+        // Desugar and generate code in test mode
+        desugar::desugar_program(program);
         let output = Codegen::with_imports(expr_types, &resolved)
             .with_test_mode()
             .generate(program);
