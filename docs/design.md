@@ -86,6 +86,7 @@ All four of TypeScript's `?` uses (`?.`, `??`, `?:`, `? :`) are removed. `?` now
 | Tuple destructuring | `const (x, y) = pair` | `const [x, y] = pair` |
 | Tuple match patterns | `(0, _) -> ...` | index-based match conditions |
 | Array match patterns | `[first, ..rest] -> ...` | length check + index/slice access |
+| `use` callback flattening | `use x <- f(arg)` | `f(arg, (x) => { rest })` (Gleam-style) |
 | tap | `x \|> tap(Console.log)` | IIFE: calls fn, returns value unchanged |
 | Immutable sort | `Array.sort` returns new array | sorted copy, no mutation |
 | Immutable maps | `Map.set`, `Map.remove` return new maps | `new Map([...old, [k, v]])` |
@@ -595,6 +596,36 @@ const pw: HashedPassword = hash("secret")
 // pw + "abc"   COMPILE ERROR — it's not a string to you
 
 ```
+
+### Callback Flattening (`use`)
+
+The `use` keyword flattens nested callbacks, inspired by Gleam. The rest of the block becomes the callback body:
+
+```floe
+// Without use
+File.open(path, fn(file)
+    File.readAll(file, fn(contents)
+        contents |> String.toUpper
+    )
+)
+
+// With use
+use file <- File.open(path)
+use contents <- File.readAll(file)
+contents |> String.toUpper
+```
+
+**Syntax:** `use <binding> <- <call>` — desugars to `<call>(fn(<binding>) { rest of block })`
+
+Zero-binding form for callbacks that don't pass a value:
+
+```floe
+use <- Timer.delay(1000)
+Console.log("done")
+// Desugars to: Timer.delay(1000, fn() { Console.log("done") })
+```
+
+**Codegen:** Pure syntactic sugar. `use x <- f(a)` compiles to `f(a, (x) => { ... })`. No runtime cost.
 
 ### Tuples
 
@@ -1381,6 +1412,8 @@ Emits clean, readable `.tsx`. Zero runtime imports.
 | `match m { "GET" -> ... }` | `m === "GET" ? ...` (string comparison, no tag) |
 | `User(name: "Ry", email: e)` | `{ name: "Ry", email: e }` (+ tag for unions) |
 | `User(..user, name: "New")` | `{ ...user, name: "New" }` |
+| `use x <- f(a)` | `f(a, (x) => { rest of block })` |
+| `use <- f()` | `f(() => { rest of block })` |
 | `f(name: "x", limit: 10)` | `f("x", 10)` (labels erased, reordered to match definition) |
 | `f(x: number = 10)` | caller omits → compiler inserts `10` at call site |
 | `a == b` (objects) | deep structural equality check |

@@ -371,6 +371,23 @@ import { for User } from "./user-helpers"
 import { Todo, Filter, for Array, for string } from "./todo"
 ```
 
+## Callback Flattening (use)
+
+```floe
+// Flattens nested callbacks — rest of block becomes the callback body
+use file <- File.open(path)
+use contents <- File.readAll(file)
+contents |> String.toUpper
+// Compiles to: File.open(path, (file) => { File.readAll(file, (contents) => { ... }) })
+
+// Zero-binding form (callback takes no args)
+use <- Timer.delay(1000)
+Console.log("done")
+// Compiles to: Timer.delay(1000, () => { console.log("done"); })
+```
+
+`use` works with ANY function whose last parameter is a callback. Complementary to `?` (which only works on Result/Option).
+
 ## For Blocks (Extension Methods)
 
 ```floe

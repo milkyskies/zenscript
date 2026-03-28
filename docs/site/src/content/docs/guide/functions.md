@@ -111,6 +111,35 @@ async fn fetchUser(id: string) -> Promise<User> {
 }
 ```
 
+## Callback Flattening with `use`
+
+The `use` keyword flattens nested callbacks. The rest of the block becomes the callback body:
+
+```floe
+// Without use — deeply nested
+File.open(path, fn(file)
+    File.readAll(file, fn(contents)
+        contents |> String.toUpper
+    )
+)
+
+// With use — flat and readable
+use file <- File.open(path)
+use contents <- File.readAll(file)
+contents |> String.toUpper
+```
+
+Zero-binding form for callbacks that don't pass a value:
+
+```floe
+use <- Timer.delay(1000)
+Console.log("step 1")
+use <- Timer.delay(500)
+Console.log("done")
+```
+
+`use` works with any function whose last parameter is a callback. It's complementary to `?` (which only works on Result/Option).
+
 ## What's Not Here
 
 - **No `let` or `var`** - all bindings are `const`

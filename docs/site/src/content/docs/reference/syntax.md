@@ -77,6 +77,23 @@ type Point {
 } deriving (Display)
 ```
 
+### Use (Callback Flattening)
+
+```floe
+// Single binding — rest of block becomes callback body
+use x <- doSomething(arg)
+doStuff(x)
+
+// Zero binding
+use <- delay(1000)
+Console.log("done")
+
+// Chaining
+use a <- first()
+use b <- second(a)
+result(b)
+```
+
 ### For Block
 
 ```floe
