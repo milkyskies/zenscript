@@ -29,11 +29,14 @@ pub(crate) enum PipeSegment {
     Token(String),
 }
 
+const MAX_WIDTH: usize = 100;
+
 pub(crate) struct Formatter<'src> {
     source: &'src str,
     out: String,
     pub(crate) indent: usize,
     at_line_start: bool,
+    col: usize,
 }
 
 impl<'src> Formatter<'src> {
@@ -43,6 +46,7 @@ impl<'src> Formatter<'src> {
             out: String::with_capacity(source.len()),
             indent: 0,
             at_line_start: true,
+            col: 0,
         }
     }
 
@@ -205,19 +209,47 @@ impl<'src> Formatter<'src> {
 
     pub(crate) fn write(&mut self, s: &str) {
         self.out.push_str(s);
+        if let Some(pos) = s.rfind('\n') {
+            self.col = s.len() - pos - 1;
+        } else {
+            self.col += s.len();
+        }
         self.at_line_start = s.ends_with('\n');
     }
 
     pub(crate) fn newline(&mut self) {
         self.out.push('\n');
         self.at_line_start = true;
+        self.col = 0;
     }
 
     pub(crate) fn write_indent(&mut self) {
+        let width = self.indent * 4;
         for _ in 0..self.indent {
             self.out.push_str("    ");
         }
+        self.col = width;
         self.at_line_start = false;
+    }
+
+    /// Format something to a temporary buffer and return the result.
+    /// Used to check if inline formatting fits within the line width.
+    pub(crate) fn try_inline<F>(&self, f: F) -> String
+    where
+        F: FnOnce(&mut Formatter<'_>),
+    {
+        let mut sub = Formatter::new(self.source);
+        sub.indent = self.indent;
+        sub.col = self.col;
+        f(&mut sub);
+        sub.out
+    }
+
+    /// Check if an inline string fits on the current line.
+    /// For multi-line content (e.g., match bodies), only the first line is checked.
+    pub(crate) fn fits_inline(&self, text: &str) -> bool {
+        let first_line_len = text.find('\n').unwrap_or(text.len());
+        self.col + first_line_len <= MAX_WIDTH
     }
 
     // ── CST query helpers ───────────────────────────────────────

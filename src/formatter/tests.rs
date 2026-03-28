@@ -356,3 +356,50 @@ fn format_trailing_comments_between_items() {
         "const x = 1\n\n// section\n\nconst y = 2",
     );
 }
+
+// ── Line width wrapping ────────────────────────────────
+
+#[test]
+fn format_long_pipe_goes_vertical() {
+    assert_fmt(
+        "const data = await Http.get(`https://example.com/very/long/url/that/exceeds/width`)?|>Http.json?|>parse<Response>?",
+        "const data = await Http.get(`https://example.com/very/long/url/that/exceeds/width`)?\n    |> Http.json?\n    |> parse<Response>?",
+    );
+}
+
+#[test]
+fn format_short_pipe_stays_inline() {
+    assert_fmt(
+        "const _r = data|>transform|>format",
+        "const _r = data |> transform |> format",
+    );
+}
+
+#[test]
+fn format_long_fn_params_go_multiline() {
+    assert_fmt(
+        "fn fetchProducts(category: string = \"\", search: string = \"\", limit: number = 20, skip: number = 0) -> Result<number, Error> {}",
+        "fn fetchProducts(\n    category: string = \"\",\n    search: string = \"\",\n    limit: number = 20,\n    skip: number = 0,\n) -> Result<number, Error> {}",
+    );
+}
+
+#[test]
+fn format_short_fn_params_stay_inline() {
+    assert_fmt(
+        "fn add(a: number, b: number) -> number { a + b }",
+        "fn add(a: number, b: number) -> number {\n    a + b\n}",
+    );
+}
+
+#[test]
+fn format_long_call_args_go_multiline() {
+    assert_fmt(
+        "const p = Product(id: ProductId(data.id), title: data.title, description: data.description, category: data.category, price: data.price)",
+        "const p = Product(\n    id: ProductId(data.id),\n    title: data.title,\n    description: data.description,\n    category: data.category,\n    price: data.price,\n)",
+    );
+}
+
+#[test]
+fn format_short_call_args_stay_inline() {
+    assert_fmt("f(a, b, c)", "f(a, b, c)");
+}
