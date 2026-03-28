@@ -2,12 +2,12 @@
 title: Vite Plugin
 ---
 
-The `vite-plugin-floe` package lets Vite transform `.fl` files during development and production builds.
+The `@floelang/vite-plugin` package lets Vite transform `.fl` files during development and production builds.
 
 ## Installation
 
 ```bash
-npm install -D vite-plugin-floe
+npm install -D @floelang/vite-plugin
 ```
 
 Make sure `floe` is installed and available in your PATH.
@@ -17,7 +17,7 @@ Make sure `floe` is installed and available in your PATH.
 ```typescript
 // vite.config.ts
 import { defineConfig } from "vite"
-import floe from "vite-plugin-floe"
+import floe from "@floelang/vite-plugin"
 
 export default defineConfig({
   plugins: [floe()],
@@ -46,7 +46,7 @@ floe({
 // vite.config.ts
 import { defineConfig } from "vite"
 import react from "@vitejs/plugin-react"
-import floe from "vite-plugin-floe"
+import floe from "@floelang/vite-plugin"
 
 export default defineConfig({
   plugins: [

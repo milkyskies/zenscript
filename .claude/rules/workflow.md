@@ -127,7 +127,7 @@ If either is wrong, stop and fix it before proceeding.
 glb update <num> --claim
 ```
 
-Commit semi-frequently - don't save everything for one giant commit.
+Commit semi-frequently - don't save everything for one giant commit. Use **conventional commits** (`feat:`, `fix:`, `chore:`, `docs:`, `ci:`, `refactor:`, `test:`). Append `!` for breaking changes (e.g. `feat!:`). These prefixes drive automatic version bumps and changelog generation via release-please.
 
 **Before every commit**, run `cargo fmt` (and `floe fmt` if you touched `.fl` files). Never commit unformatted code.
 
