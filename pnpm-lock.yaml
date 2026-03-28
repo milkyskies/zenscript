@@ -60,6 +60,9 @@ importers:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
+      '@floelang/vite-plugin':
+        specifier: workspace:*
+        version: link:../../integrations/vite-plugin-floe
       '@tailwindcss/vite':
         specifier: ^4.1.0
         version: 4.2.1(vite@6.4.1(@types/node@25.5.0)(jiti@2.6.1)(lightningcss@1.31.1))
@@ -78,9 +81,6 @@ importers:
       vite:
         specifier: ^6.0.0
         version: 6.4.1(@types/node@25.5.0)(jiti@2.6.1)(lightningcss@1.31.1)
-      vite-plugin-floe:
-        specifier: workspace:*
-        version: link:../../integrations/vite-plugin-floe
 
   examples/store-ts:
     dependencies:
@@ -149,6 +149,9 @@ importers:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
+      '@floelang/vite-plugin':
+        specifier: workspace:*
+        version: link:../../integrations/vite-plugin-floe
       '@tailwindcss/vite':
         specifier: ^4.1.0
         version: 4.2.1(vite@6.4.1(@types/node@25.5.0)(jiti@2.6.1)(lightningcss@1.31.1))
@@ -170,9 +173,6 @@ importers:
       vite:
         specifier: ^6.0.0
         version: 6.4.1(@types/node@25.5.0)(jiti@2.6.1)(lightningcss@1.31.1)
-      vite-plugin-floe:
-        specifier: workspace:*
-        version: link:../../integrations/vite-plugin-floe
 
   integrations/vite-plugin-floe:
     devDependencies:

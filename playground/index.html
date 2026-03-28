@@ -191,21 +191,21 @@
       <textarea id="input" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off">import { useState } from "react"
 
 type Todo = {
-  id: string,
-  text: string,
-  done: bool,
+  id: string
+  text: string
+  done: bool
 }
 
-export function App(): JSX.Element {
+export fn App() -> JSX.Element {
   const [todos, setTodos] = useState([])
 
   const completed = todos
-    |> filter(t => t.done)
-    |> length
+    |> Array.filter(.done)
+    |> Array.length
 
   return &lt;div&gt;
     &lt;h1&gt;Todos ({completed} done)&lt;/h1&gt;
-    {todos |> map(t =&gt; &lt;p key={t.id}&gt;{t.text}&lt;/p&gt;)}
+    {todos |> Array.map(|t| &lt;p key={t.id}&gt;{t.text}&lt;/p&gt;)}
   &lt;/div&gt;
 }</textarea>
     </div>

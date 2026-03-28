@@ -43,7 +43,7 @@ jobs:
       - name: Tests
         run: cargo test
 
-      - name: Build release for LSP tests
+      - name: Build for integration tests
         run: cargo build
 
       - name: Setup Node.js
