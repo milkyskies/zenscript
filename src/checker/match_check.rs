@@ -289,6 +289,24 @@ impl Checker {
     /// Check whether the match arms exhaustively cover a tuple type.
     /// Returns true if the tuple is fully covered.
     fn check_tuple_exhaustiveness(&self, elem_types: &[Type], arms: &[MatchArm]) -> bool {
+        // If any arm is a top-level catch-all (wildcard, binding, or tuple of all wildcards/bindings),
+        // the match is exhaustive regardless of element types.
+        let has_catch_all = arms.iter().any(|arm| {
+            if arm.guard.is_some() {
+                return false;
+            }
+            match &arm.pattern.kind {
+                PatternKind::Wildcard | PatternKind::Binding(_) => true,
+                PatternKind::Tuple(patterns) => patterns.iter().all(|p| {
+                    matches!(p.kind, PatternKind::Wildcard | PatternKind::Binding(_))
+                }),
+                _ => false,
+            }
+        });
+        if has_catch_all {
+            return true;
+        }
+
         // Collect the possible values for each position
         let possible: Vec<Option<Vec<TupleSlotValue>>> = elem_types
             .iter()
