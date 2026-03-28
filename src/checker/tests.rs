@@ -3036,3 +3036,40 @@ const _result = apply(Validation)
     );
     assert!(has_error(&diags, "E001"));
 }
+
+// ── Naming convention enforcement ───────────────────────────
+
+#[test]
+fn lowercase_type_name_error() {
+    let diags = check("type color { | Red | Green }");
+    assert!(has_error(&diags, "E024"));
+    assert!(has_error_containing(
+        &diags,
+        "type name `color` must start with an uppercase letter"
+    ));
+}
+
+#[test]
+fn uppercase_type_name_ok() {
+    let diags = check("type Color { | Red | Green }");
+    assert!(!has_error(&diags, "E024"));
+}
+
+#[test]
+fn lowercase_variant_name_error() {
+    let diags = check("type Color { | red | Green }");
+    assert!(has_error(&diags, "E024"));
+    assert!(has_error_containing(
+        &diags,
+        "variant name `red` must start with an uppercase letter"
+    ));
+}
+
+#[test]
+fn uppercase_variant_name_ok() {
+    let diags = check("type Color { | Red | Green }");
+    assert!(!has_error(&diags, "E024"));
+}
+
+// Note: uppercase field names are already rejected by the parser
+// (uppercase identifiers are parsed as types/variants, not field names)
