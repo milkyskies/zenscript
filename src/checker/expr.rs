@@ -174,264 +174,7 @@ impl Checker {
                 type_name,
                 spread,
                 args,
-            } => {
-                self.unused.used_names.insert(type_name.clone());
-
-                let type_info = self.env.lookup_type(type_name).cloned();
-                if type_info.is_none() {
-                    // Also accept union variant names as constructors
-                    let is_variant = self
-                        .env
-                        .lookup(type_name)
-                        .is_some_and(|ty| matches!(ty, Type::Union { .. }));
-                    // Also accept known imported symbols (e.g. npm imports) used as constructors.
-                    // When an uppercase import like `QueryClient` is called with named args,
-                    // the parser produces a Construct node. If the name exists in the value
-                    // environment, treat it as a function call rather than erroring.
-                    let is_known_value = self.env.lookup(type_name).is_some();
-                    if !is_variant && !is_known_value {
-                        self.diagnostics.push(
-                            Diagnostic::error(format!("unknown type `{type_name}`"), expr.span)
-                                .with_label("not defined")
-                                .with_code("E002"),
-                        );
-                    }
-                }
-
-                // Zero-arg reference to non-unit variant → constructor function
-                // Must check early, before field validation would flag missing fields
-                if args.is_empty()
-                    && spread.is_none()
-                    && let Some(ty) = self.env.lookup(type_name).cloned()
-                    && let Type::Union { variants, .. } = &ty
-                    && let Some((_, field_types)) = variants.iter().find(|(v, _)| v == type_name)
-                    && !field_types.is_empty()
-                {
-                    return Type::Function {
-                        params: field_types.clone(),
-                        return_type: Box::new(ty),
-                    };
-                }
-
-                // Rule 3: Opaque enforcement
-                if let Some(ref info) = type_info
-                    && info.opaque
-                {
-                    self.diagnostics.push(
-                        Diagnostic::error(
-                            format!(
-                                "cannot construct opaque type `{type_name}` outside its defining module"
-                            ),
-                            expr.span,
-                        )
-                        .with_label("opaque type cannot be constructed directly")
-                        .with_help("use the module's exported constructor function instead")
-                        .with_code("E003"),
-                    );
-                }
-
-                // Collect valid field names for this type
-                let valid_fields: Option<Vec<String>> = if let Some(ref info) = type_info {
-                    match &info.def {
-                        TypeDef::Record(entries) => Some(
-                            entries
-                                .iter()
-                                .filter_map(|e| e.as_field())
-                                .map(|f| f.name.clone())
-                                .collect(),
-                        ),
-                        _ => None,
-                    }
-                } else {
-                    // For variant constructors, look up parent union's type info
-                    self.env
-                        .lookup(type_name)
-                        .cloned()
-                        .and_then(|ty| {
-                            if let Type::Union { name, .. } = &ty {
-                                self.env.lookup_type(name).cloned()
-                            } else {
-                                None
-                            }
-                        })
-                        .and_then(|info| {
-                            if let TypeDef::Union(variants) = &info.def {
-                                variants.iter().find(|v| v.name == *type_name).map(|v| {
-                                    v.fields.iter().filter_map(|f| f.name.clone()).collect()
-                                })
-                            } else {
-                                None
-                            }
-                        })
-                };
-
-                // Validate named arguments against known fields
-                if let Some(ref fields) = valid_fields {
-                    let named_labels: Vec<&str> = args
-                        .iter()
-                        .filter_map(|a| {
-                            if let Arg::Named { label, .. } = a {
-                                Some(label.as_str())
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-
-                    for label in &named_labels {
-                        if !fields.iter().any(|f| f == label) {
-                            self.diagnostics.push(
-                                Diagnostic::error(
-                                    format!("unknown field `{label}` on type `{type_name}`"),
-                                    expr.span,
-                                )
-                                .with_label(format!("`{label}` is not a field of `{type_name}`"))
-                                .with_help(format!(
-                                    "available fields: {}",
-                                    fields
-                                        .iter()
-                                        .map(|f| format!("`{f}`"))
-                                        .collect::<Vec<_>>()
-                                        .join(", ")
-                                ))
-                                .with_code("E015"),
-                            );
-                        }
-                    }
-
-                    // Check for missing required fields (only when no spread)
-                    if spread.is_none() {
-                        let has_defaults: Vec<String> = if let Some(ref info) = type_info {
-                            if let TypeDef::Record(record_entries) = &info.def {
-                                record_entries
-                                    .iter()
-                                    .filter_map(|e| e.as_field())
-                                    .filter(|f| f.default.is_some())
-                                    .map(|f| f.name.clone())
-                                    .collect()
-                            } else {
-                                vec![]
-                            }
-                        } else {
-                            vec![]
-                        };
-
-                        let positional_count = args
-                            .iter()
-                            .filter(|a| matches!(a, Arg::Positional(_)))
-                            .count();
-
-                        for (i, field) in fields.iter().enumerate() {
-                            let provided_by_name = named_labels.contains(&field.as_str());
-                            let provided_by_position = i < positional_count;
-                            let has_default = has_defaults.contains(field);
-
-                            if !provided_by_name && !provided_by_position && !has_default {
-                                self.diagnostics.push(
-                                    Diagnostic::error(
-                                        format!(
-                                            "missing required field `{field}` in `{type_name}` constructor"
-                                        ),
-                                        expr.span,
-                                    )
-                                    .with_label(format!("field `{field}` is required"))
-                                    .with_code("E016"),
-                                );
-                            }
-                        }
-                    }
-                }
-
-                if let Some(spread_expr) = spread {
-                    let spread_type = self.check_expr(spread_expr);
-
-                    // Rule: warn on overlapping spread keys
-                    if let Type::Record(spread_fields) = &spread_type {
-                        let spread_keys: Vec<&str> =
-                            spread_fields.iter().map(|(k, _)| k.as_str()).collect();
-                        for arg in args.iter() {
-                            if let Arg::Named { label, .. } = arg
-                                && spread_keys.contains(&label.as_str())
-                            {
-                                self.diagnostics.push(
-                                    Diagnostic::warning(
-                                        format!("field `{label}` from spread is overwritten by explicit field"),
-                                        expr.span,
-                                    )
-                                    .with_label(format!("`{label}` exists in the spread source"))
-                                    .with_help(
-                                        "the spread value will be replaced by the explicit field",
-                                    )
-                                    .with_code("W003"),
-                                );
-                            }
-                        }
-                    }
-                }
-
-                // Build a map of field name -> expected type from the type definition
-                let field_type_map: Option<Vec<(String, Type)>> = if let Some(ref info) = type_info
-                {
-                    match &info.def {
-                        TypeDef::Record(entries) => Some(
-                            entries
-                                .iter()
-                                .filter_map(|e| e.as_field())
-                                .map(|f| (f.name.clone(), self.resolve_type(&f.type_ann)))
-                                .collect(),
-                        ),
-                        _ => None,
-                    }
-                } else {
-                    None
-                };
-
-                // Check each argument and validate types against declared fields
-                for arg in args {
-                    match arg {
-                        Arg::Named {
-                            label, value: e, ..
-                        } => {
-                            let arg_ty = self.check_expr(e);
-                            // Validate type against declared field type
-                            if let Some(ref field_types) = field_type_map
-                                && let Some((_, expected_ty)) =
-                                    field_types.iter().find(|(n, _)| n == label)
-                                && !self.types_compatible(expected_ty, &arg_ty)
-                                && !matches!(arg_ty, Type::Unknown | Type::Var(_))
-                            {
-                                self.diagnostics.push(
-                                    Diagnostic::error(
-                                        format!(
-                                            "field `{label}`: expected `{}`, found `{}`",
-                                            expected_ty.display_name(),
-                                            arg_ty.display_name()
-                                        ),
-                                        expr.span,
-                                    )
-                                    .with_label(format!(
-                                        "expected `{}`",
-                                        expected_ty.display_name()
-                                    ))
-                                    .with_code("E001"),
-                                );
-                            }
-                        }
-                        Arg::Positional(e) => {
-                            self.check_expr(e);
-                        }
-                    }
-                }
-
-                // If this is a variant constructor, return the parent union type
-                // rather than Named(variant_name) so match arm types are consistent
-                if let Some(ty) = self.env.lookup(type_name).cloned()
-                    && let Type::Union { .. } = &ty
-                {
-                    return ty;
-                }
-                Type::Named(type_name.clone())
-            }
+            } => self.check_construct(type_name, spread.as_deref(), args, expr.span),
 
             ExprKind::Member { object, field } => {
                 let obj_ty = self.check_expr(object);
@@ -1085,9 +828,256 @@ impl Checker {
         }
     }
 
-    /// Check the right side of a pipe expression with type-directed resolution.
-    /// When the right side uses a bare function name (not locally defined),
-    /// resolve it against stdlib using the left side's type.
+    fn check_construct(
+        &mut self,
+        type_name: &str,
+        spread: Option<&Expr>,
+        args: &[Arg],
+        span: Span,
+    ) -> Type {
+        self.unused.used_names.insert(type_name.to_string());
+
+        let type_info = self.env.lookup_type(type_name).cloned();
+        if type_info.is_none() {
+            let is_variant = self
+                .env
+                .lookup(type_name)
+                .is_some_and(|ty| matches!(ty, Type::Union { .. }));
+            let is_known_value = self.env.lookup(type_name).is_some();
+            if !is_variant && !is_known_value {
+                self.diagnostics.push(
+                    Diagnostic::error(format!("unknown type `{type_name}`"), span)
+                        .with_label("not defined")
+                        .with_code("E002"),
+                );
+            }
+        }
+
+        // Zero-arg reference to non-unit variant → constructor function
+        if args.is_empty()
+            && spread.is_none()
+            && let Some(ty) = self.env.lookup(type_name).cloned()
+            && let Type::Union { variants, .. } = &ty
+            && let Some((_, field_types)) = variants.iter().find(|(v, _)| v == type_name)
+            && !field_types.is_empty()
+        {
+            return Type::Function {
+                params: field_types.clone(),
+                return_type: Box::new(ty),
+            };
+        }
+
+        // Rule 3: Opaque enforcement
+        if let Some(ref info) = type_info
+            && info.opaque
+        {
+            self.diagnostics.push(
+                Diagnostic::error(
+                    format!(
+                        "cannot construct opaque type `{type_name}` outside its defining module"
+                    ),
+                    span,
+                )
+                .with_label("opaque type cannot be constructed directly")
+                .with_help("use the module's exported constructor function instead")
+                .with_code("E003"),
+            );
+        }
+
+        // Collect valid field names for this type
+        let valid_fields: Option<Vec<String>> = if let Some(ref info) = type_info {
+            match &info.def {
+                TypeDef::Record(entries) => Some(
+                    entries
+                        .iter()
+                        .filter_map(|e| e.as_field())
+                        .map(|f| f.name.clone())
+                        .collect(),
+                ),
+                _ => None,
+            }
+        } else {
+            self.env
+                .lookup(type_name)
+                .cloned()
+                .and_then(|ty| {
+                    if let Type::Union { name, .. } = &ty {
+                        self.env.lookup_type(&name).cloned()
+                    } else {
+                        None
+                    }
+                })
+                .and_then(|info| {
+                    if let TypeDef::Union(variants) = &info.def {
+                        variants
+                            .iter()
+                            .find(|v| v.name == *type_name)
+                            .map(|v| v.fields.iter().filter_map(|f| f.name.clone()).collect())
+                    } else {
+                        None
+                    }
+                })
+        };
+
+        // Validate named arguments against known fields
+        if let Some(ref fields) = valid_fields {
+            let named_labels: Vec<&str> = args
+                .iter()
+                .filter_map(|a| {
+                    if let Arg::Named { label, .. } = a {
+                        Some(label.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            for label in &named_labels {
+                if !fields.iter().any(|f| f == label) {
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            format!("unknown field `{label}` on type `{type_name}`"),
+                            span,
+                        )
+                        .with_label(format!("`{label}` is not a field of `{type_name}`"))
+                        .with_help(format!(
+                            "available fields: {}",
+                            fields
+                                .iter()
+                                .map(|f| format!("`{f}`"))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ))
+                        .with_code("E015"),
+                    );
+                }
+            }
+
+            // Check for missing required fields (only when no spread)
+            if spread.is_none() {
+                let has_defaults: Vec<String> = if let Some(ref info) = type_info {
+                    if let TypeDef::Record(record_entries) = &info.def {
+                        record_entries
+                            .iter()
+                            .filter_map(|e| e.as_field())
+                            .filter(|f| f.default.is_some())
+                            .map(|f| f.name.clone())
+                            .collect()
+                    } else {
+                        vec![]
+                    }
+                } else {
+                    vec![]
+                };
+
+                let positional_count = args
+                    .iter()
+                    .filter(|a| matches!(a, Arg::Positional(_)))
+                    .count();
+
+                for (i, field) in fields.iter().enumerate() {
+                    let provided_by_name = named_labels.contains(&field.as_str());
+                    let provided_by_position = i < positional_count;
+                    let has_default = has_defaults.contains(field);
+
+                    if !provided_by_name && !provided_by_position && !has_default {
+                        self.diagnostics.push(
+                            Diagnostic::error(
+                                format!(
+                                    "missing required field `{field}` in `{type_name}` constructor"
+                                ),
+                                span,
+                            )
+                            .with_label(format!("field `{field}` is required"))
+                            .with_code("E016"),
+                        );
+                    }
+                }
+            }
+        }
+
+        if let Some(spread_expr) = spread {
+            let spread_type = self.check_expr(spread_expr);
+
+            if let Type::Record(spread_fields) = &spread_type {
+                let spread_keys: Vec<&str> =
+                    spread_fields.iter().map(|(k, _)| k.as_str()).collect();
+                for arg in args.iter() {
+                    if let Arg::Named { label, .. } = arg
+                        && spread_keys.contains(&label.as_str())
+                    {
+                        self.diagnostics.push(
+                            Diagnostic::warning(
+                                format!(
+                                    "field `{label}` from spread is overwritten by explicit field"
+                                ),
+                                span,
+                            )
+                            .with_label(format!("`{label}` exists in the spread source"))
+                            .with_help("the spread value will be replaced by the explicit field")
+                            .with_code("W003"),
+                        );
+                    }
+                }
+            }
+        }
+
+        // Build field type map for type checking arguments
+        let field_type_map: Option<Vec<(String, Type)>> = if let Some(ref info) = type_info {
+            match &info.def {
+                TypeDef::Record(entries) => Some(
+                    entries
+                        .iter()
+                        .filter_map(|e| e.as_field())
+                        .map(|f| (f.name.clone(), self.resolve_type(&f.type_ann)))
+                        .collect(),
+                ),
+                _ => None,
+            }
+        } else {
+            None
+        };
+
+        for arg in args {
+            match arg {
+                Arg::Named {
+                    label, value: e, ..
+                } => {
+                    let arg_ty = self.check_expr(e);
+                    if let Some(ref field_types) = field_type_map
+                        && let Some((_, expected_ty)) = field_types.iter().find(|(n, _)| n == label)
+                        && !self.types_compatible(expected_ty, &arg_ty)
+                        && !matches!(arg_ty, Type::Unknown | Type::Var(_))
+                    {
+                        self.diagnostics.push(
+                            Diagnostic::error(
+                                format!(
+                                    "field `{label}`: expected `{}`, found `{}`",
+                                    expected_ty.display_name(),
+                                    arg_ty.display_name()
+                                ),
+                                span,
+                            )
+                            .with_label(format!("expected `{}`", expected_ty.display_name()))
+                            .with_code("E001"),
+                        );
+                    }
+                }
+                Arg::Positional(e) => {
+                    self.check_expr(e);
+                }
+            }
+        }
+
+        // Return parent union type for variant constructors
+        if let Some(ty) = self.env.lookup(type_name).cloned()
+            && let Type::Union { .. } = &ty
+        {
+            return ty;
+        }
+        Type::Named(type_name.to_string())
+    }
+
     fn check_pipe_right(&mut self, left_ty: &Type, right: &Expr) -> Type {
         // Handle `x |> Module.func` or `x |> Module.func(args)` — stdlib member access
         let member_info = match &right.kind {
