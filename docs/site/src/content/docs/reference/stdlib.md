@@ -487,3 +487,48 @@ const name = "  Alice  "
 ```
 
 `tap` is the pipeline equivalent of a `console.log` that doesn't interrupt the flow. The function you pass receives the value but its return is ignored -- the original value passes through unchanged.
+
+---
+
+## Compiler Built-ins
+
+These are not module functions -- they are special expressions that use type information at compile time.
+
+### `parse<T>`
+
+Runtime type validation. Generates validation code from a type definition.
+
+```floe
+const user = json |> parse<User>?
+const items = data |> parse<Array<Product>>?
+const point = raw |> parse<{ x: number, y: number }>?
+```
+
+`parse<T>(value)` returns `Result<T, Error>`. Use `?` to unwrap or `match` to handle errors. See [Error Handling](/guide/error-handling/) for details.
+
+### `mock<T>`
+
+Test data generation. Generates object literals from a type definition -- no runtime library needed.
+
+```floe
+const testUser = mock<User>
+// { id: "mock-id-1", name: "mock-name-2", age: 3 }
+
+const admin = mock<User>(name: "Alice")
+// { id: "mock-id-1", name: "Alice", age: 2 }
+
+const point = mock<{ x: number, y: number }>
+// { x: 1, y: 2 }
+```
+
+`mock<T>` returns `T` directly. Override specific fields with named arguments. See [Testing](/guide/testing/) for details.
+
+| Type | Generated Value |
+|------|----------------|
+| `string` | `"mock-fieldname-N"` |
+| `number` | Sequential integers |
+| `boolean` | Alternates true/false |
+| `Array<T>` | Array with 1 element |
+| Record types | All fields mocked recursively |
+| Unions | First variant |
+| `Option<T>` | The inner value |
