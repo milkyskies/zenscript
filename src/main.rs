@@ -26,7 +26,7 @@ enum Command {
     Build {
         /// File or directory to compile ("-" for stdin)
         path: PathBuf,
-        /// Output directory (defaults to same directory as input)
+        /// Output directory (defaults to .floe/ at project root)
         #[arg(short, long)]
         out_dir: Option<PathBuf>,
         /// Emit compiled output to stdout instead of writing files
@@ -42,7 +42,7 @@ enum Command {
     Watch {
         /// File or directory to watch
         path: PathBuf,
-        /// Output directory (defaults to same directory as input)
+        /// Output directory (defaults to .floe/ at project root)
         #[arg(short, long)]
         out_dir: Option<PathBuf>,
     },
@@ -191,6 +191,12 @@ fn cmd_build(path: &Path, out_dir: Option<&Path>) -> Result<()> {
         bail!("no .fl files found in {}", path.display());
     }
 
+    // Default output directory: .floe/ at the project root
+    let project_dir =
+        find_project_dir(&std::env::current_dir().context("failed to get current directory")?);
+    let default_out_dir = project_dir.join(".floe");
+    let out_dir = out_dir.unwrap_or(&default_out_dir);
+
     let mut compiled = 0;
     let mut errors = 0;
 
@@ -215,7 +221,7 @@ fn cmd_build(path: &Path, out_dir: Option<&Path>) -> Result<()> {
     Ok(())
 }
 
-fn compile_file(file: &Path, out_dir: Option<&Path>) -> Result<PathBuf> {
+fn compile_file(file: &Path, out_dir: &Path) -> Result<PathBuf> {
     let source = read_fl_file(file)?;
 
     let filename = file.to_string_lossy();
@@ -223,21 +229,27 @@ fn compile_file(file: &Path, out_dir: Option<&Path>) -> Result<PathBuf> {
     let output = Codegen::with_imports(&result.resolved).generate(&result.program);
     let ext = if output.has_jsx { "tsx" } else { "ts" };
 
-    let out_path = if let Some(dir) = out_dir {
-        std::fs::create_dir_all(dir)
-            .with_context(|| format!("failed to create output directory {}", dir.display()))?;
-        dir.join(file.file_stem().unwrap()).with_extension(ext)
-    } else {
-        file.with_extension(ext)
-    };
+    // Mirror source path structure inside out_dir
+    let canonical = file
+        .canonicalize()
+        .with_context(|| format!("failed to canonicalize {}", file.display()))?;
+    let relative = canonical
+        .strip_prefix(&std::env::current_dir().context("failed to get current directory")?)
+        .unwrap_or(&canonical);
+    let out_path = out_dir.join(relative).with_extension(ext);
+
+    if let Some(parent) = out_path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create output directory {}", parent.display()))?;
+    }
 
     let code_with_header = format!("// @ts-nocheck\n{}", output.code);
     std::fs::write(&out_path, &code_with_header)
         .with_context(|| format!("failed to write {}", out_path.display()))?;
 
-    // Write .d.ts declaration stub alongside the .fl source file
+    // Write .d.ts declaration stub into out_dir as well
     if !output.dts.is_empty() {
-        let dts_path = file.with_extension("d.ts");
+        let dts_path = out_dir.join(relative).with_extension("d.ts");
         std::fs::write(&dts_path, &output.dts)
             .with_context(|| format!("failed to write {}", dts_path.display()))?;
     }
@@ -486,8 +498,14 @@ fn cmd_watch(path: &Path, out_dir: Option<&Path>) -> Result<()> {
 
     println!("watching {} for changes...", path.display());
 
+    // Default output directory: .floe/ at the project root
+    let project_dir =
+        find_project_dir(&std::env::current_dir().context("failed to get current directory")?);
+    let default_out_dir = project_dir.join(".floe");
+    let out_dir = out_dir.unwrap_or(&default_out_dir);
+
     // Initial build
-    if let Err(e) = cmd_build(path, out_dir) {
+    if let Err(e) = cmd_build(path, Some(out_dir)) {
         eprintln!("{e}");
     }
 
