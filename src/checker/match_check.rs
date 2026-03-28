@@ -297,9 +297,9 @@ impl Checker {
             }
             match &arm.pattern.kind {
                 PatternKind::Wildcard | PatternKind::Binding(_) => true,
-                PatternKind::Tuple(patterns) => patterns.iter().all(|p| {
-                    matches!(p.kind, PatternKind::Wildcard | PatternKind::Binding(_))
-                }),
+                PatternKind::Tuple(patterns) => patterns
+                    .iter()
+                    .all(|p| matches!(p.kind, PatternKind::Wildcard | PatternKind::Binding(_))),
                 _ => false,
             }
         });
