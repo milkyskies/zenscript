@@ -1,6 +1,4 @@
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
 import type { Plugin } from "vite";
 
 export interface FloeOptions {
@@ -31,19 +29,12 @@ export default function floe(options: FloeOptions = {}): Plugin {
     name: "vite-plugin-floe",
     enforce: "pre",
 
-    async resolveId(source, importer) {
-      if (!importer) return null;
-
-      // Let Vite try default resolution first
-      const resolved = await this.resolve(source, importer, { skipSelf: true });
-      if (resolved) return null;
-
-      // Default resolution failed — check if a .fl file exists
-      const importerDir = dirname(importer.split("?")[0]);
-      const candidate = resolve(importerDir, source + ".fl");
-      if (existsSync(candidate)) return candidate;
-
-      return null;
+    config() {
+      return {
+        resolve: {
+          extensions: [".fl", ".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"],
+        },
+      };
     },
 
     transform(code, id) {
