@@ -1,6 +1,7 @@
 /target
 node_modules/
 dist/
+.floe/
 *.so
 
 # Claude Code local settings (project rules in .claude/rules/ are intentionally tracked)
