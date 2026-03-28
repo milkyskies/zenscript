@@ -140,23 +140,64 @@ impl Formatter<'_> {
             self.write(&name);
         }
 
-        self.write("(");
         let params: Vec<_> = node
             .children()
             .filter(|c| c.kind() == SyntaxKind::PARAM)
             .collect();
-        for (i, param) in params.iter().enumerate() {
-            if i > 0 {
-                self.write(", ");
-            }
-            self.fmt_param(param);
-        }
-        self.write(")");
 
         let return_type = node.children().find(|c| c.kind() == SyntaxKind::TYPE_EXPR);
-        if let Some(rt) = return_type {
-            self.write(" -> ");
-            self.fmt_type_expr(&rt);
+
+        // Try inline params + return type
+        let inline = self.try_inline(|f| {
+            f.write("(");
+            for (i, param) in params.iter().enumerate() {
+                if i > 0 {
+                    f.write(", ");
+                }
+                f.fmt_param(param);
+            }
+            f.write(")");
+            if let Some(rt) = &return_type {
+                f.write(" -> ");
+                f.fmt_type_expr(rt);
+            }
+            f.write(" {");
+        });
+
+        if self.fits_inline(&inline) {
+            // Inline: fn name(a: T, b: U) -> R {
+            self.write("(");
+            for (i, param) in params.iter().enumerate() {
+                if i > 0 {
+                    self.write(", ");
+                }
+                self.fmt_param(param);
+            }
+            self.write(")");
+
+            if let Some(rt) = &return_type {
+                self.write(" -> ");
+                self.fmt_type_expr(rt);
+            }
+        } else {
+            // Multi-line: fn name(\n    a: T,\n    b: U,\n) -> R
+            self.write("(");
+            self.indent += 1;
+            for param in &params {
+                self.newline();
+                self.write_indent();
+                self.fmt_param(param);
+                self.write(",");
+            }
+            self.indent -= 1;
+            self.newline();
+            self.write_indent();
+            self.write(")");
+
+            if let Some(rt) = &return_type {
+                self.write(" -> ");
+                self.fmt_type_expr(rt);
+            }
         }
 
         self.write(" ");

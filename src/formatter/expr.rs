@@ -44,19 +44,25 @@ impl Formatter<'_> {
         let mut segments = Vec::new();
         self.collect_pipe_segments(node, &mut segments);
 
-        if segments.len() <= 3 {
+        // Try inline first
+        let inline = self.try_inline(|f| {
             for (i, seg) in segments.iter().enumerate() {
                 if i > 0 {
-                    self.write(" |> ");
+                    f.write(" |> ");
                 }
-                self.fmt_pipe_segment(seg);
+                f.fmt_pipe_segment(seg);
             }
+        });
+
+        if self.fits_inline(&inline) {
+            self.write(&inline);
         } else {
+            // Vertical: first segment on current line, rest indented with |>
             for (i, seg) in segments.iter().enumerate() {
                 if i > 0 {
                     self.newline();
                     self.write_indent();
-                    self.write("|> ");
+                    self.write("    |> ");
                 }
                 self.fmt_pipe_segment(seg);
             }
@@ -505,18 +511,40 @@ impl Formatter<'_> {
             self.fmt_token_callee(node);
         }
 
-        self.write("(");
         let args: Vec<_> = node
             .children()
             .filter(|c| c.kind() == SyntaxKind::ARG)
             .collect();
-        for (i, arg) in args.iter().enumerate() {
-            if i > 0 {
-                self.write(", ");
+
+        // Try inline args
+        let inline = self.try_inline(|f| {
+            f.write("(");
+            for (i, arg) in args.iter().enumerate() {
+                if i > 0 {
+                    f.write(", ");
+                }
+                f.fmt_arg(arg);
             }
-            self.fmt_arg(arg);
+            f.write(")");
+        });
+
+        if self.fits_inline(&inline) {
+            self.write(&inline);
+        } else {
+            // Multi-line args
+            self.write("(");
+            self.indent += 1;
+            for arg in &args {
+                self.newline();
+                self.write_indent();
+                self.fmt_arg(arg);
+                self.write(",");
+            }
+            self.indent -= 1;
+            self.newline();
+            self.write_indent();
+            self.write(")");
         }
-        self.write(")");
     }
 
     pub(crate) fn fmt_arg(&mut self, node: &SyntaxNode) {
@@ -614,7 +642,6 @@ impl Formatter<'_> {
                 self.write(ident);
             }
         }
-        self.write("(");
 
         let spread = node
             .children()
@@ -624,42 +651,75 @@ impl Formatter<'_> {
             .filter(|c| c.kind() == SyntaxKind::ARG)
             .collect();
 
-        let mut first = true;
-        if let Some(spread) = spread {
-            self.write("..");
-            let mut wrote_spread_value = false;
-            if let Some(child) = spread.children().next() {
-                self.fmt_node(&child);
-                wrote_spread_value = true;
+        // Try inline
+        let inline = self.try_inline(|f| {
+            f.write("(");
+            let mut first = true;
+            if let Some(spread) = &spread {
+                f.fmt_spread(spread);
+                first = false;
             }
-            if !wrote_spread_value {
-                // No child node — find ident/token after DOT_DOT
-                let mut past_dots = false;
-                for t in spread.children_with_tokens() {
-                    if let Some(tok) = t.as_token() {
-                        if tok.kind() == SyntaxKind::DOT_DOT {
-                            past_dots = true;
-                            continue;
-                        }
-                        if past_dots && !tok.kind().is_trivia() {
-                            self.write(tok.text());
-                            break;
-                        }
+            for arg in &args {
+                if !first {
+                    f.write(", ");
+                }
+                f.fmt_arg(arg);
+                first = false;
+            }
+            f.write(")");
+        });
+
+        if self.fits_inline(&inline) {
+            self.write(&inline);
+        } else {
+            // Multi-line construct
+            self.write("(");
+            self.indent += 1;
+            let mut first = true;
+            if let Some(spread) = &spread {
+                self.newline();
+                self.write_indent();
+                self.fmt_spread(spread);
+                self.write(",");
+                first = false;
+            }
+            for arg in &args {
+                if !first {
+                    // Already wrote comma after previous item
+                }
+                self.newline();
+                self.write_indent();
+                self.fmt_arg(arg);
+                self.write(",");
+                first = false;
+            }
+            self.indent -= 1;
+            self.newline();
+            self.write_indent();
+            self.write(")");
+        }
+    }
+
+    fn fmt_spread(&mut self, spread: &SyntaxNode) {
+        self.write("..");
+        if let Some(child) = spread.children().next() {
+            self.fmt_node(&child);
+        } else {
+            // No child node — find ident/token after DOT_DOT
+            let mut past_dots = false;
+            for t in spread.children_with_tokens() {
+                if let Some(tok) = t.as_token() {
+                    if tok.kind() == SyntaxKind::DOT_DOT {
+                        past_dots = true;
+                        continue;
+                    }
+                    if past_dots && !tok.kind().is_trivia() {
+                        self.write(tok.text());
+                        break;
                     }
                 }
             }
-            first = false;
         }
-
-        for arg in &args {
-            if !first {
-                self.write(", ");
-            }
-            self.fmt_arg(arg);
-            first = false;
-        }
-
-        self.write(")");
     }
 
     // ── Member / Index / Unwrap ─────────────────────────────────
