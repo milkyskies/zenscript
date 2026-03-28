@@ -27,7 +27,10 @@
 "Ok" @constructor
 "Err" @constructor
 "Some" @constructor
+"Value" @constructor
 (none) @constant.builtin
+(clear) @constant.builtin
+(unchanged) @constant.builtin
 (todo) @keyword
 (unreachable) @keyword
 (mock_expression "mock" @keyword)

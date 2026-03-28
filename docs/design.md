@@ -410,6 +410,28 @@ const avatar = user.nickname |> Option.flatMap((n) => findAvatar(n))
 
 ```
 
+### Settable<T> - Three-State Fields for Partial Updates
+
+For TypeScript interop where a field is both optional (`?`) and nullable (`| null`), `Settable<T>` captures three states:
+
+```floe
+type UpdateUser {
+  name: Settable<string> = Unchanged,
+  email: Settable<string> = Unchanged,
+}
+
+// Value(x) — set the field
+// Clear    — send null (clear the field)
+// Unchanged — omit the key entirely (don't touch it)
+const update = UpdateUser(name: Value("Ryan"), email: Clear)
+// Compiles to: { name: "Ryan", email: null }
+
+const partial = UpdateUser(name: Value("Ryan"))
+// Compiles to: { name: "Ryan" }
+```
+
+`Settable<T>` compiles to `T | null | undefined` in TypeScript. `Value(x)` desugars to `x`, `Clear` desugars to `null`, and `Unchanged` causes the field to be omitted from the object literal.
+
 ### Type System — Just `type`, No `enum`
 
 `type` does everything. No `|` = record. Has `|` = union. Unions nest infinitely.

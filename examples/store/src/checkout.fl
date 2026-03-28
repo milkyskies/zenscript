@@ -1,4 +1,4 @@
-import { CartItem, ShippingInfo, CheckoutError, OrderId, OrderStatus } from "./types"
+import { CartItem, ShippingInfo, ShippingUpdate, CheckoutError, OrderId, OrderStatus } from "./types"
 import from "./product"
 
 // ── Validation helpers ─────────────────────────────────
@@ -60,6 +60,13 @@ export fn processCheckout(
     const orderId = OrderId(Math.floor(Math.random() * 10_000))
 
     Ok(Confirmed(orderId))
+}
+
+// ── Partial update (Settable) ─────────────────────────
+// Only updates fields that are Value(...). Clear sets to null. Unchanged is omitted.
+
+export fn updateShippingExample() -> ShippingUpdate {
+    ShippingUpdate(email: Value("new@email.com"), phone: Clear)
 }
 
 test "empty cart fails validation" {

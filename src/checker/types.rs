@@ -78,7 +78,6 @@ impl Type {
         matches!(self, Type::Option(_))
     }
 
-    #[allow(dead_code)]
     pub(crate) fn is_settable(&self) -> bool {
         matches!(self, Type::Settable(_))
     }
