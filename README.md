@@ -6,7 +6,7 @@
   <a href="https://github.com/milkyskies/floe/releases"><img src="https://img.shields.io/github/release/milkyskies/floe" alt="GitHub release"></a>
   <a href="https://crates.io/crates/floe"><img src="https://img.shields.io/crates/v/floe" alt="crates.io"></a>
   <a href="https://www.npmjs.com/package/@floeorg/vite-plugin"><img src="https://img.shields.io/npm/v/@floeorg/vite-plugin" alt="npm"></a>
-  <a href="https://open-vsx.org/extension/floeorg/floe"><img src="https://img.shields.io/open-vsx/v/floeorg/floe" alt="Open VSX"></a>
+  <a href="https://open-vsx.org/extension/milkyskies/floe"><img src="https://img.shields.io/open-vsx/v/milkyskies/floe" alt="Open VSX"></a>
 </p>
 
 <!-- A spacer -->
