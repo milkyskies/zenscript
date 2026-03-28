@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 
-use floe::checker::{Checker, ExprTypeMap};
+use floe::checker::{self, Checker, ExprTypeMap};
 use floe::codegen::Codegen;
 use floe::desugar;
 use floe::diagnostic;
@@ -144,6 +144,7 @@ fn compile_source(file_path: &Path, filename: &str, source: &str) -> Result<Comp
     }
 
     let mut program = program;
+    checker::annotate_types(&mut program, &expr_types);
     desugar::desugar_program(&mut program);
 
     Ok(CompileResult {
@@ -380,6 +381,7 @@ fn cmd_test(path: &Path) -> Result<()> {
             continue;
         }
 
+        checker::annotate_types(program, &expr_types);
         desugar::desugar_program(program);
         let output = Codegen::with_imports(expr_types, &resolved)
             .with_test_mode()

@@ -13,6 +13,164 @@ use crate::parser::ast::ExprId;
 /// Maps expression IDs to their resolved types.
 pub type ExprTypeMap = HashMap<ExprId, Type>;
 
+/// Annotate every `Expr` in the program with its resolved type from the type map.
+/// After this, `expr.ty` is populated for all expressions the checker processed.
+pub fn annotate_types(program: &mut Program, types: &ExprTypeMap) {
+    for item in &mut program.items {
+        annotate_item(item, types);
+    }
+}
+
+fn annotate_item(item: &mut Item, types: &ExprTypeMap) {
+    match &mut item.kind {
+        ItemKind::Expr(expr) => annotate_expr(expr, types),
+        ItemKind::Const(decl) => annotate_expr(&mut decl.value, types),
+        ItemKind::Function(decl) => {
+            annotate_expr(&mut decl.body, types);
+            for param in &mut decl.params {
+                if let Some(default) = &mut param.default {
+                    annotate_expr(default, types);
+                }
+            }
+        }
+        ItemKind::ForBlock(block) => {
+            for func in &mut block.functions {
+                annotate_expr(&mut func.body, types);
+                for param in &mut func.params {
+                    if let Some(default) = &mut param.default {
+                        annotate_expr(default, types);
+                    }
+                }
+            }
+        }
+        ItemKind::TestBlock(test) => {
+            for stmt in &mut test.body {
+                match stmt {
+                    TestStatement::Assert(expr, _) | TestStatement::Expr(expr) => {
+                        annotate_expr(expr, types);
+                    }
+                }
+            }
+        }
+        ItemKind::Import(_) | ItemKind::TypeDecl(_) | ItemKind::TraitDecl(_) => {}
+    }
+}
+
+fn annotate_expr(expr: &mut Expr, types: &ExprTypeMap) {
+    if let Some(ty) = types.get(&expr.id) {
+        expr.ty = ty.clone();
+    }
+    // Recurse into children
+    match &mut expr.kind {
+        ExprKind::Binary { left, right, .. } | ExprKind::Pipe { left, right } => {
+            annotate_expr(left, types);
+            annotate_expr(right, types);
+        }
+        ExprKind::Unary { operand, .. } => annotate_expr(operand, types),
+        ExprKind::Call { callee, args, .. } => {
+            annotate_expr(callee, types);
+            for arg in args {
+                match arg {
+                    Arg::Positional(e) | Arg::Named { value: e, .. } => annotate_expr(e, types),
+                }
+            }
+        }
+        ExprKind::Construct { args, spread, .. } => {
+            if let Some(s) = spread {
+                annotate_expr(s, types);
+            }
+            for arg in args {
+                match arg {
+                    Arg::Positional(e) | Arg::Named { value: e, .. } => annotate_expr(e, types),
+                }
+            }
+        }
+        ExprKind::Member { object, .. } => annotate_expr(object, types),
+        ExprKind::Index { object, index } => {
+            annotate_expr(object, types);
+            annotate_expr(index, types);
+        }
+        ExprKind::Arrow { body, .. } => annotate_expr(body, types),
+        ExprKind::Match { subject, arms } => {
+            annotate_expr(subject, types);
+            for arm in arms {
+                annotate_expr(&mut arm.body, types);
+                if let Some(guard) = &mut arm.guard {
+                    annotate_expr(guard, types);
+                }
+            }
+        }
+        ExprKind::Await(inner)
+        | ExprKind::Try(inner)
+        | ExprKind::Unwrap(inner)
+        | ExprKind::Ok(inner)
+        | ExprKind::Err(inner)
+        | ExprKind::Some(inner)
+        | ExprKind::Grouped(inner)
+        | ExprKind::Spread(inner) => annotate_expr(inner, types),
+        ExprKind::Parse { value, .. } => annotate_expr(value, types),
+        ExprKind::Block(items) | ExprKind::Collect(items) => {
+            for item in items {
+                annotate_item(item, types);
+            }
+        }
+        ExprKind::Jsx(element) => annotate_jsx(element, types),
+        ExprKind::Array(elems) | ExprKind::Tuple(elems) => {
+            for e in elems {
+                annotate_expr(e, types);
+            }
+        }
+        ExprKind::Object(fields) => {
+            for (_, e) in fields {
+                annotate_expr(e, types);
+            }
+        }
+        ExprKind::TemplateLiteral(parts) => {
+            for part in parts {
+                if let TemplatePart::Expr(e) = part {
+                    annotate_expr(e, types);
+                }
+            }
+        }
+        ExprKind::DotShorthand { predicate, .. } => {
+            if let Some((_, rhs)) = predicate {
+                annotate_expr(rhs, types);
+            }
+        }
+        ExprKind::Number(_)
+        | ExprKind::String(_)
+        | ExprKind::Bool(_)
+        | ExprKind::Identifier(_)
+        | ExprKind::Placeholder
+        | ExprKind::None
+        | ExprKind::Todo
+        | ExprKind::Unreachable
+        | ExprKind::Unit => {}
+    }
+}
+
+fn annotate_jsx(element: &mut JsxElement, types: &ExprTypeMap) {
+    if let JsxElementKind::Element { props, .. } = &mut element.kind {
+        for prop in props {
+            if let Some(value) = &mut prop.value {
+                annotate_expr(value, types);
+            }
+        }
+    }
+    let children = match &mut element.kind {
+        JsxElementKind::Element { children, .. } | JsxElementKind::Fragment { children } => {
+            children
+        }
+    };
+    for child in children {
+        match child {
+            JsxChild::Element(el) => annotate_jsx(el, types),
+            JsxChild::Expr(e) => annotate_expr(e, types),
+            JsxChild::Text(_) => {}
+        }
+    }
+}
+
 use crate::diagnostic::Diagnostic;
 use crate::interop::{self, DtsExport};
 use crate::lexer::span::Span;

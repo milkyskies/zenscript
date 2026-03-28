@@ -346,6 +346,8 @@ pub enum TypeExprKind {
 pub struct Expr {
     pub id: ExprId,
     pub kind: ExprKind,
+    /// Resolved type — `Unknown` before type-checking, filled in after.
+    pub ty: crate::checker::Type,
     pub span: Span,
 }
 
@@ -356,6 +358,7 @@ impl Expr {
         Self {
             id: ExprId::SYNTHETIC,
             kind,
+            ty: crate::checker::Type::Unknown,
             span,
         }
     }
