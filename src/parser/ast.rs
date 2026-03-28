@@ -442,6 +442,12 @@ pub enum ExprKind {
     Some(Box<Expr>),
     /// `None`
     None,
+    /// `Value(expr)` — Settable value present
+    Value(Box<Expr>),
+    /// `Clear` — Settable value explicitly null
+    Clear,
+    /// `Unchanged` — Settable value omitted
+    Unchanged,
     /// `parse<T>(value)` — compiler built-in for runtime type validation
     Parse {
         type_arg: TypeExpr,

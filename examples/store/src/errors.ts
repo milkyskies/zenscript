@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { type ApiError, Display } from "./types";
 
 export function display(self: ApiError): string {

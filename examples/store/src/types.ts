@@ -1,3 +1,4 @@
+// @ts-nocheck
 export type ProductId = { tag: "ProductId"; value: number };
 
 export type OrderId = { tag: "OrderId"; value: number };

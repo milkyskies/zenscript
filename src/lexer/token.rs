@@ -67,6 +67,9 @@ pub enum TokenKind {
     Err,
     Some,
     None,
+    Value,
+    Clear,
+    Unchanged,
 
     // Built-in expressions
     /// `parse` — compiler built-in for runtime type validation
@@ -282,6 +285,9 @@ pub fn lookup_keyword(word: &str) -> Option<TokenKind> {
         "Err" => Some(TokenKind::Err),
         "Some" => Some(TokenKind::Some),
         "None" => Some(TokenKind::None),
+        "Value" => Some(TokenKind::Value),
+        "Clear" => Some(TokenKind::Clear),
+        "Unchanged" => Some(TokenKind::Unchanged),
 
         // Built-in expressions
         "parse" => Some(TokenKind::Parse),

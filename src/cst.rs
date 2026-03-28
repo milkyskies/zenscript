@@ -1185,6 +1185,8 @@ impl<'src> CstParser<'src> {
             Some(TokenKind::Bool(_)) => self.bump(),
             Some(TokenKind::Underscore) => self.bump(),
             Some(TokenKind::None) => self.bump(),
+            Some(TokenKind::Clear) => self.bump(),
+            Some(TokenKind::Unchanged) => self.bump(),
             Some(TokenKind::Todo) => self.bump(),
             Some(TokenKind::Unreachable) => self.bump(),
 
@@ -1214,6 +1216,18 @@ impl<'src> CstParser<'src> {
 
             Some(TokenKind::Some) => {
                 self.builder.start_node(SyntaxKind::SOME_EXPR.into());
+                self.bump();
+                self.eat_trivia();
+                self.expect(TokenKind::LeftParen);
+                self.eat_trivia();
+                self.parse_expr();
+                self.eat_trivia();
+                self.expect(TokenKind::RightParen);
+                self.builder.finish_node();
+            }
+
+            Some(TokenKind::Value) => {
+                self.builder.start_node(SyntaxKind::VALUE_EXPR.into());
                 self.bump();
                 self.eat_trivia();
                 self.expect(TokenKind::LeftParen);

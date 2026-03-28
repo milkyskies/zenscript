@@ -1,3 +1,4 @@
+// @ts-nocheck
 function __floeEq(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (a == null || b == null) return false;

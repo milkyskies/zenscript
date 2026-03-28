@@ -307,6 +307,21 @@ impl Codegen {
                 self.push("undefined");
             }
 
+            // Value(x) → x (after desugar, shouldn't reach here normally)
+            ExprKind::Value(inner) => {
+                self.emit_expr(inner);
+            }
+
+            // Clear → null
+            ExprKind::Clear => {
+                self.push("null");
+            }
+
+            // Unchanged → should only appear inside Construct args (filtered out)
+            ExprKind::Unchanged => {
+                self.push("undefined");
+            }
+
             // todo → throw new Error("not implemented")
             ExprKind::Todo => {
                 self.push(THROW_NOT_IMPLEMENTED);
@@ -716,10 +731,17 @@ impl Codegen {
     }
 
     fn emit_named_fields(&mut self, args: &[Arg]) {
-        for (i, arg) in args.iter().enumerate() {
-            if i > 0 {
+        let mut first = true;
+        for arg in args {
+            // Skip Unchanged args — they should not appear in the output
+            if matches!(arg, Arg::Named { value, .. } if matches!(value.kind, ExprKind::Unchanged))
+            {
+                continue;
+            }
+            if !first {
                 self.push(", ");
             }
+            first = false;
             match arg {
                 Arg::Named { label, value } => {
                     self.push(label);
@@ -727,8 +749,6 @@ impl Codegen {
                     self.emit_expr(value);
                 }
                 Arg::Positional(expr) => {
-                    // Positional args in constructors become value_0, value_1 etc
-                    // In practice, constructors should use named args
                     self.emit_expr(expr);
                 }
             }

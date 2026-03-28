@@ -392,6 +392,13 @@ impl Checker {
 
             ExprKind::None => Type::Option(Box::new(Type::Unknown)),
 
+            ExprKind::Value(inner) => {
+                let inner_ty = self.check_expr(inner);
+                Type::Settable(Box::new(inner_ty))
+            }
+            ExprKind::Clear => Type::Settable(Box::new(Type::Unknown)),
+            ExprKind::Unchanged => Type::Settable(Box::new(Type::Unknown)),
+
             ExprKind::Todo => {
                 self.diagnostics.push(
                     Diagnostic::warning(
@@ -1580,6 +1587,13 @@ pub(crate) fn simple_resolve_type_expr(type_expr: &crate::parser::ast::TypeExpr)
                     .map(simple_resolve_type_expr)
                     .unwrap_or(Type::Unknown);
                 Type::Option(Box::new(inner))
+            }
+            type_layout::TYPE_SETTABLE => {
+                let inner = type_args
+                    .first()
+                    .map(simple_resolve_type_expr)
+                    .unwrap_or(Type::Unknown);
+                Type::Settable(Box::new(inner))
             }
             type_layout::TYPE_RESULT => {
                 let ok = type_args

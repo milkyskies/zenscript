@@ -44,6 +44,9 @@ pub enum SyntaxKind {
     KW_ERR,
     KW_SOME,
     KW_NONE,
+    KW_VALUE,
+    KW_CLEAR,
+    KW_UNCHANGED,
 
     // Built-in expressions
     KW_PARSE,
@@ -158,6 +161,7 @@ pub enum SyntaxKind {
     OK_EXPR,
     ERR_EXPR,
     SOME_EXPR,
+    VALUE_EXPR,
     PARSE_EXPR,
     MOCK_EXPR,
     OBJECT_EXPR,
@@ -248,6 +252,9 @@ pub fn token_kind_to_syntax(kind: &TokenKind) -> SyntaxKind {
         TokenKind::Err => SyntaxKind::KW_ERR,
         TokenKind::Some => SyntaxKind::KW_SOME,
         TokenKind::None => SyntaxKind::KW_NONE,
+        TokenKind::Value => SyntaxKind::KW_VALUE,
+        TokenKind::Clear => SyntaxKind::KW_CLEAR,
+        TokenKind::Unchanged => SyntaxKind::KW_UNCHANGED,
         TokenKind::Parse => SyntaxKind::KW_PARSE,
         TokenKind::Mock => SyntaxKind::KW_MOCK,
         TokenKind::Todo => SyntaxKind::KW_TODO,

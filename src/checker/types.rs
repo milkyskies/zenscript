@@ -27,6 +27,8 @@ pub enum Type {
     },
     /// Option<T> = T | undefined
     Option(Box<Type>),
+    /// Settable<T> = Set(T) | Clear | Unchanged
+    Settable(Box<Type>),
     /// Function type
     Function {
         params: Vec<Type>,
@@ -76,6 +78,11 @@ impl Type {
         matches!(self, Type::Option(_))
     }
 
+    #[allow(dead_code)]
+    pub(crate) fn is_settable(&self) -> bool {
+        matches!(self, Type::Settable(_))
+    }
+
     pub(crate) fn is_numeric(&self) -> bool {
         matches!(self, Type::Number)
     }
@@ -92,6 +99,7 @@ impl Type {
                 format!("Result<{}, {}>", ok.display_name(), err.display_name())
             }
             Type::Option(inner) => format!("Option<{}>", inner.display_name()),
+            Type::Settable(inner) => format!("Settable<{}>", inner.display_name()),
             Type::Function {
                 params,
                 return_type,

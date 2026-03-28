@@ -988,6 +988,13 @@ impl Checker {
                     .unwrap_or(Type::Unknown);
                 Type::Option(Box::new(inner))
             }
+            type_layout::TYPE_SETTABLE => {
+                let inner = type_args
+                    .first()
+                    .map(|t| self.resolve_type(t))
+                    .unwrap_or(Type::Unknown);
+                Type::Settable(Box::new(inner))
+            }
             type_layout::TYPE_ARRAY => {
                 let inner = type_args
                     .first()
@@ -2015,6 +2022,10 @@ impl Checker {
                 true // None (Option<Unknown>) is compatible with any Option<T>
             }
             (Type::Option(a), Type::Option(b)) => self.types_compatible(a, b),
+            (Type::Settable(_), Type::Settable(b)) if matches!(**b, Type::Unknown) => {
+                true // Clear/Unchanged (Settable<Unknown>) is compatible with any Settable<T>
+            }
+            (Type::Settable(a), Type::Settable(b)) => self.types_compatible(a, b),
             (Type::Array(_), Type::Array(b)) if matches!(**b, Type::Unknown) => {
                 true // empty array [] is compatible with any Array<T>
             }

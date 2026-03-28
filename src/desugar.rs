@@ -55,6 +55,17 @@ fn desugar_expr(expr: &mut Expr) {
         ExprKind::None => {
             expr.kind = ExprKind::Identifier("undefined".to_string());
         }
+        // Value(x) → x (Settable wraps value directly)
+        ExprKind::Value(inner) => {
+            let inner = std::mem::replace(inner.as_mut(), Expr::synthetic(ExprKind::Unit, span));
+            expr.kind = inner.kind;
+            expr.span = inner.span;
+        }
+        // Clear → null
+        ExprKind::Clear => {
+            expr.kind = ExprKind::Identifier("null".to_string());
+        }
+        // Unchanged is NOT desugared — codegen detects it and omits the field
         // Ok/Err are NOT desugared here because codegen emits `as const`
         // annotations needed for TypeScript discriminated union narrowing.
         _ => {}
