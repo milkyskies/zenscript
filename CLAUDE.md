@@ -26,18 +26,20 @@ This project uses **conventional commits** + **release-please** for automated ve
 
 ### How it works
 
-1. **You write commits with prefixes:**
+1. **PR titles use conventional commit prefixes:**
 
    | Prefix | Version bump | Example |
    |---|---|---|
-   | `fix:` | patch (0.1.0 -> 0.1.1) | `fix: crash on nested match` |
-   | `feat:` | minor (0.1.0 -> 0.2.0) | `feat: add pipe lambdas` |
-   | `feat!:` | major (0.1.0 -> 1.0.0) | `feat!: remove arrow functions` |
+   | `fix:` | patch (0.1.0 -> 0.1.1) | `fix: [#123] crash on nested match` |
+   | `feat:` | minor (0.1.0 -> 0.2.0) | `feat: [#456] add pipe lambdas` |
+   | `feat!:` | major (0.1.0 -> 1.0.0) | `feat!: [#789] remove arrow functions` |
    | `chore:`, `docs:`, `ci:`, `refactor:`, `test:` | no bump | `docs: update README` |
 
+   The repo uses **squash merges only**. Each PR becomes a single commit on main, and the PR title becomes the commit message. This means only the PR title matters for versioning - individual commits inside PRs can use any message format.
+
 2. **release-please watches main** and auto-opens a "Release PR" that:
-   - Bumps the version in `Cargo.toml` based on commit prefixes
-   - Updates `CHANGELOG.md` with entries generated from commit messages
+   - Bumps the version in `Cargo.toml` based on squash commit messages (PR titles)
+   - Updates `CHANGELOG.md` with entries generated from PR titles
    - Title looks like `chore(main): release 0.2.0`
 
 3. **Merging the Release PR** creates a git tag (`v0.2.0`) and a GitHub Release.
@@ -59,7 +61,8 @@ This project uses **conventional commits** + **release-please** for automated ve
 
 ### What you need to do
 
-- Write meaningful conventional commit messages (the CHANGELOG is generated from them)
+- Write meaningful PR titles with conventional commit prefixes (the CHANGELOG is generated from them)
+- Individual commits inside PRs don't need prefixes - only the PR title matters
 - Periodically merge the Release PR that release-please opens
 - That's it - everything else is automated
 
