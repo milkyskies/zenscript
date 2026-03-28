@@ -54,8 +54,11 @@ export fn HomePage() -> JSX.Element {
             <button
                 onClick={handleAdd}
                 className="rounded-lg bg-indigo-600 px-4 py-2 font-medium text-white hover:bg-indigo-500 transition-colors"
-            >Add</button>
-        </div>{match error {
+            >
+                Add
+            </button>
+        </div>
+        {match error {
             "" -> <span />,
             _ -> <p className="text-red-400 text-sm mb-4">{error}</p>,
         }}
@@ -66,21 +69,27 @@ export fn HomePage() -> JSX.Element {
                     All -> "rounded-full px-3 py-1 text-sm font-medium bg-indigo-600 text-white",
                     _ -> "rounded-full px-3 py-1 text-sm font-medium bg-zinc-800 text-zinc-400 hover:text-zinc-100",
                 }}
-            >All</button>
+            >
+                All
+            </button>
             <button
                 onClick={() => setFilter(Active)}
                 className={match filter {
                     Active -> "rounded-full px-3 py-1 text-sm font-medium bg-indigo-600 text-white",
                     _ -> "rounded-full px-3 py-1 text-sm font-medium bg-zinc-800 text-zinc-400 hover:text-zinc-100",
                 }}
-            >Active</button>
+            >
+                Active
+            </button>
             <button
                 onClick={() => setFilter(Completed)}
                 className={match filter {
                     Completed -> "rounded-full px-3 py-1 text-sm font-medium bg-indigo-600 text-white",
                     _ -> "rounded-full px-3 py-1 text-sm font-medium bg-zinc-800 text-zinc-400 hover:text-zinc-100",
                 }}
-            >Completed</button>
+            >
+                Completed
+            </button>
         </div>
         <ul className="space-y-2">{visible |> map((item) => <li
             key={item.id}
@@ -92,20 +101,26 @@ export fn HomePage() -> JSX.Element {
                     true -> "h-5 w-5 rounded-full border-2 border-indigo-500 bg-indigo-500 flex items-center justify-center",
                     false -> "h-5 w-5 rounded-full border-2 border-zinc-600",
                 }}
-            >{match item.done {
-                true -> <span className="text-white text-xs">✓</span>,
-                false -> <span />,
-            }}</button>
+            >
+                {match item.done {
+                    true -> <span className="text-white text-xs">✓</span>,
+                    false -> <span />,
+                }}
+            </button>
             <span
                 className={match item.done {
                     true -> "flex-1 text-zinc-500 line-through",
                     false -> "flex-1 text-zinc-100",
                 }}
-            >{item.text}</span>
+            >
+                {item.text}
+            </span>
             <button
                 onClick={() => handleDelete(item.id)}
                 className="text-zinc-600 hover:text-red-400 transition-colors"
-            >✕</button>
+            >
+                ✕
+            </button>
         </li>)}</ul>
         <p className="mt-6 text-sm text-zinc-500">{`${remainingCount} item(s) remaining`}</p>
     </div>

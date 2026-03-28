@@ -27,23 +27,31 @@ fn ProductCard(props: { product: Product, onAddToCart: (Product) => () }) -> JSX
             <Link
                 to={`/product/${product.id}`}
                 className="font-semibold text-zinc-100 line-clamp-2 hover:text-indigo-300 transition-colors"
-            >{product.title}</Link>
+            >
+                {product.title}
+            </Link>
             <span
                 className="shrink-0 rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400"
-            >{product.category}</span>
+            >
+                {product.category}
+            </span>
         </div>
         <div className="mb-2 flex items-center gap-2">
             <span className="text-lg font-bold text-indigo-400">{product
                 |> effectivePrice
-                |> formatPrice}</span>{match hasDiscount {
+                |> formatPrice}</span>
+            {match hasDiscount {
                 true -> <span className="text-sm text-zinc-500 line-through">{formatPrice(
                     product.price,
                 )}</span>,
                 false -> <span />,
-            }}{match hasDiscount {
+            }}
+            {match hasDiscount {
                 true -> <span
                     className="rounded bg-emerald-900/50 px-1.5 py-0.5 text-xs text-emerald-400"
-                >{`-${Math.round(product.discountPercentage)}%`}</span>,
+                >
+                    {`-${Math.round(product.discountPercentage)}%`}
+                </span>,
                 false -> <span />,
             }}
         </div>
@@ -56,7 +64,9 @@ fn ProductCard(props: { product: Product, onAddToCart: (Product) => () }) -> JSX
                     n when n < 5 -> "ml-auto text-amber-400",
                     _ -> "ml-auto text-zinc-500",
                 }}
-            >{product |> stockLabel}</span>
+            >
+                {product |> stockLabel}
+            </span>
         </div>
         <button
             onClick={() => props.onAddToCart(product)}
@@ -65,10 +75,12 @@ fn ProductCard(props: { product: Product, onAddToCart: (Product) => () }) -> JSX
                 true -> "w-full rounded-lg bg-indigo-600 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500",
                 false -> "w-full rounded-lg bg-zinc-800 py-2 text-sm font-medium text-zinc-600 cursor-not-allowed",
             }}
-        >{product |> inStock |> match {
-            true -> "Add to Cart",
-            false -> "Out of Stock",
-        }}</button>
+        >
+            {product |> inStock |> match {
+                true -> "Add to Cart",
+                false -> "Out of Stock",
+            }}
+        </button>
     </div>
 }
 
@@ -92,7 +104,9 @@ fn FilterSidebar(
         <div>
             <h3
                 className="mb-3 text-sm font-semibold uppercase tracking-wider text-zinc-400"
-            >Category</h3>
+            >
+                Category
+            </h3>
             <div className="space-y-1">
                 <button
                     onClick={() => props.onCategoryChange("")}
@@ -100,20 +114,27 @@ fn FilterSidebar(
                         "" -> "block w-full rounded px-3 py-1.5 text-left text-sm bg-indigo-600/20 text-indigo-300",
                         _ -> "block w-full rounded px-3 py-1.5 text-left text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200",
                     }}
-                >All</button>{props.categories |> Array.map((cat: CategoryResponse) => <button
+                >
+                    All
+                </button>
+                {props.categories |> Array.map((cat: CategoryResponse) => <button
                     key={cat.slug}
                     onClick={() => props.onCategoryChange(cat.slug)}
                     className={(props.selectedCategory == cat.slug) |> match {
                         true -> "block w-full rounded px-3 py-1.5 text-left text-sm bg-indigo-600/20 text-indigo-300",
                         false -> "block w-full rounded px-3 py-1.5 text-left text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200",
                     }}
-                >{cat.name}</button>)}
+                >
+                    {cat.name}
+                </button>)}
             </div>
         </div>
         <div>
             <h3
                 className="mb-3 text-sm font-semibold uppercase tracking-wider text-zinc-400"
-            >Price</h3>
+            >
+                Price
+            </h3>
             <div className="space-y-1">{priceRanges |> Array.map(
                 (pair: (string, PriceRange)) => <button
                     key={pair.0}
@@ -122,13 +143,17 @@ fn FilterSidebar(
                         true -> "block w-full rounded px-3 py-1.5 text-left text-sm bg-indigo-600/20 text-indigo-300",
                         false -> "block w-full rounded px-3 py-1.5 text-left text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200",
                     }}
-                >{pair.0}</button>,
+                >
+                    {pair.0}
+                </button>,
             )}</div>
         </div>
         <div>
             <h3
                 className="mb-3 text-sm font-semibold uppercase tracking-wider text-zinc-400"
-            >Sort By</h3>
+            >
+                Sort By
+            </h3>
             <div className="space-y-1">{sortOptions |> Array.map(
                 (pair: (string, SortOrder)) => <button
                     key={pair.0}
@@ -137,7 +162,9 @@ fn FilterSidebar(
                         true -> "block w-full rounded px-3 py-1.5 text-left text-sm bg-indigo-600/20 text-indigo-300",
                         false -> "block w-full rounded px-3 py-1.5 text-left text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200",
                     }}
-                >{pair.0}</button>,
+                >
+                    {pair.0}
+                </button>,
             )}</div>
         </div>
     </aside>
@@ -191,11 +218,13 @@ fn ProductGrid(
         <p className="mb-4 text-sm text-zinc-500">{`${sorted |> Array.length} products`}</p>
         <div
             className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
-        >{sorted |> Array.map((product) => <ProductCard
-            key={product.id}
-            product={product}
-            onAddToCart={props.onAddToCart}
-         />)}</div>
+        >
+            {sorted |> Array.map((product) => <ProductCard
+                key={product.id}
+                product={product}
+                onAddToCart={props.onAddToCart}
+             />)}
+        </div>
     </div>
 }
 
@@ -204,16 +233,18 @@ fn ProductGrid(
 fn CatalogSkeleton() -> JSX.Element {
     <div
         className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
-    >{[1, 2, 3, 4, 5, 6] |> Array.map((i) => <div
-        key={i}
-        className="animate-pulse rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
     >
-        <div className="mb-3 h-48 rounded-lg bg-zinc-800" />
-        <div className="mb-2 h-5 w-3/4 rounded bg-zinc-800" />
-        <div className="mb-2 h-6 w-1/3 rounded bg-zinc-800" />
-        <div className="mb-3 h-4 w-1/2 rounded bg-zinc-800" />
-        <div className="h-10 rounded-lg bg-zinc-800" />
-    </div>)}</div>
+        {[1, 2, 3, 4, 5, 6] |> Array.map((i) => <div
+            key={i}
+            className="animate-pulse rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
+        >
+            <div className="mb-3 h-48 rounded-lg bg-zinc-800" />
+            <div className="mb-2 h-5 w-3/4 rounded bg-zinc-800" />
+            <div className="mb-2 h-6 w-1/3 rounded bg-zinc-800" />
+            <div className="mb-3 h-4 w-1/2 rounded bg-zinc-800" />
+            <div className="h-10 rounded-lg bg-zinc-800" />
+        </div>)}
+    </div>
 }
 
 fn SidebarSkeleton() -> JSX.Element {
@@ -268,7 +299,9 @@ export fn CatalogPage(props: { onAddToCart: (Product) => () }) -> JSX.Element {
                         <button
                             onClick={resetErrorBoundary}
                             className="rounded bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-500"
-                        >Retry</button>
+                        >
+                            Retry
+                        </button>
                     </div>}
                 >
                     <Suspense fallback={<CatalogSkeleton />}>

@@ -30,18 +30,24 @@ fn CartItemRow(
             <button
                 onClick={() => props.onUpdateQty(product.id, item.quantity - 1)}
                 className="flex h-8 w-8 items-center justify-center rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
-            >{"-"}</button>
+            >
+                {"-"}
+            </button>
             <span className="w-8 text-center text-zinc-100">{item.quantity}</span>
             <button
                 onClick={() => props.onUpdateQty(product.id, item.quantity + 1)}
                 className="flex h-8 w-8 items-center justify-center rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
-            >{"+"}</button>
+            >
+                {"+"}
+            </button>
         </div>
         <span className="w-24 text-right font-semibold text-zinc-100">{formatPrice(lineTotal)}</span>
         <button
             onClick={() => props.onRemove(product.id)}
             className="text-zinc-600 hover:text-red-400 transition-colors"
-        >{"x"}</button>
+        >
+            {"x"}
+        </button>
     </div>
 }
 
@@ -60,7 +66,8 @@ fn OrderSummary(
             <div className="flex justify-between">
                 <span className="text-zinc-400">Subtotal</span>
                 <span className="text-zinc-200">{formatPrice(subtotal)}</span>
-            </div>{match discount > 0 {
+            </div>
+            {match discount > 0 {
                 true -> <div className="flex justify-between">
                     <span className="text-emerald-400">Discount</span>
                     <span className="text-emerald-400">{`-${formatPrice(discount)}`}</span>
@@ -83,12 +90,14 @@ fn OrderSummary(
                 Pending -> "mt-6 w-full rounded-xl bg-indigo-600 py-3 font-semibold text-white transition-colors hover:bg-indigo-500",
                 _ -> "mt-6 w-full rounded-xl bg-zinc-800 py-3 font-semibold text-zinc-600 cursor-not-allowed",
             }}
-        >{props.orderStatus |> match {
-            Pending -> "Checkout",
-            Confirmed(OrderId(n)) -> `Order #${n} confirmed!`,
-            Shipped(tracking) -> `Shipped: ${tracking}`,
-            Failed(reason) -> `Failed: ${reason}`,
-        }}</button>
+        >
+            {props.orderStatus |> match {
+                Pending -> "Checkout",
+                Confirmed(OrderId(n)) -> `Order #${n} confirmed!`,
+                Shipped(tracking) -> `Shipped: ${tracking}`,
+                Failed(reason) -> `Failed: ${reason}`,
+            }}
+        </button>
     </div>
 }
 
@@ -108,8 +117,8 @@ export fn CartPage(
     const _count = props.cart |> itemCount
 
     <div>
-        <h1 className="mb-6 text-3xl font-bold">{`Cart (${_count} item${_count |> match { 1 -> "", _ -> "s" }})`}</h1>{props.cart
-            |> match {
+        <h1 className="mb-6 text-3xl font-bold">{`Cart (${_count} item${_count |> match { 1 -> "", _ -> "s" }})`}</h1>
+        {props.cart |> match {
             [] -> <div
                 className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-12 text-center"
             >

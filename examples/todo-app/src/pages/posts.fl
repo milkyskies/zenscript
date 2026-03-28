@@ -41,10 +41,12 @@ fn PostAuthor(props: { userId: number }) -> JSX.Element {
         queryFn: async () => fetchUser(props.userId),
     })
 
-    <span className="text-indigo-400">{match data {
-        Ok(user) -> `${user.name} (${user.company.name})`,
-        Err(e) -> `Error: ${e.message}`,
-    }}</span>
+    <span className="text-indigo-400">
+        {match data {
+            Ok(user) -> `${user.name} (${user.company.name})`,
+            Err(e) -> `Error: ${e.message}`,
+        }}
+    </span>
 }
 
 fn PostList() -> JSX.Element {
@@ -75,14 +77,19 @@ fn PostList() -> JSX.Element {
                     None -> "rounded px-3 py-1 text-sm bg-indigo-600 text-white transition-colors",
                     _ -> "rounded px-3 py-1 text-sm bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors",
                 }}
-            >All</button>{userIds |> Array.map((id) => <button
+            >
+                All
+            </button>
+            {userIds |> Array.map((id) => <button
                 key={id}
                 onClick={() => setSelectedUserId(Some(id))}
                 className={match selectedUserId {
                     Some(selected) when selected == id -> "rounded px-3 py-1 text-sm bg-indigo-600 text-white transition-colors",
                     _ -> "rounded px-3 py-1 text-sm bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors",
                 }}
-            >{`User ${id}`}</button>)}
+            >
+                {`User ${id}`}
+            </button>)}
         </div>
         <div className="space-y-4">{posts |> Array.map((post) => <article
             key={post.id}
@@ -90,11 +97,14 @@ fn PostList() -> JSX.Element {
         >
             <h3
                 className="mb-1 text-lg font-semibold capitalize text-zinc-100"
-            >{post.title}</h3>
+            >
+                {post.title}
+            </h3>
             <Suspense
                 fallback={<span className="text-sm text-zinc-600">Loading author...</span>}
             >
-                <p className="mb-3 text-sm">{"by "}
+                <p className="mb-3 text-sm">
+                    {"by "}
                     <PostAuthor userId={post.userId} />
                 </p>
             </Suspense>
@@ -132,7 +142,9 @@ export fn PostsPage() -> JSX.Element {
                 <button
                     onClick={resetErrorBoundary}
                     className="rounded bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-500"
-                >Retry</button>
+                >
+                    Retry
+                </button>
             </div>}
         >
             <Suspense fallback={<LoadingSkeleton />}>

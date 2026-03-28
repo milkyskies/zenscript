@@ -73,9 +73,11 @@ fn ProductDetailContent(
             <div className="w-1/2">
                 <span
                     className="mb-2 inline-block rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400"
-                >{product.category}</span>
-                <h1 className="mb-2 text-3xl font-bold text-zinc-100">{product.title}</h1>{product.brand
-                    |> match {
+                >
+                    {product.category}
+                </span>
+                <h1 className="mb-2 text-3xl font-bold text-zinc-100">{product.title}</h1>
+                {product.brand |> match {
                     "" -> <span />,
                     brand -> <p className="mb-4 text-sm text-zinc-500">{`by ${brand}`}</p>,
                 }}
@@ -87,15 +89,19 @@ fn ProductDetailContent(
                 <div className="mb-4 flex items-baseline gap-3">
                     <span className="text-3xl font-bold text-indigo-400">{product
                         |> effectivePrice
-                        |> formatPrice}</span>{match hasDiscount {
+                        |> formatPrice}</span>
+                    {match hasDiscount {
                         true -> <span className="text-lg text-zinc-500 line-through">{formatPrice(
                             product.price,
                         )}</span>,
                         false -> <span />,
-                    }}{match hasDiscount {
+                    }}
+                    {match hasDiscount {
                         true -> <span
                             className="rounded bg-emerald-900/50 px-2 py-1 text-sm text-emerald-400"
-                        >{`Save ${product |> savings |> formatPrice}`}</span>,
+                        >
+                            {`Save ${product |> savings |> formatPrice}`}
+                        </span>,
                         false -> <span />,
                     }}
                 </div>
@@ -107,12 +113,16 @@ fn ProductDetailContent(
                             n when n < 5 -> "rounded-full bg-amber-900/30 px-3 py-1 text-sm text-amber-400",
                             _ -> "rounded-full bg-emerald-900/30 px-3 py-1 text-sm text-emerald-400",
                         }}
-                    >{product |> stockLabel}</span>
+                    >
+                        {product |> stockLabel}
+                    </span>
                 </div>
                 <div className="mb-6 flex flex-wrap gap-2">{product.tags |> Array.map((tag) => <span
                     key={tag}
                     className="rounded-full bg-zinc-800 px-2.5 py-1 text-xs text-zinc-400"
-                >{tag}</span>)}</div>
+                >
+                    {tag}
+                </span>)}</div>
                 <button
                     onClick={() => props.onAddToCart(product)}
                     disabled={!(product |> inStock)}
@@ -120,10 +130,12 @@ fn ProductDetailContent(
                         true -> "w-full rounded-xl bg-indigo-600 py-3 text-lg font-semibold text-white transition-colors hover:bg-indigo-500",
                         false -> "w-full rounded-xl bg-zinc-800 py-3 text-lg font-semibold text-zinc-600 cursor-not-allowed",
                     }}
-                >{product |> inStock |> match {
-                    true -> "Add to Cart",
-                    false -> "Out of Stock",
-                }}</button>
+                >
+                    {product |> inStock |> match {
+                        true -> "Add to Cart",
+                        false -> "Out of Stock",
+                    }}
+                </button>
             </div>
         </div>
         <div>
@@ -171,7 +183,9 @@ export fn ProductDetailPage(
         <Link
             to="/"
             className="mb-6 inline-block text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
-        >{"<- Back to catalog"}</Link>
+        >
+            {"<- Back to catalog"}
+        </Link>
         <QueryErrorResetBoundary>{({ reset }) => <ErrorBoundary
             onReset={reset}
             fallbackRender={({ resetErrorBoundary, error }) => <div
@@ -181,7 +195,9 @@ export fn ProductDetailPage(
                 <button
                     onClick={resetErrorBoundary}
                     className="rounded bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-500"
-                >Retry</button>
+                >
+                    Retry
+                </button>
             </div>}
         >
             <Suspense fallback={<DetailSkeleton />}>

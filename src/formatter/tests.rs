@@ -486,3 +486,57 @@ fn format_tuple_index_access() {
 fn format_tuple_index_access_1() {
     assert_fmt("const x = pair.1", "const x = pair.1");
 }
+
+// ── JSX multi-line children ───────────────────────────────
+
+#[test]
+fn format_jsx_match_child_gets_own_lines() {
+    assert_fmt(
+        r#"<button>{match menuOpen { true -> <X size={24} />, false -> <Menu size={24} /> }}</button>"#,
+        "<button>\n    {match menuOpen {\n        true -> <X size={24} />,\n        false -> <Menu size={24} />,\n    }}\n</button>",
+    );
+}
+
+#[test]
+fn format_jsx_sibling_expr_gets_newline() {
+    assert_fmt(
+        r#"<div><span>text</span>{match x { true -> "a", false -> "b" }}</div>"#,
+        "<div>\n    <span>text</span>\n    {match x {\n        true -> \"a\",\n        false -> \"b\",\n    }}\n</div>",
+    );
+}
+
+#[test]
+fn format_jsx_multiline_tag_children_on_own_lines() {
+    assert_fmt(
+        "<Link to=\"/search\" className=\"text-2xl font-bold\" title=\"Home\" target=\"_blank\">京阪アクセント辞典</Link>",
+        "<Link\n    to=\"/search\"\n    className=\"text-2xl font-bold\"\n    title=\"Home\"\n    target=\"_blank\"\n>\n    京阪アクセント辞典\n</Link>",
+    );
+}
+
+#[test]
+fn format_jsx_match_in_link_gets_own_lines() {
+    assert_fmt(
+        r#"<Link to="/login">{match session { Some(_) -> "account", None -> "login" }}</Link>"#,
+        "<Link to=\"/login\">\n    {match session {\n        Some(_) -> \"account\",\n        None -> \"login\",\n    }}\n</Link>",
+    );
+}
+
+#[test]
+fn format_jsx_simple_expr_stays_inline() {
+    // Simple (non-multiline) single expr child should stay inline
+    assert_fmt("<span>{count}</span>", "<span>{count}</span>");
+}
+
+#[test]
+fn idempotent_jsx_match_child() {
+    assert_idempotent(
+        r#"<button>{match menuOpen { true -> <X size={24} />, false -> <Menu size={24} /> }}</button>"#,
+    );
+}
+
+#[test]
+fn idempotent_jsx_multiline_tag_with_text() {
+    assert_idempotent(
+        "<Link to=\"/search\" className=\"text-2xl font-bold\" title=\"Home\" target=\"_blank\">京阪アクセント辞典</Link>",
+    );
+}

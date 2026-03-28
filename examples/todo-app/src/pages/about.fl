@@ -11,7 +11,8 @@ export fn AboutPage() -> JSX.Element {
             key={feature}
             className="flex items-center gap-2 text-zinc-300"
         >
-            <span className="text-indigo-400">{"→"}</span>{feature}
+            <span className="text-indigo-400">{"→"}</span>
+            {feature}
         </li>)}</ul>
         <div className="mt-8 rounded-lg bg-zinc-800/50 p-6">
             <h3 className="text-lg font-semibold mb-3">Example: Pipe + Match</h3>

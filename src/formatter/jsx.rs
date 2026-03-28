@@ -22,7 +22,21 @@ impl Formatter<'_> {
                 self.write("</>");
                 return;
             }
-            self.fmt_jsx_children(&children);
+            let frag_inline = children.len() == 1
+                && match &children[0] {
+                    JsxChildInfo::Text(_) => true,
+                    JsxChildInfo::Expr(node) => !self.jsx_expr_is_multiline(node),
+                    JsxChildInfo::Element(_) => false,
+                };
+            if frag_inline {
+                self.fmt_jsx_children_inline(&children);
+            } else {
+                self.indent += 1;
+                self.fmt_jsx_children(&children);
+                self.indent -= 1;
+                self.newline();
+                self.write_indent();
+            }
             self.write("</>");
             return;
         }
@@ -34,8 +48,11 @@ impl Formatter<'_> {
         self.write(&name);
 
         // Props
+        let multiline_props =
+            !(props.is_empty() || props.len() <= 3 && self.jsx_props_short(&props));
+
         if !props.is_empty() {
-            if props.len() <= 3 && self.jsx_props_short(&props) {
+            if !multiline_props {
                 for prop in &props {
                     self.write(" ");
                     self.fmt_jsx_prop(prop);
@@ -67,9 +84,16 @@ impl Formatter<'_> {
             return;
         }
 
-        // Single text or single expr child → inline
+        // Single text or single expr child → inline, unless:
+        // - The opening tag has multi-line props
+        // - The expr child contains multi-line content (e.g., match expressions)
         let inline = children.len() == 1
-            && matches!(&children[0], JsxChildInfo::Text(_) | JsxChildInfo::Expr(_));
+            && !multiline_props
+            && match &children[0] {
+                JsxChildInfo::Text(_) => true,
+                JsxChildInfo::Expr(node) => !self.jsx_expr_is_multiline(node),
+                JsxChildInfo::Element(_) => false,
+            };
 
         if inline {
             self.fmt_jsx_children_inline(&children);
@@ -176,6 +200,8 @@ impl Formatter<'_> {
                     }
                 }
                 JsxChildInfo::Expr(node) => {
+                    self.newline();
+                    self.write_indent();
                     self.fmt_jsx_expr_child(node);
                 }
                 JsxChildInfo::Element(node) => {
@@ -262,6 +288,12 @@ impl Formatter<'_> {
             }
         }
         children
+    }
+
+    /// Check if a JSX_EXPR_CHILD contains multi-line content (e.g., a match expression).
+    fn jsx_expr_is_multiline(&self, node: &SyntaxNode) -> bool {
+        node.children()
+            .any(|c| matches!(c.kind(), SyntaxKind::MATCH_EXPR | SyntaxKind::BLOCK_EXPR))
     }
 
     fn jsx_props_short(&self, props: &[SyntaxNode]) -> bool {
