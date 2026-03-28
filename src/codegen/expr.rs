@@ -502,11 +502,7 @@ impl Codegen {
             // Resolve stdlib module from the left-hand type.
             // 1. Known type → type-directed (disambiguates Array.length vs String.length)
             // 2. Unknown/Var type or no entry → name-based fallback
-            let stdlib_fn = match self
-                .expr_types
-                .get(&left.id)
-                .and_then(|ty| crate::type_layout::type_to_stdlib_module(ty))
-            {
+            let stdlib_fn = match crate::type_layout::type_to_stdlib_module(&left.ty) {
                 Some(module) => self
                     .stdlib
                     .lookup(module, name)

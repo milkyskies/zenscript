@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 
-use floe::checker::{Checker, ExprTypeMap};
+use floe::checker::{self, Checker};
 use floe::codegen::Codegen;
 use floe::desugar;
 use floe::diagnostic;
@@ -103,7 +103,6 @@ fn main() -> Result<()> {
 struct CompileResult {
     program: Program,
     resolved: HashMap<String, ResolvedImports>,
-    expr_types: ExprTypeMap,
 }
 
 /// Parse, resolve imports, and type-check a single source. Returns an error
@@ -144,13 +143,10 @@ fn compile_source(file_path: &Path, filename: &str, source: &str) -> Result<Comp
     }
 
     let mut program = program;
+    checker::annotate_types(&mut program, &expr_types);
     desugar::desugar_program(&mut program);
 
-    Ok(CompileResult {
-        program,
-        resolved,
-        expr_types,
-    })
+    Ok(CompileResult { program, resolved })
 }
 
 // ── Build (file -> stdout) ────────────────────────────────────────
@@ -161,8 +157,7 @@ fn cmd_build_file_stdout(path: &Path) -> Result<()> {
     let filename = path.display().to_string();
 
     let result = compile_source(path, &filename, &source)?;
-    let output =
-        Codegen::with_imports(result.expr_types, &result.resolved).generate(&result.program);
+    let output = Codegen::with_imports(&result.resolved).generate(&result.program);
     print!("{}", output.code);
 
     Ok(())
@@ -182,8 +177,7 @@ fn cmd_build_stdin() -> Result<()> {
     let file_path = Path::new(&filename);
 
     let result = compile_source(file_path, &filename, &source)?;
-    let output =
-        Codegen::with_imports(result.expr_types, &result.resolved).generate(&result.program);
+    let output = Codegen::with_imports(&result.resolved).generate(&result.program);
     print!("{}", output.code);
 
     Ok(())
@@ -226,8 +220,7 @@ fn compile_file(file: &Path, out_dir: Option<&Path>) -> Result<PathBuf> {
 
     let filename = file.to_string_lossy();
     let result = compile_source(file, &filename, &source)?;
-    let output =
-        Codegen::with_imports(result.expr_types, &result.resolved).generate(&result.program);
+    let output = Codegen::with_imports(&result.resolved).generate(&result.program);
     let ext = if output.has_jsx { "tsx" } else { "ts" };
 
     let out_path = if let Some(dir) = out_dir {
@@ -380,8 +373,9 @@ fn cmd_test(path: &Path) -> Result<()> {
             continue;
         }
 
+        checker::annotate_types(program, &expr_types);
         desugar::desugar_program(program);
-        let output = Codegen::with_imports(expr_types, &resolved)
+        let output = Codegen::with_imports(&resolved)
             .with_test_mode()
             .generate(program);
 

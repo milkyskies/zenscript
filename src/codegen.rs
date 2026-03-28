@@ -6,7 +6,6 @@ mod tests;
 
 use std::collections::{HashMap, HashSet};
 
-use crate::checker::ExprTypeMap;
 use crate::parser::ast::*;
 use crate::resolve::ResolvedImports;
 use crate::stdlib::StdlibRegistry;
@@ -49,9 +48,6 @@ pub struct Codegen {
     variant_info: HashMap<String, (String, Vec<String>)>,
     /// Locally defined function/const names - these shadow stdlib in pipe resolution
     local_names: HashSet<String>,
-    /// Expression type map from the checker, keyed by ExprId.
-    /// Used for type-directed pipe resolution.
-    expr_types: ExprTypeMap,
     /// Resolved imports from other .fl files, for expanding bare imports.
     resolved_imports: HashMap<String, ResolvedImports>,
     /// Maps original import name -> aliased name for names that conflict with locals.
@@ -72,7 +68,6 @@ impl Codegen {
             unit_variants: HashSet::new(),
             variant_info: HashMap::new(),
             local_names: HashSet::new(),
-            expr_types: HashMap::new(),
             resolved_imports: HashMap::new(),
             import_aliases: HashMap::new(),
             test_mode: false,
@@ -85,20 +80,9 @@ impl Codegen {
         self
     }
 
-    /// Create a codegen with expression type information from the checker.
-    pub fn with_expr_types(expr_types: ExprTypeMap) -> Self {
-        Self {
-            expr_types,
-            ..Self::new()
-        }
-    }
-
-    /// Create a codegen with expression types and resolved import info.
-    pub fn with_imports(
-        expr_types: ExprTypeMap,
-        resolved: &HashMap<String, ResolvedImports>,
-    ) -> Self {
-        let mut codegen = Self::with_expr_types(expr_types);
+    /// Create a codegen with resolved import info.
+    pub fn with_imports(resolved: &HashMap<String, ResolvedImports>) -> Self {
+        let mut codegen = Self::new();
         codegen.resolved_imports = resolved.clone();
         // Pre-register union variant info from imported types
         for imports in resolved.values() {
@@ -1404,7 +1388,6 @@ impl Codegen {
             unit_variants: self.unit_variants.clone(),
             variant_info: self.variant_info.clone(),
             local_names: self.local_names.clone(),
-            expr_types: self.expr_types.clone(),
             resolved_imports: self.resolved_imports.clone(),
             import_aliases: self.import_aliases.clone(),
             test_mode: self.test_mode,

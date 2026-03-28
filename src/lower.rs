@@ -47,6 +47,7 @@ impl<'src> Lowerer<'src> {
         Expr {
             id: self.id_gen.next(),
             kind,
+            ty: crate::checker::Type::Unknown,
             span,
         }
     }

@@ -13,6 +13,15 @@ use crate::parser::ast::ExprId;
 /// Maps expression IDs to their resolved types.
 pub type ExprTypeMap = HashMap<ExprId, Type>;
 
+/// Annotate every `Expr` in the program with its resolved type from the type map.
+pub fn annotate_types(program: &mut Program, types: &ExprTypeMap) {
+    crate::walk::walk_program_mut(program, &mut |expr| {
+        if let Some(ty) = types.get(&expr.id) {
+            expr.ty = ty.clone();
+        }
+    });
+}
+
 use crate::diagnostic::Diagnostic;
 use crate::interop::{self, DtsExport};
 use crate::lexer::span::Span;
