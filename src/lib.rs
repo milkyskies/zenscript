@@ -14,6 +14,7 @@ pub mod sourcemap;
 pub mod stdlib;
 pub mod syntax;
 pub mod type_layout;
+pub mod walk;
 
 use std::path::{Path, PathBuf};
 

@@ -41,11 +41,11 @@ After the checker runs, `annotate_types()` walks the AST and fills in `expr.ty` 
 5. **Desugar** (if needed): transform to simpler AST nodes in `desugar.rs` - can read `expr.ty` for type-directed transforms
 6. **Codegen**: emit TypeScript in `codegen/expr.rs` - can read `expr.ty` for type-directed emission
 
-### What each pass should NOT do
+### What each pass should NOT do (target state)
 
 - **Checker** should not emit code or transform the AST
 - **Desugar** should not produce diagnostics or do type checking
-- **Codegen** should not carry semantic state (no StdlibRegistry, no type maps) - read types from `expr.ty` instead
+- **Codegen** should not carry semantic state - read types from `expr.ty` instead. Note: codegen still carries `StdlibRegistry` for pipe template expansion until pipe desugaring is implemented.
 
 ### Key modules
 
