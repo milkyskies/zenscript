@@ -541,10 +541,10 @@ match key {
 }
 ```
 
-## What's Banned
+## Differences from TypeScript
 
-| Banned | Use Instead |
-|--------|-------------|
+| TypeScript | Floe equivalent |
+|------------|----------------|
 | `any` | `unknown` + narrowing |
 | `null`, `undefined` | `Option<T>` with `Some`/`None` |
 | `let`, `var` | `const` |
@@ -555,7 +555,7 @@ match key {
 | `? :` (ternary) | `match` expression |
 | `?.` (optional chain) | `match` on `Option` or `?` |
 | `??` (nullish coalesce) | `Option.unwrapOr` |
-| `=>` (arrow function) | `fn(x)` closure; `=>` reserved for function types `(T) => U` |
+| `=>` (arrow function) | `(x) => expr` closure; `=>` reserved for function types `(T) => U` |
 | `function` keyword | `fn` |
 | `void` | Unit type `()` |
 | `as` (type assertion) | Type guards or `match` |
@@ -597,5 +597,5 @@ match key {
 10. **Unused variables/imports are compile errors** (prefix with `_` to suppress)
 11. **`Console.log`** not `console.log` (capital C in Floe)
 12. **`Array<T>`** not `T[]` for array types
-13. **Implicit returns** — last expression in a block is the return value; `return` keyword is banned
+13. **Implicit returns** — last expression in a block is the return value; no `return` keyword
 14. **Blank line before final expression** — `floe fmt` inserts a blank line before the last expression in multi-statement blocks (2+ statements) to visually separate the return value

@@ -161,13 +161,12 @@ Array<T>
 (string, number)
 ```
 
-## Banned Types
+## Differences from TypeScript
 
-| Type | Why Banned | Alternative |
-|------|-----------|-------------|
-| `any` | Disables all type checking | `unknown` + pattern matching |
-| `null` | Nullable reference bugs | `Option<T>` with `None` |
-| `undefined` | Same problem as null | `Option<T>` with `None` |
-| `enum` | Compiles to runtime objects | Union types |
-| `interface` | Redundant with `type` | `type` |
-| `void` | Implicit undefined | Explicit return types |
+| TypeScript | Floe equivalent |
+|------------|----------------|
+| `any` | `unknown` + pattern matching |
+| `null`, `undefined` | `Option<T>` with `None` |
+| `enum` | Union types |
+| `interface` | `type` |
+| `void` | Unit type `()` |

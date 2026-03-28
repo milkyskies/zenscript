@@ -28,7 +28,7 @@ Full TextMate grammar for `.fl` files:
 - Operators (`|>`, `->`, `=>`, `?`)
 - JSX elements and attributes
 - Template literals with interpolation
-- Banned keyword highlighting (visual warning for `let`, `class`, etc.)
+- Unsupported keyword highlighting (visual warning for `let`, `class`, etc.)
 
 ### Language Server
 
