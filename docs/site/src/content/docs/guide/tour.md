@@ -22,6 +22,10 @@ fn double(n: number) -> number {
     n * 2
 }
 
+// Generic functions
+fn identity<T>(x: T) -> T { x }
+fn pair<A, B>(a: A, b: B) -> (A, B) { (a, b) }
+
 // Closures use arrow syntax
 const add = (a, b) => a + b
 const log = () => Console.log("clicked")

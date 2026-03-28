@@ -109,6 +109,7 @@ module.exports = grammar({
       seq(
         "fn",
         field("name", $.identifier),
+        optional(field("type_parameters", $.type_parameters)),
         field("parameters", $.parameter_list),
         optional(seq("->", field("return_type", $._type_expression))),
         optional(field("body", $.block)),
@@ -142,6 +143,7 @@ module.exports = grammar({
         optional("async"),
         "fn",
         field("name", choice($.identifier, $.type_identifier)),
+        optional(field("type_parameters", $.type_parameters)),
         field("parameters", $.parameter_list),
         optional(seq("->", field("return_type", $._type_expression))),
         field("body", $.block),

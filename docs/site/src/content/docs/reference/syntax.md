@@ -31,6 +31,15 @@ fn name(param: Type) -> ReturnType {
   body
 }
 
+// Generic function — type parameters after the name
+fn name<T>(param: T) -> T {
+  body
+}
+
+fn name<A, B>(a: A, b: B) -> (A, B) {
+  body
+}
+
 export fn name(param: Type) -> ReturnType {
   body
 }

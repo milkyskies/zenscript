@@ -10,6 +10,10 @@ fn add(a: number, b: number) -> number {
     a + b
 }
 
+// Generic functions — type parameters after the function name
+fn identity<T>(x: T) -> T { x }
+fn pair<A, B>(a: A, b: B) -> (A, B) { (a, b) }
+
 // Exported function
 export fn greet(name: string) -> string {
     `Hello, ${name}!`
@@ -562,6 +566,7 @@ match key {
 | Floe | TypeScript Output |
 |------|-------------------|
 | `fn f(x: number) -> number { x }` | `function f(x: number): number { return x; }` |
+| `fn f<T>(x: T) -> T { x }` | `function f<T>(x: T): T { return x; }` |
 | `a \|> f(b)` | `f(a, b)` |
 | `a \|> f(b, _, c)` | `f(b, a, c)` |
 | `a \|> match { 1 -> "one", _ -> "other" }` | `match a { ... }` (desugared) |

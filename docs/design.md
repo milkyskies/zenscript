@@ -41,7 +41,7 @@ All four of TypeScript's `?` uses (`?.`, `??`, `?:`, `? :`) are removed. `?` now
 - Closures `(x) => expr` for inline/anonymous functions
 - Dot shorthand `.field` for implicit field-access closures
 - JSX / TSX (full support)
-- Generics, template literals
+- Generics (types and functions), template literals
 - `async`/`await`
 - Destructuring, spread, rest params
 - `||` (boolean OR), `&&`, `!` (boolean operators)
@@ -79,6 +79,7 @@ All four of TypeScript's `?` uses (`?.`, `??`, `?:`, `? :`) are removed. `?` now
 | Dot shorthand (predicate) | `.id != id` in callback position | `(x) => x.id != id` |
 | Qualified variant | `Type.Variant` for disambiguation | `{ tag: "Variant" }` (same as bare) |
 | Variant as function | `Validation` (bare, non-unit) | `(errors) => ({ tag: "Validation", errors })` |
+| Generic functions | `fn identity<T>(x: T) -> T { x }` | `function identity<T>(x: T): T { return x; }` |
 | Default values | `fn f(x: number = 10)` | caller can omit, compiler fills in |
 | Structural equality | `==` on objects compares by value | deep equality check |
 | Unit type | `()` as return type, usable in generics | `undefined` / `void` in TS |
@@ -1232,8 +1233,19 @@ enum Expr {
 }
 
 // Top-level items include ForBlock, TraitDecl, and TestBlock
+// FunctionDecl includes optional type parameters for generic functions
+// fn identity<T>(x: T) -> T { x } → type_params: vec!["T"]
+// fn pair<A, B>(a: A, b: B) -> (A, B) { (a, b) } → type_params: vec!["A", "B"]
+struct FunctionDecl {
+    name: String,
+    type_params: Vec<String>,  // <T, U> — empty for non-generic functions
+    params: Vec<Param>,
+    return_type: Option<TypeExpr>,
+    body: Vec<Item>,
+}
+
 enum ItemKind {
-    Import, Const, Function, TypeDecl,
+    Import, Const, Function(FunctionDecl), TypeDecl,
     ForBlock {                 // for Type { fn f(self) ... }
         type_name: TypeExpr,
         trait_name: Option<String>,  // for Type: Trait { ... }
@@ -1400,6 +1412,7 @@ Emits clean, readable `.tsx`. Zero runtime imports.
 | `.id != id` (in callback) | `(x) => x.id != id` |
 | `Type.Variant` (qualified) | `{ tag: "Variant" }` (same as bare) |
 | `fn f(x: T) -> U { ... }` | `function f(x: T): U { ... }` |
+| `fn f<T>(x: T) -> T { ... }` | `function f<T>(x: T): T { ... }` |
 | `try expr` | `(() => { try { return { ok: true, value: expr }; } catch (_e) { return { ok: false, error: _e instanceof Error ? _e : new Error(String(_e)) }; } })()` |
 | `match x { A -> ..., B -> ... }` | `x.tag === "A" ? ... : x.tag === "B" ? ... : absurd(x)` |
 | `match x { A(v) when v > 0 -> ... }` | `x.tag === "A" ? (() => { const v = x.value; if (v > 0) { return ...; } ... })()` |

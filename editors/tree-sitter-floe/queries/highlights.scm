@@ -56,6 +56,11 @@
 (function_declaration
   name: (type_identifier) @function)
 
+; Generic function type parameters: fn identity<T>(...)
+(function_declaration
+  type_parameters: (type_parameters
+    (type_identifier) @type.parameter))
+
 (call_expression
   function: (primary_expression
     (identifier) @function.call))

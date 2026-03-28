@@ -56,6 +56,30 @@ export fn greet(name: string) -> string {
 }
 ```
 
+### Generic Functions
+
+Functions can declare type parameters using angle brackets after the function name:
+
+```floe
+fn identity<T>(x: T) -> T { x }
+
+fn pair<A, B>(a: A, b: B) -> (A, B) { (a, b) }
+
+fn mapResult<T, U, E>(r: Result<T, E>, f: (T) => U) -> Result<U, E> {
+    match r {
+        Ok(value) -> Ok(f(value)),
+        Err(e) -> Err(e),
+    }
+}
+```
+
+Generic functions compile directly to TypeScript generics:
+
+```typescript
+function identity<T>(x: T): T { return x; }
+function pair<A, B>(a: A, b: B): readonly [A, B] { return [a, b] as const; }
+```
+
 ### Default Parameters
 
 ```floe
