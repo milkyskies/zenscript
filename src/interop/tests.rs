@@ -224,11 +224,16 @@ fn wrap_array_wraps_inner() {
 #[test]
 fn wrap_object_wraps_fields() {
     let ts = TsType::Object(vec![
-        ("name".to_string(), TsType::Primitive("string".to_string())),
-        (
-            "value".to_string(),
-            TsType::Union(vec![TsType::Primitive("number".to_string()), TsType::Null]),
-        ),
+        ObjectField {
+            name: "name".to_string(),
+            ty: TsType::Primitive("string".to_string()),
+            optional: false,
+        },
+        ObjectField {
+            name: "value".to_string(),
+            ty: TsType::Union(vec![TsType::Primitive("number".to_string()), TsType::Null]),
+            optional: false,
+        },
     ]);
     let wrapped = wrap_boundary_type(&ts);
     assert_eq!(
@@ -237,6 +242,60 @@ fn wrap_object_wraps_fields() {
             ("name".to_string(), Type::String),
             ("value".to_string(), Type::Option(Box::new(Type::Number))),
         ])
+    );
+}
+
+#[test]
+fn wrap_optional_nullable_becomes_settable() {
+    // x?: string | null → Settable<string>
+    let ts = TsType::Object(vec![ObjectField {
+        name: "email".to_string(),
+        ty: TsType::Union(vec![TsType::Primitive("string".to_string()), TsType::Null]),
+        optional: true,
+    }]);
+    let wrapped = wrap_boundary_type(&ts);
+    assert_eq!(
+        wrapped,
+        Type::Record(vec![(
+            "email".to_string(),
+            Type::Settable(Box::new(Type::String))
+        ),])
+    );
+}
+
+#[test]
+fn wrap_optional_non_nullable_becomes_option() {
+    // x?: string → Option<string>
+    let ts = TsType::Object(vec![ObjectField {
+        name: "nickname".to_string(),
+        ty: TsType::Primitive("string".to_string()),
+        optional: true,
+    }]);
+    let wrapped = wrap_boundary_type(&ts);
+    assert_eq!(
+        wrapped,
+        Type::Record(vec![(
+            "nickname".to_string(),
+            Type::Option(Box::new(Type::String))
+        ),])
+    );
+}
+
+#[test]
+fn wrap_required_nullable_stays_option() {
+    // x: string | null → Option<string> (not Settable)
+    let ts = TsType::Object(vec![ObjectField {
+        name: "deletedAt".to_string(),
+        ty: TsType::Union(vec![TsType::Primitive("string".to_string()), TsType::Null]),
+        optional: false,
+    }]);
+    let wrapped = wrap_boundary_type(&ts);
+    assert_eq!(
+        wrapped,
+        Type::Record(vec![(
+            "deletedAt".to_string(),
+            Type::Option(Box::new(Type::String))
+        ),])
     );
 }
 
@@ -275,11 +334,16 @@ fn parse_dts_type_export() {
     assert_eq!(
         export.ts_type,
         TsType::Object(vec![
-            (
-                "debug".to_string(),
-                TsType::Primitive("boolean".to_string())
-            ),
-            ("port".to_string(), TsType::Primitive("number".to_string())),
+            ObjectField {
+                name: "debug".to_string(),
+                ty: TsType::Primitive("boolean".to_string()),
+                optional: false,
+            },
+            ObjectField {
+                name: "port".to_string(),
+                ty: TsType::Primitive("number".to_string()),
+                optional: false,
+            },
         ])
     );
 }
@@ -446,12 +510,12 @@ export interface Config {
     match &config.ts_type {
         TsType::Object(fields) => {
             assert_eq!(fields.len(), 3);
-            assert_eq!(fields[0].0, "debug");
-            assert_eq!(fields[0].1, TsType::Primitive("boolean".to_string()));
-            assert_eq!(fields[1].0, "port");
-            assert_eq!(fields[1].1, TsType::Primitive("number".to_string()));
-            assert_eq!(fields[2].0, "host");
-            assert_eq!(fields[2].1, TsType::Primitive("string".to_string()));
+            assert_eq!(fields[0].name, "debug");
+            assert_eq!(fields[0].ty, TsType::Primitive("boolean".to_string()));
+            assert_eq!(fields[1].name, "port");
+            assert_eq!(fields[1].ty, TsType::Primitive("number".to_string()));
+            assert_eq!(fields[2].name, "host");
+            assert_eq!(fields[2].ty, TsType::Primitive("string".to_string()));
         }
         other => panic!("expected Object, got {other:?}"),
     }
@@ -530,8 +594,8 @@ declare namespace Lib {
     match &result.ts_type {
         TsType::Object(fields) => {
             assert_eq!(fields.len(), 2);
-            assert_eq!(fields[0].0, "success");
-            assert_eq!(fields[1].0, "data");
+            assert_eq!(fields[0].name, "success");
+            assert_eq!(fields[1].name, "data");
         }
         other => panic!("expected Object, got {other:?}"),
     }

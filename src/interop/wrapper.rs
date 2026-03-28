@@ -78,7 +78,20 @@ pub fn wrap_boundary_type(ts_type: &TsType) -> Type {
         TsType::Object(fields) => {
             let wrapped: Vec<(String, Type)> = fields
                 .iter()
-                .map(|(name, ty)| (name.clone(), wrap_boundary_type(ty)))
+                .map(|f| {
+                    let ty = if f.optional && f.ty.is_nullable() {
+                        // x?: T | null → Settable<T>
+                        // Wrap the non-null inner type directly, skipping the Option wrapper
+                        let inner = wrap_non_null_inner(&f.ty);
+                        Type::Settable(Box::new(inner))
+                    } else if f.optional {
+                        // x?: T → Option<T>
+                        Type::Option(Box::new(wrap_boundary_type(&f.ty)))
+                    } else {
+                        wrap_boundary_type(&f.ty)
+                    };
+                    (f.name.clone(), ty)
+                })
                 .collect();
             Type::Record(wrapped)
         }
@@ -140,14 +153,14 @@ fn try_parse_result_union(parts: &[&TsType]) -> Option<Type> {
 
     for part in parts {
         if let TsType::Object(fields) = part {
-            let ok_field = fields.iter().find(|(n, _)| n == "ok");
-            let value_field = fields.iter().find(|(n, _)| n == "value");
-            let error_field = fields.iter().find(|(n, _)| n == "error");
+            let ok_field = fields.iter().find(|f| f.name == "ok");
+            let value_field = fields.iter().find(|f| f.name == "value");
+            let error_field = fields.iter().find(|f| f.name == "error");
 
             if value_field.is_some() && ok_field.is_some() {
-                ok_type = value_field.map(|(_, ty)| wrap_boundary_type(ty));
+                ok_type = value_field.map(|f| wrap_boundary_type(&f.ty));
             } else if error_field.is_some() && ok_field.is_some() {
-                err_type = error_field.map(|(_, ty)| wrap_boundary_type(ty));
+                err_type = error_field.map(|f| wrap_boundary_type(&f.ty));
             }
         }
     }
@@ -159,6 +172,28 @@ fn try_parse_result_union(parts: &[&TsType]) -> Option<Type> {
         })
     } else {
         None
+    }
+}
+
+/// Extract the non-null/non-undefined inner type and wrap it.
+/// For `T | null` returns wrapped T. For bare `null` returns Unit.
+fn wrap_non_null_inner(ty: &TsType) -> Type {
+    match ty {
+        TsType::Union(parts) => {
+            let non_null: Vec<&TsType> = parts
+                .iter()
+                .filter(|p| !matches!(p, TsType::Null | TsType::Undefined))
+                .collect();
+            if non_null.len() == 1 {
+                wrap_boundary_type(non_null[0])
+            } else if non_null.is_empty() {
+                Type::Unit
+            } else {
+                Type::Unknown
+            }
+        }
+        TsType::Null | TsType::Undefined => Type::Unit,
+        other => wrap_boundary_type(other),
     }
 }
 

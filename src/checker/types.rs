@@ -82,6 +82,14 @@ impl Type {
         matches!(self, Type::Settable(_))
     }
 
+    /// Unwrap Option<T> → T. If not an Option, return self.
+    pub fn unwrap_option(self) -> Type {
+        match self {
+            Type::Option(inner) => *inner,
+            other => other,
+        }
+    }
+
     pub(crate) fn is_numeric(&self) -> bool {
         matches!(self, Type::Number)
     }

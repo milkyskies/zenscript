@@ -5,8 +5,8 @@ use std::collections::HashSet;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     Declaration, ExportNamedDeclaration, FormalParameters, PropertyKey, Statement,
-    TSModuleDeclarationBody, TSModuleDeclarationName, TSSignature, TSTupleElement,
-    TSType as OxcTSType, TSTypeName, VariableDeclarator,
+    TSModuleDeclarationBody, TSModuleDeclarationName, TSPropertySignature, TSSignature,
+    TSTupleElement, TSType as OxcTSType, TSTypeName, VariableDeclarator,
 };
 use oxc_parser::Parser;
 use oxc_span::SourceType;
@@ -250,20 +250,27 @@ fn convert_variable_declarator(declarator: &VariableDeclarator<'_>) -> Option<Dt
     Some(DtsExport { name, ts_type })
 }
 
+/// Convert a single TSPropertySignature to an ObjectField.
+fn convert_property_signature(prop: &TSPropertySignature<'_>) -> Option<ObjectField> {
+    let name = property_key_name(&prop.key)?;
+    let ty = prop
+        .type_annotation
+        .as_ref()
+        .map(|ta| convert_oxc_type(&ta.type_annotation))
+        .unwrap_or(TsType::Any);
+    Some(ObjectField {
+        name,
+        ty,
+        optional: prop.optional,
+    })
+}
+
 /// Convert interface body members to TsType::Object.
 fn convert_interface_body(members: &[TSSignature<'_>]) -> TsType {
-    let fields: Vec<(String, TsType)> = members
+    let fields: Vec<ObjectField> = members
         .iter()
         .filter_map(|sig| match sig {
-            TSSignature::TSPropertySignature(prop) => {
-                let name = property_key_name(&prop.key)?;
-                let ty = prop
-                    .type_annotation
-                    .as_ref()
-                    .map(|ta| convert_oxc_type(&ta.type_annotation))
-                    .unwrap_or(TsType::Any);
-                Some((name, ty))
-            }
+            TSSignature::TSPropertySignature(prop) => convert_property_signature(prop),
             _ => None,
         })
         .collect();
@@ -354,19 +361,11 @@ fn convert_oxc_type(ty: &OxcTSType<'_>) -> TsType {
 
         // Object literal type: { key: Type; ... }
         OxcTSType::TSTypeLiteral(lit) => {
-            let fields: Vec<(String, TsType)> = lit
+            let fields: Vec<ObjectField> = lit
                 .members
                 .iter()
                 .filter_map(|sig| match sig {
-                    TSSignature::TSPropertySignature(prop) => {
-                        let name = property_key_name(&prop.key)?;
-                        let ty = prop
-                            .type_annotation
-                            .as_ref()
-                            .map(|ta| convert_oxc_type(&ta.type_annotation))
-                            .unwrap_or(TsType::Any);
-                        Some((name, ty))
-                    }
+                    TSSignature::TSPropertySignature(prop) => convert_property_signature(prop),
                     _ => None,
                 })
                 .collect();
@@ -515,19 +514,11 @@ fn convert_tuple_element(el: &TSTupleElement<'_>) -> TsType {
             }
         }
         TSTupleElement::TSTypeLiteral(lit) => {
-            let fields: Vec<(String, TsType)> = lit
+            let fields: Vec<ObjectField> = lit
                 .members
                 .iter()
                 .filter_map(|sig| match sig {
-                    TSSignature::TSPropertySignature(prop) => {
-                        let name = property_key_name(&prop.key)?;
-                        let ty = prop
-                            .type_annotation
-                            .as_ref()
-                            .map(|ta| convert_oxc_type(&ta.type_annotation))
-                            .unwrap_or(TsType::Any);
-                        Some((name, ty))
-                    }
+                    TSSignature::TSPropertySignature(prop) => convert_property_signature(prop),
                     _ => None,
                 })
                 .collect();
@@ -679,15 +670,19 @@ pub(super) fn parse_interface_export(
             if brace_depth > 0 {
                 // Parse field: name: Type; or name?: Type;
                 if let Some(colon) = trimmed.find(':') {
-                    let field_name = trimmed[..colon]
+                    let raw_name = trimmed[..colon]
                         .trim()
-                        .trim_end_matches('?')
                         .trim_start_matches("readonly ")
-                        .trim()
-                        .to_string();
+                        .trim();
+                    let optional = raw_name.ends_with('?');
+                    let field_name = raw_name.trim_end_matches('?').to_string();
                     let type_str = trimmed[colon + 1..].trim().trim_end_matches(';').trim();
                     if !field_name.is_empty() && !field_name.starts_with('[') {
-                        fields.push((field_name, parse_type_str(type_str)));
+                        fields.push(ObjectField {
+                            name: field_name,
+                            ty: parse_type_str(type_str),
+                            optional,
+                        });
                     }
                 }
             }
