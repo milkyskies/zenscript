@@ -24,7 +24,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1"
-ariadne = "0.5"
+ariadne = "0.6"
 clap = { version = "4", features = ["derive"] }
 notify = "8"
 oxc_allocator = "0.122.0"
