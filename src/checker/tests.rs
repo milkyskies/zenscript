@@ -2980,3 +2980,59 @@ const _addBang = concat(_, "!")
         diags.iter().map(|d| &d.message).collect::<Vec<_>>()
     );
 }
+
+// ── Variant constructors as functions ───────────────────────
+
+#[test]
+fn variant_constructor_as_function_no_error() {
+    let diags = check(
+        r#"
+type SaveError {
+    | Validation { errors: Array<string> }
+    | Api { message: string }
+}
+
+fn apply(f: fn(Array<string>) -> SaveError) -> SaveError {
+    f(["error"])
+}
+
+const _result = apply(Validation)
+"#,
+    );
+    assert!(diags.is_empty(), "expected no errors, got: {diags:?}");
+}
+
+#[test]
+fn unit_variant_not_treated_as_function() {
+    let diags = check(
+        r#"
+type Filter {
+    | All
+    | Active
+    | Completed
+}
+
+const _f: Filter = All
+"#,
+    );
+    assert!(diags.is_empty(), "expected no errors, got: {diags:?}");
+}
+
+#[test]
+fn variant_constructor_type_mismatch() {
+    let diags = check(
+        r#"
+type MyError {
+    | Validation { errors: Array<string> }
+    | Api { message: string }
+}
+
+fn apply(f: fn(number) -> MyError) -> MyError {
+    f(42)
+}
+
+const _result = apply(Validation)
+"#,
+    );
+    assert!(has_error(&diags, "E001"));
+}

@@ -49,6 +49,16 @@ impl Checker {
                     );
                 }
                 if let Some(ty) = self.env.lookup(name).cloned() {
+                    // Non-unit variant as bare identifier → constructor function
+                    if let Type::Union { ref variants, .. } = ty
+                        && let Some((_, field_types)) = variants.iter().find(|(v, _)| v == name)
+                        && !field_types.is_empty()
+                    {
+                        return Type::Function {
+                            params: field_types.clone(),
+                            return_type: Box::new(ty),
+                        };
+                    }
                     ty
                 } else if self.stdlib.is_module(name) {
                     // Stdlib module names (Array, String, etc.) are valid identifiers
@@ -491,6 +501,21 @@ impl Checker {
                                 .with_code("E002"),
                         );
                     }
+                }
+
+                // Zero-arg reference to non-unit variant → constructor function
+                // Must check early, before field validation would flag missing fields
+                if args.is_empty()
+                    && spread.is_none()
+                    && let Some(ty) = self.env.lookup(type_name).cloned()
+                    && let Type::Union { variants, .. } = &ty
+                    && let Some((_, field_types)) = variants.iter().find(|(v, _)| v == type_name)
+                    && !field_types.is_empty()
+                {
+                    return Type::Function {
+                        params: field_types.clone(),
+                        return_type: Box::new(ty),
+                    };
                 }
 
                 // Rule 3: Opaque enforcement

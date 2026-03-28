@@ -825,6 +825,95 @@ fn union_variant_dot_access_non_union_passthrough() {
     assert!(result.contains("foo.bar"));
 }
 
+// ── Variant constructors as functions ──────────────────────
+
+#[test]
+fn non_unit_variant_as_function() {
+    let result = emit(
+        r#"
+type SaveError {
+    | Validation { errors: Array<string> }
+    | Api { message: string }
+}
+
+const _f = Validation
+"#,
+    );
+    assert!(
+        result.contains(r#"(errors) => ({ tag: "Validation", errors })"#),
+        "got: {result}"
+    );
+}
+
+#[test]
+fn unit_variant_unchanged_as_value() {
+    let result = emit(
+        r#"
+type Filter { | All | Active | Completed }
+const _f = All
+"#,
+    );
+    assert!(result.contains(r#"{ tag: "All" }"#), "got: {result}");
+    assert!(
+        !result.contains("=>"),
+        "should not emit arrow function, got: {result}"
+    );
+}
+
+#[test]
+fn qualified_non_unit_variant_as_function() {
+    let result = emit(
+        r#"
+type SaveError {
+    | Validation { errors: Array<string> }
+    | Api { message: string }
+}
+
+const _f = SaveError.Validation
+"#,
+    );
+    assert!(
+        result.contains(r#"(errors) => ({ tag: "Validation", errors })"#),
+        "got: {result}"
+    );
+}
+
+#[test]
+fn variant_construct_with_args_unchanged() {
+    let result = emit(
+        r#"
+type MyError {
+    | Validation { message: string }
+    | NotFound
+}
+
+const _e = Validation(message: "bad")
+"#,
+    );
+    assert!(
+        result.contains(r#"{ tag: "Validation", message: "bad" }"#),
+        "got: {result}"
+    );
+}
+
+#[test]
+fn multi_field_variant_as_function() {
+    let result = emit(
+        r#"
+type Shape {
+    | Circle { radius: number }
+    | Rect { width: number, height: number }
+}
+
+const _f = Rect
+"#,
+    );
+    assert!(
+        result.contains(r#"(width, height) => ({ tag: "Rect", width, height })"#),
+        "got: {result}"
+    );
+}
+
 // ── Tuples ─────────────────────────────────────────────────
 
 #[test]
