@@ -1354,6 +1354,9 @@ def main():
     # ── 10. Edge Cases & Error Recovery ─────────────────────
     print(f"\n{BOLD}10. Edge Cases{NC}")
 
+    # Drain any stale notifications from previous section
+    lsp.collect_notifications("textDocument/publishDiagnostics", timeout=0.5)
+
     # Empty file
     lsp.open_doc(URI, EMPTY_FILE)
     notifs = lsp.collect_notifications("textDocument/publishDiagnostics", timeout=1)
