@@ -346,8 +346,8 @@ fn describeColor(c: Color) -> string {
 
 PIPES = """\
 const nums = [1, 2, 3, 4, 5]
-const doubled = nums |> Array.map(fn(n) n * 2)
-const total = nums |> Array.reduce(fn(acc, n) acc + n, 0)
+const doubled = nums |> Array.map((n) => n * 2)
+const total = nums |> Array.reduce((acc, n) => acc + n, 0)
 
 fn process(input: string) -> string {
     input
@@ -586,8 +586,8 @@ fn updateName(user: User, newName: string) -> User {
 """
 
 CLOSURE_ASSIGN = """\
-const add = fn(a: number, b: number) a + b
-const double = fn(n: number) n * 2
+const add = (a: number, b: number) => a + b
+const double = (n: number) => n * 2
 const result = add(1, 2)
 """
 
@@ -603,7 +603,7 @@ export fn App() -> JSX.Element {
         </div>
         <div className="body">
             <ul>
-                {items |> map(fn(item)
+                {items |> map((item) =>
                     <li key={item}>
                         <span>{item}</span>
                     </li>
@@ -663,9 +663,9 @@ fn process(name: string, count: number, flag: boolean) -> string {
 
 MULTILINE_PIPE = """\
 const result = [1, 2, 3, 4, 5]
-    |> Array.filter(fn(n) n > 2)
-    |> Array.map(fn(n) n * 10)
-    |> Array.reduce(fn(acc, n) acc + n, 0)
+    |> Array.filter((n) => n > 2)
+    |> Array.map((n) => n * 10)
+    |> Array.reduce((acc, n) => acc + n, 0)
 """
 
 INNER_CONST = """\
@@ -818,9 +818,9 @@ fn classify(n: number) -> string {
 """
 
 CLOSURE_FILE = """\
-const add = fn(a: number, b: number) a + b
-const double = fn(n: number) n * 2
-const greet = fn() "hello"
+const add = (a: number, b: number) => a + b
+const double = (n: number) => n * 2
+const greet = () => "hello"
 const result = add(1, 2)
 """
 
@@ -1512,7 +1512,7 @@ def main():
     lsp.open_doc(URI, CLOSURE_ASSIGN)
     lsp.collect_notifications("textDocument/publishDiagnostics", timeout=1)
 
-    h = hover_text(lsp.hover(URI, 0, 6))  # "add" in const add = fn(...)
+    h = hover_text(lsp.hover(URI, 0, 6))  # "add" in const add = (...) => ...
     check("Hover: closure const (add)", h is not None and "add" in (h or ""), f"Got: {h}")
 
     h = hover_text(lsp.hover(URI, 1, 6))  # "double"
