@@ -550,8 +550,10 @@ type Dog {
     breed: string,
 }
 
-for Dog: Printable fn print(self) -> string {
-    `${self.name} (${self.breed})`
+for Dog: Printable {
+    fn print(self) -> string {
+        `${self.name} (${self.breed})`
+    }
 }
 """
 
@@ -953,8 +955,10 @@ const same = a == b
 """
 
 INLINE_FOR = """\
-export for string fn shout(self) -> string {
-    self |> String.toUpperCase
+for string {
+    export fn shout(self) -> string {
+        self |> String.toUpperCase
+    }
 }
 """
 
@@ -1576,7 +1580,7 @@ def main():
     lsp.open_doc(URI, TRAIT_FILE)
     lsp.collect_notifications("textDocument/publishDiagnostics", timeout=1)
 
-    h = hover_text(lsp.hover(URI, 9, 23))  # "print" in for Dog: Printable fn print(self)
+    h = hover_text(lsp.hover(URI, 10, 7))  # "print" in for Dog: Printable { fn print(self) }
     check("Hover: trait impl fn (print)", h is not None and "print" in (h or ""), f"Got: {h}")
 
     # Hover on inner const
@@ -1948,10 +1952,10 @@ def main():
     names = symbol_names(lsp.document_symbols(URI))
     check("Tour: fn inside test file in symbols", "add" in names, f"Names: {names}")
 
-    # Inline for
+    # For block (was inline for)
     lsp.open_doc(URI, INLINE_FOR)
     lsp.collect_notifications("textDocument/publishDiagnostics", timeout=1)
-    h = hover_text(lsp.hover(URI, 0, 25))  # fn shout
+    h = hover_text(lsp.hover(URI, 1, 18))  # fn shout
     check("Tour: hover on inline for fn", h is not None and "shout" in (h or ""), f"Got: {h}")
     names = symbol_names(lsp.document_symbols(URI))
     check("Tour: inline for fn in symbols", "shout" in names, f"Names: {names}")
