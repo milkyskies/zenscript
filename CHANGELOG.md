@@ -5,6 +5,13 @@ All notable changes to Floe will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.7](https://github.com/milkyskies/floe/compare/v0.1.6...v0.1.7) (2026-03-28)
+
+
+### Bug Fixes
+
+* add VS Code icon, fix npm publish, bump action versions ([#451](https://github.com/milkyskies/floe/issues/451)) ([7133ba2](https://github.com/milkyskies/floe/commit/7133ba27ab9e1606393c1af813b0cdf1db1c9df9))
+
 ## [0.1.6](https://github.com/milkyskies/floe/compare/v0.1.5...v0.1.6) (2026-03-28)
 
 
