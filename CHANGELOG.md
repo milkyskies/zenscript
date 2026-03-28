@@ -5,6 +5,21 @@ All notable changes to Floe will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.11](https://github.com/milkyskies/floe/compare/v0.1.10...v0.1.11) (2026-03-28)
+
+
+### Features
+
+* [[#475](https://github.com/milkyskies/floe/issues/475)] Add default values for type fields ([#479](https://github.com/milkyskies/floe/issues/479)) ([57bd5b8](https://github.com/milkyskies/floe/commit/57bd5b821109ae813e73350da126d92ef8d054f1))
+
+
+### Bug Fixes
+
+* [[#486](https://github.com/milkyskies/floe/issues/486)] Widen vite-plugin peer dependency to support Vite 7 and 8 ([#487](https://github.com/milkyskies/floe/issues/487)) ([27eae45](https://github.com/milkyskies/floe/commit/27eae45a75a1f29bb3f7209e6aa2285c2c278cac))
+* [[#489](https://github.com/milkyskies/floe/issues/489)] Bundle VS Code extension with esbuild, fix icon, add restart command ([#490](https://github.com/milkyskies/floe/issues/490)) ([abc9beb](https://github.com/milkyskies/floe/commit/abc9bebb75b8fd1f318c4ad93e2cba7876d8cd11))
+* [[#491](https://github.com/milkyskies/floe/issues/491)] Support JSX comments {/* ... */} ([#497](https://github.com/milkyskies/floe/issues/497)) ([974f37f](https://github.com/milkyskies/floe/commit/974f37fe9fe62d6e185f32cebc5c3e8976ae47e9))
+* [[#494](https://github.com/milkyskies/floe/issues/494)] Add resolveId hook to vite plugin for .fl import resolution ([#495](https://github.com/milkyskies/floe/issues/495)) ([963c97e](https://github.com/milkyskies/floe/commit/963c97e1cdf409fb1970144407612c3b3831b824))
+
 ## [0.1.10](https://github.com/milkyskies/floe/compare/v0.1.9...v0.1.10) (2026-03-28)
 
 
