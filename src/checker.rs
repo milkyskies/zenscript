@@ -310,7 +310,8 @@ impl Checker {
         self.registering_types = true;
         for resolved in self.resolved_imports.values().cloned().collect::<Vec<_>>() {
             for decl in &resolved.type_decls {
-                self.register_type_decl(decl);
+                // Skip naming checks for imported types (already validated in source)
+                self.register_type_decl(decl, Span::new(0, 0, 0, 0));
             }
             for decl in &resolved.trait_decls {
                 self.register_trait_decl(decl);
@@ -363,7 +364,7 @@ impl Checker {
         for item in &program.items {
             match &item.kind {
                 ItemKind::TypeDecl(decl) => {
-                    self.register_type_decl(decl);
+                    self.register_type_decl(decl, item.span);
                 }
                 ItemKind::TraitDecl(decl) => {
                     self.register_trait_decl(decl);
@@ -482,7 +483,57 @@ impl Checker {
 
     // ── Type Registration ────────────────────────────────────────
 
-    fn register_type_decl(&mut self, decl: &TypeDecl) {
+    fn register_type_decl(&mut self, decl: &TypeDecl, span: Span) {
+        // Enforce naming conventions
+        if span.start != 0 || span.end != 0 {
+            // Only check local declarations (not imports with dummy spans)
+            if decl.name.starts_with(char::is_lowercase) {
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        format!(
+                            "type name `{}` must start with an uppercase letter",
+                            decl.name
+                        ),
+                        span,
+                    )
+                    .with_label("must be uppercase")
+                    .with_help(format!(
+                        "rename to `{}{}`",
+                        decl.name[..1].to_uppercase(),
+                        &decl.name[1..]
+                    ))
+                    .with_code("E024"),
+                );
+            }
+            match &decl.def {
+                TypeDef::Union(variants) => {
+                    for variant in variants {
+                        if variant.name.starts_with(char::is_lowercase) {
+                            self.diagnostics.push(
+                                Diagnostic::error(
+                                    format!(
+                                        "variant name `{}` must start with an uppercase letter",
+                                        variant.name
+                                    ),
+                                    variant.span,
+                                )
+                                .with_help(format!(
+                                    "rename to `{}{}`",
+                                    variant.name[..1].to_uppercase(),
+                                    &variant.name[1..]
+                                ))
+                                .with_code("E024"),
+                            );
+                        }
+                    }
+                }
+                // Record field names: uppercase fields are already rejected by the parser
+                // (uppercase identifiers are parsed as types/variants, not field names)
+                TypeDef::Record(_) => {}
+                _ => {}
+            }
+        }
+
         // Flatten record spreads into a flat record definition
         let flattened_def = self.flatten_record_spreads(&decl.def, &decl.name);
 

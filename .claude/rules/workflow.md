@@ -131,6 +131,22 @@ Commit semi-frequently - don't save everything for one giant commit. Use **conve
 
 **Before every commit**, run `cargo fmt` (and `floe fmt` if you touched `.fl` files). Never commit unformatted code.
 
+**Use conventional commits.** All commit messages must be prefixed:
+- `feat:` — new feature or language syntax
+- `fix:` — bug fix
+- `chore:` — maintenance, deps, CI, docs, refactoring
+- `test:` — adding or updating tests only
+
+Examples:
+```
+feat: add use keyword for callback flattening
+fix: checker resolves pipe expressions to unknown type
+chore: remove Brand type in favor of newtypes
+test: add codegen snapshot tests for tuples
+```
+
+PR titles follow the same convention: `feat: [#260] Add use keyword`
+
 ### 4. Quality Gate
 
 Run before closing any task, scoped to what you changed.
