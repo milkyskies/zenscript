@@ -164,7 +164,7 @@ type Method = "GET" | "POST" | "PUT" | "DELETE"
 // Record composition
 type ButtonProps {
     ...BaseProps,
-    onClick: fn() -> (),
+    onClick: () => (),
     label: string,
 }
 

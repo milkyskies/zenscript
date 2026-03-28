@@ -99,7 +99,7 @@ type BaseProps {
 
 type ButtonProps {
     ...BaseProps,
-    onClick: fn() -> (),
+    onClick: () => (),
     label: string,
 }
 // ButtonProps has: className, disabled, onClick, label
@@ -534,6 +534,7 @@ match key {
 | `? :` (ternary) | `match` expression |
 | `?.` (optional chain) | `match` on `Option` or `?` |
 | `??` (nullish coalesce) | `Option.unwrapOr` |
+| `=>` (arrow function) | `fn(x)` closure; `=>` reserved for function types `(T) => U` |
 | `function` keyword | `fn` |
 | `void` | Unit type `()` |
 | `as` (type assertion) | Type guards or `match` |

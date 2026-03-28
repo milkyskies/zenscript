@@ -94,12 +94,12 @@ fn double(x: number) -> number { x * 2 }
 
 ### Function Types
 
-Use `fn` and `->` to describe function types:
+Use `=>` to describe function types:
 
 ```floe
-type Transform = fn(string) -> number
-type Predicate = fn(Todo) -> boolean
-type Callback = fn() -> ()
+type Transform = (string) => number
+type Predicate = (Todo) => boolean
+type Callback = () => ()
 ```
 
 ### Async Functions
@@ -117,6 +117,7 @@ async fn fetchUser(id: string) -> Promise<User> {
 - **No `class`** - use functions and records
 - **No `this`** - functions are pure by default
 - **No `function*` generators** - use arrays and pipes
-- **No `function` keyword** - use `fn` for named functions, `(x) => expr` for closures
+- **No `=>` in expressions** - use `fn(x)` for closures; `=>` is only for function types like `(T) => U`
+- **No `function` keyword** - use `fn` for named functions
 
 These are removed intentionally. See the [comparison](/guide/comparison) for the reasoning.

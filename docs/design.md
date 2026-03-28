@@ -112,6 +112,7 @@ All four of TypeScript's `?` uses (`?.`, `??`, `?:`, `? :`) are removed. `?` now
 | `x?: T` | Optional fields | `x: Option<T>` |
 | `+` on strings | Silent coercion bugs | Template literals only (warning) |
 | `void` | Not a real type, can't use in generics | Unit type `()` — a real value |
+| `=>` in expressions | Two syntaxes for functions is one too many | `fn(x) expr` for anonymous functions; `=>` is reserved for function types like `(T) => U` |
 | `function` | Verbose keyword | `fn` |
 | `if`/`else` | Redundant control flow | `match` expression |
 | `return` | Implicit returns — last expression is the value | Omit `return`; the last expression in a block is the return value |
@@ -426,7 +427,7 @@ type BaseProps {
 
 type ButtonProps {
   ...BaseProps,
-  onClick: fn() -> (),
+  onClick: () => (),
   label: string,
 }
 // ButtonProps has: className, disabled, onClick, label
@@ -708,7 +709,7 @@ fetchUsers(limit: 50, sort: Descending)          // override two
 // On React component props
 type ButtonProps {
   label: string                      // required
-  onClick: fn() -> ()                // required
+  onClick: () => ()                  // required
   variant: Variant = Primary         // default
   size: Size = Medium                // default
   disabled: boolean = false             // default
@@ -1130,8 +1131,8 @@ Key tokens beyond standard TypeScript:
 | Token | Lexeme |
 |-------|--------|
 | `Pipe` | `\|>` |
-| `Arrow` | `->` (match arms, return types, function types) |
-| `FatArrow` | `=>` (arrow closure syntax) |
+| `Arrow` | `->` (match arms, return types) |
+| `FatArrow` | `=>` (function types) |
 | `Question` | `?` (postfix, Result/Option unwrap) |
 | `Underscore` | `_` (placeholder/partial application) |
 | `PipePipe` | `\|\|` (boolean OR) |
@@ -1165,6 +1166,7 @@ Banned tokens (immediate compile errors with helpful messages):
 - `enum` → "Use type with | variants"
 - `void` → "Use the unit type () instead"
 - `function` → "Use fn instead"
+- `=>` after `fn(x)` → "Use fn(x) for closures — the => is only for function types like (T) => U"
 
 ### Parser (`floe_parser`)
 
@@ -1613,7 +1615,7 @@ fn deleteUser(id: UserId) -> Result<(), ApiError> {
 
 // Callbacks
 type ButtonProps {
-  onClick: fn() -> ()
+  onClick: () => ()
 }
 ```
 
@@ -1691,9 +1693,10 @@ const c = { ...a, ...b }    // WARNING: 'y' from 'a' is overwritten by 'b'
 | Question | Decision | Rationale |
 |----------|----------|-----------|
 | Syntax style | TS keywords + Gleam match/pipe | Familiar to React devs, 30min learning curve |
-| Function style | `fn` for named, `(x) => expr` for inline closures, `.field` for shorthand | One keyword, two closure forms, no overlap |
-| Arrow `->` | Match arms, return types, function types | "Maps to" everywhere — consistent single meaning |
-| `const name = (x) => ...` | Compile error | If it has a name, use `fn`. No two ways to name a function. |
+| Function style | `fn` for named, `fn(x)` for inline closures, `.field` for shorthand | One keyword, two closure forms, no overlap |
+| Arrow `->` | Match arms, return types | "Maps to" for control flow and declarations |
+| Fat arrow `=>` | Function types | `(T) => U` mirrors TypeScript's function type syntax |
+| `const name = fn(x) ...` | Compile error | If it has a name, use `fn`. No two ways to name a function. |
 | Dot shorthand | `.field` in callback position creates implicit closure | Covers 80% of inline callbacks (filter, map, sort) |
 | Qualified variants | `Type.Variant` when ambiguous, bare when unambiguous | Compiler errors on ambiguous bare variants with helpful suggestion |
 | Pipe semantics | First-arg default, `_` placeholder | Gleam approach — clean 90% of the time |
