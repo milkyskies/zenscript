@@ -1,4 +1,33 @@
+use std::sync::atomic::{AtomicU32, Ordering};
+
 use crate::lexer::span::Span;
+
+// ── ExprId ──────────────────────────────────────────────────────
+
+/// A unique identifier for every `Expr` node in the AST.
+/// Assigned during CST-to-AST lowering and used as a stable key
+/// for the checker → codegen type map (replacing span-based keys).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ExprId(pub u32);
+
+/// Generator for unique `ExprId` values. Thread-safe (atomic).
+pub struct ExprIdGen(AtomicU32);
+
+impl ExprIdGen {
+    pub fn new() -> Self {
+        Self(AtomicU32::new(0))
+    }
+
+    pub fn next(&self) -> ExprId {
+        ExprId(self.0.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
+impl Default for ExprIdGen {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// A complete Floe source file.
 #[derive(Debug, Clone, PartialEq)]
@@ -307,8 +336,21 @@ pub enum TypeExprKind {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Expr {
+    pub id: ExprId,
     pub kind: ExprKind,
     pub span: Span,
+}
+
+impl Expr {
+    /// Create a synthetic `Expr` for codegen-internal use (not from source).
+    /// Uses `ExprId(u32::MAX)` as a sentinel — these are never looked up in the type map.
+    pub fn synthetic(kind: ExprKind, span: Span) -> Self {
+        Self {
+            id: ExprId(u32::MAX),
+            kind,
+            span,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

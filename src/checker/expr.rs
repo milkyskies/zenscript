@@ -6,8 +6,7 @@ use crate::type_names;
 impl Checker {
     pub(super) fn check_expr(&mut self, expr: &Expr) -> Type {
         let ty = self.check_expr_inner(expr);
-        self.expr_types
-            .insert((expr.span.start, expr.span.end), ty.clone());
+        self.expr_types.insert(expr.id, ty.clone());
         ty
     }
 

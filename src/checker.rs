@@ -8,8 +8,10 @@ pub use types::Type;
 
 use std::collections::{HashMap, HashSet};
 
-/// Maps expression spans (start, end) to their resolved types.
-pub type ExprTypeMap = HashMap<(usize, usize), Type>;
+use crate::parser::ast::ExprId;
+
+/// Maps expression IDs to their resolved types.
+pub type ExprTypeMap = HashMap<ExprId, Type>;
 
 use crate::diagnostic::Diagnostic;
 use crate::interop::{self, DtsExport};
@@ -37,7 +39,7 @@ pub struct Checker {
     imported_names: Vec<(String, Span)>,
     /// Standard library function registry.
     stdlib: StdlibRegistry,
-    /// Maps expression spans (start, end) to their resolved types.
+    /// Maps expression IDs to their resolved types.
     /// Used by codegen for type-directed pipe resolution.
     expr_types: ExprTypeMap,
     /// Names of untrusted (external TS) imports that require `try`.

@@ -51,7 +51,7 @@ pub struct Codegen {
     variant_info: HashMap<String, (String, Vec<String>)>,
     /// Locally defined function/const names - these shadow stdlib in pipe resolution
     local_names: HashSet<String>,
-    /// Expression type map from the checker, keyed by span (start, end).
+    /// Expression type map from the checker, keyed by ExprId.
     /// Used for type-directed pipe resolution.
     expr_types: ExprTypeMap,
     /// Resolved imports from other .fl files, for expanding bare imports.
@@ -465,15 +465,12 @@ impl Codegen {
                 // Emit the step expression into a buffer to detect async IIFEs
                 let step_code = if step.is_pipe {
                     let left_expr = if last_had_unwrap {
-                        Expr {
-                            kind: ExprKind::Identifier(format!("{last_temp}.value")),
-                            span: step.expr.span,
-                        }
+                        Expr::synthetic(
+                            ExprKind::Identifier(format!("{last_temp}.value")),
+                            step.expr.span,
+                        )
                     } else {
-                        Expr {
-                            kind: ExprKind::Identifier(last_temp.clone()),
-                            span: step.expr.span,
-                        }
+                        Expr::synthetic(ExprKind::Identifier(last_temp.clone()), step.expr.span)
                     };
                     let mut sub = self.sub_codegen();
                     sub.emit_pipe(&left_expr, &step.expr);

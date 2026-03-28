@@ -158,10 +158,8 @@ impl Codegen {
                         } else {
                             format!("{}._{i}", self.expr_to_string(subject))
                         };
-                        let field_expr = Expr {
-                            kind: ExprKind::Identifier(field_access),
-                            span: subject.span,
-                        };
+                        let field_expr =
+                            Expr::synthetic(ExprKind::Identifier(field_access), subject.span);
                         self.emit_pattern_condition(&field_expr, field_pat);
                     }
                 }
@@ -176,14 +174,10 @@ impl Codegen {
                         self.push(" && ");
                     }
                     first = false;
-                    let field_expr = Expr {
-                        kind: ExprKind::Identifier(format!(
-                            "{}.{}",
-                            self.expr_to_string(subject),
-                            name
-                        )),
-                        span: subject.span,
-                    };
+                    let field_expr = Expr::synthetic(
+                        ExprKind::Identifier(format!("{}.{}", self.expr_to_string(subject), name)),
+                        subject.span,
+                    );
                     self.emit_pattern_condition(&field_expr, pat);
                 }
                 if first {
@@ -201,14 +195,10 @@ impl Codegen {
                         self.push(" && ");
                     }
                     first = false;
-                    let elem_expr = Expr {
-                        kind: ExprKind::Identifier(format!(
-                            "{}[{}]",
-                            self.expr_to_string(subject),
-                            i
-                        )),
-                        span: subject.span,
-                    };
+                    let elem_expr = Expr::synthetic(
+                        ExprKind::Identifier(format!("{}[{}]", self.expr_to_string(subject), i)),
+                        subject.span,
+                    );
                     self.emit_pattern_condition(&elem_expr, pat);
                 }
                 if first {
@@ -243,10 +233,10 @@ impl Codegen {
                     for (i, pat) in elements.iter().enumerate() {
                         if !matches!(pat.kind, PatternKind::Wildcard | PatternKind::Binding(_)) {
                             self.push(" && ");
-                            let elem_expr = Expr {
-                                kind: ExprKind::Identifier(format!("{subj_str}[{i}]")),
-                                span: subject.span,
-                            };
+                            let elem_expr = Expr::synthetic(
+                                ExprKind::Identifier(format!("{subj_str}[{i}]")),
+                                subject.span,
+                            );
                             self.emit_pattern_condition(&elem_expr, pat);
                         }
                     }
@@ -257,10 +247,10 @@ impl Codegen {
                     for (i, pat) in elements.iter().enumerate() {
                         if !matches!(pat.kind, PatternKind::Wildcard | PatternKind::Binding(_)) {
                             self.push(" && ");
-                            let elem_expr = Expr {
-                                kind: ExprKind::Identifier(format!("{subj_str}[{i}]")),
-                                span: subject.span,
-                            };
+                            let elem_expr = Expr::synthetic(
+                                ExprKind::Identifier(format!("{subj_str}[{i}]")),
+                                subject.span,
+                            );
                             self.emit_pattern_condition(&elem_expr, pat);
                         }
                     }
@@ -405,40 +395,30 @@ fn collect_bindings_inner(
                 } else {
                     format!("{}._{i}", expr_to_str(subject))
                 };
-                let field_expr = Expr {
-                    kind: ExprKind::Identifier(field_access.clone()),
-                    span: subject.span,
-                };
+                let field_expr =
+                    Expr::synthetic(ExprKind::Identifier(field_access.clone()), subject.span);
                 collect_bindings_inner(&field_expr, field_pat, expr_to_str, variant_info, bindings);
             }
         }
         PatternKind::Record { fields } => {
             for (name, pat) in fields {
                 let field_access = format!("{}.{}", expr_to_str(subject), name);
-                let field_expr = Expr {
-                    kind: ExprKind::Identifier(field_access.clone()),
-                    span: subject.span,
-                };
+                let field_expr =
+                    Expr::synthetic(ExprKind::Identifier(field_access.clone()), subject.span);
                 collect_bindings_inner(&field_expr, pat, expr_to_str, variant_info, bindings);
             }
         }
         PatternKind::Tuple(patterns) => {
             for (i, pat) in patterns.iter().enumerate() {
                 let elem_access = format!("{}[{}]", expr_to_str(subject), i);
-                let elem_expr = Expr {
-                    kind: ExprKind::Identifier(elem_access),
-                    span: subject.span,
-                };
+                let elem_expr = Expr::synthetic(ExprKind::Identifier(elem_access), subject.span);
                 collect_bindings_inner(&elem_expr, pat, expr_to_str, variant_info, bindings);
             }
         }
         PatternKind::Array { elements, rest } => {
             for (i, pat) in elements.iter().enumerate() {
                 let elem_access = format!("{}[{}]", expr_to_str(subject), i);
-                let elem_expr = Expr {
-                    kind: ExprKind::Identifier(elem_access),
-                    span: subject.span,
-                };
+                let elem_expr = Expr::synthetic(ExprKind::Identifier(elem_access), subject.span);
                 collect_bindings_inner(&elem_expr, pat, expr_to_str, variant_info, bindings);
             }
             if let Some(name) = rest
