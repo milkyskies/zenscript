@@ -657,6 +657,30 @@ impl Checker {
             }
         }
 
+        // For-block overload resolution: if callee is a for-block function with
+        // multiple overloads, select the one matching the first argument's type
+        let callee_ty = if let ExprKind::Identifier(name) = &callee.kind
+            && let Some(overloads) = self.for_block_overloads.get(name.as_str())
+            && overloads.len() > 1
+        {
+            let first_arg_type = arg_types.first();
+            if let Some(first_arg) = first_arg_type {
+                let first_arg_name = first_arg.display_name();
+                if let Some((_, fn_type)) = overloads
+                    .iter()
+                    .find(|(type_name, _)| *type_name == first_arg_name)
+                {
+                    fn_type.clone()
+                } else {
+                    callee_ty
+                }
+            } else {
+                callee_ty
+            }
+        } else {
+            callee_ty
+        };
+
         match callee_ty {
             Type::Function {
                 params,
@@ -1190,6 +1214,22 @@ impl Checker {
                 let stdlib_fn = fallback_matches[0].clone();
                 self.unused.used_names.insert(name.to_string());
                 return self.validate_stdlib_pipe_call(&stdlib_fn, name, left_ty, right);
+            }
+        }
+
+        // For-block overload resolution: if the function has multiple overloads
+        // (e.g. toModel on AccentRow vs EntryRow), select based on piped type
+        if let Some(name) = bare_name
+            && let Some(overloads) = self.for_block_overloads.get(name)
+            && overloads.len() > 1
+        {
+            let left_type_name = left_ty.display_name();
+            if let Some((_, fn_type)) = overloads
+                .iter()
+                .find(|(type_name, _)| *type_name == left_type_name)
+            {
+                // Temporarily define the correct overload in scope
+                self.env.define(name, fn_type.clone());
             }
         }
 

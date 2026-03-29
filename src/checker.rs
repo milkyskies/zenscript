@@ -122,6 +122,9 @@ pub struct Checker {
     /// Maps for-block function names to their parent type name.
     /// Used to allow same-named functions on different types (e.g. Entry.fromRow, Accent.fromRow).
     for_block_fn_types: HashMap<String, String>,
+    /// Maps for-block function names to all overloads: (receiver_type_name, fn_type).
+    /// Used to resolve the correct overload when multiple for-blocks define the same function name.
+    for_block_overloads: HashMap<String, Vec<(String, Type)>>,
 }
 
 /// Signature of a trait method (for checking implementations).
@@ -291,6 +294,7 @@ impl Checker {
             fn_required_params: HashMap::new(),
             fn_param_names: HashMap::new(),
             for_block_fn_types: HashMap::new(),
+            for_block_overloads: HashMap::new(),
         }
     }
 
@@ -1204,13 +1208,17 @@ impl Checker {
                 params: param_types,
                 return_type: Box::new(return_type),
             };
-            self.env.define(&func.name, fn_type);
+            self.env.define(&func.name, fn_type.clone());
             self.unused.defined_sources.insert(
                 func.name.clone(),
                 format!("for-block function from \"{}\"", source),
             );
             self.for_block_fn_types
                 .insert(func.name.clone(), type_name.clone());
+            self.for_block_overloads
+                .entry(func.name.clone())
+                .or_default()
+                .push((type_name.clone(), fn_type));
 
             // Track required (non-default) parameter count
             let required_params = func.params.iter().filter(|p| p.default.is_none()).count();
@@ -1650,12 +1658,16 @@ impl Checker {
             if !is_different_for_block {
                 self.check_no_redefinition(&func.name, block.span);
             }
-            self.env.define(&func.name, fn_type);
+            self.env.define(&func.name, fn_type.clone());
             self.unused
                 .defined_sources
                 .insert(func.name.clone(), "for-block function".to_string());
             self.for_block_fn_types
                 .insert(func.name.clone(), type_name.clone());
+            self.for_block_overloads
+                .entry(func.name.clone())
+                .or_default()
+                .push((type_name.clone(), fn_type));
 
             // Track required (non-default) parameter count
             let required_params = func.params.iter().filter(|p| p.default.is_none()).count();

@@ -3509,3 +3509,89 @@ fn stdlib_call_correct_arity_ok() {
             .collect::<Vec<_>>()
     );
 }
+
+// ── For-block method resolution with multiple overloads ──
+
+#[test]
+fn for_block_overload_resolves_correct_return_type_in_pipe() {
+    let program = crate::parser::Parser::new(
+        r#"
+type AccentRow { id: number }
+type EntryRow { id: number }
+type Accent { id: number }
+type Entry { id: number }
+
+for AccentRow {
+    fn toModel(self) -> Accent { Accent(id: self.id) }
+}
+
+for EntryRow {
+    fn toModel(self) -> Entry { Entry(id: self.id) }
+}
+
+const row = AccentRow(id: 1)
+const _result = row |> toModel
+"#,
+    )
+    .parse_program()
+    .expect("should parse");
+
+    let (diags, types) = Checker::new().check_with_types(&program);
+    let errors: Vec<_> = diags
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "got: {:?}",
+        errors.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    if let Some(ty) = types.get("_result") {
+        assert_eq!(
+            ty, "Accent",
+            "should resolve AccentRow's toModel, got: {ty}"
+        );
+    }
+}
+
+#[test]
+fn for_block_overload_resolves_correct_return_type_in_call() {
+    let program = crate::parser::Parser::new(
+        r#"
+type AccentRow { id: number }
+type EntryRow { id: number }
+type Accent { id: number }
+type Entry { id: number }
+
+for AccentRow {
+    fn toModel(self) -> Accent { Accent(id: self.id) }
+}
+
+for EntryRow {
+    fn toModel(self) -> Entry { Entry(id: self.id) }
+}
+
+const row = AccentRow(id: 1)
+const _result = toModel(row)
+"#,
+    )
+    .parse_program()
+    .expect("should parse");
+
+    let (diags, types) = Checker::new().check_with_types(&program);
+    let errors: Vec<_> = diags
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "got: {:?}",
+        errors.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    if let Some(ty) = types.get("_result") {
+        assert_eq!(
+            ty, "Accent",
+            "should resolve AccentRow's toModel, got: {ty}"
+        );
+    }
+}
