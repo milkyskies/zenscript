@@ -3643,3 +3643,35 @@ fn greet(name: string) -> string { `Hello, ${name}!` }",
         "typeof forward ref to local fn should error: {diags:?}"
     );
 }
+
+// ── Boundary type compatibility ──────────────────────────
+
+#[test]
+fn value_assignable_to_option() {
+    // A concrete value should be assignable to Option<T> (implicit Some wrapping)
+    let diags = check("const x: Option<number> = 42");
+    assert!(
+        !has_error(&diags, "E001"),
+        "concrete value should be assignable to Option<T>, got: {:?}",
+        diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .map(|d| &d.message)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn array_assignable_to_option_array() {
+    // An array should be assignable to Option<Array<T>>
+    let diags = check("const x: Option<Array<number>> = [1, 2, 3]");
+    assert!(
+        !has_error(&diags, "E001"),
+        "array should be assignable to Option<Array<T>>, got: {:?}",
+        diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .map(|d| &d.message)
+            .collect::<Vec<_>>()
+    );
+}

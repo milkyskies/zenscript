@@ -2091,6 +2091,8 @@ impl Checker {
                 true // None (Option<Unknown>) is compatible with any Option<T>
             }
             (Type::Option(a), Type::Option(b)) => self.types_compatible(a, b),
+            // A concrete value T is assignable to Option<T> (implicit Some wrapping)
+            (Type::Option(inner), actual) => self.types_compatible(inner, actual),
             (Type::Settable(_), Type::Settable(b)) if matches!(**b, Type::Unknown) => {
                 true // Clear/Unchanged (Settable<Unknown>) is compatible with any Settable<T>
             }
