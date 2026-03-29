@@ -961,6 +961,32 @@ impl Checker {
             TypeExprKind::Tuple(types) => {
                 Type::Tuple(types.iter().map(|t| self.resolve_type(t)).collect())
             }
+            TypeExprKind::Intersection(types) => {
+                // Resolve each member and merge into a single Record if all are records,
+                // otherwise keep as the first resolved type (best-effort for npm interop)
+                let resolved: Vec<Type> = types.iter().map(|t| self.resolve_type(t)).collect();
+                let mut fields = Vec::new();
+                let mut all_records = true;
+                let mut first = None;
+                for ty in &resolved {
+                    let concrete = self
+                        .env
+                        .resolve_to_concrete(ty, &expr::simple_resolve_type_expr);
+                    if let Type::Record(f) = concrete {
+                        fields.extend(f);
+                    } else {
+                        all_records = false;
+                        if first.is_none() {
+                            first = Some(ty.clone());
+                        }
+                    }
+                }
+                if all_records && !fields.is_empty() {
+                    Type::Record(fields)
+                } else {
+                    first.unwrap_or_else(|| resolved.into_iter().next().unwrap_or(Type::Unknown))
+                }
+            }
             TypeExprKind::TypeOf(name) => {
                 let root = name.split('.').next().unwrap_or(name);
                 self.unused.used_names.insert(root.to_string());
