@@ -42,9 +42,11 @@ impl TsgoResolver {
         program: &Program,
         resolved_imports: &HashMap<String, crate::resolve::ResolvedImports>,
         source_dir: &Path,
+        tsconfig_paths: &crate::resolve::TsconfigPaths,
     ) -> HashMap<String, Vec<DtsExport>> {
-        // Find relative imports that resolved to .ts/.tsx (not .fl)
-        let ts_imports = find_relative_ts_imports(program, resolved_imports, source_dir);
+        // Find imports that resolved to .ts/.tsx (not .fl)
+        let ts_imports =
+            find_relative_ts_imports(program, resolved_imports, source_dir, tsconfig_paths);
 
         let probe = generate_probe(program, resolved_imports, &ts_imports);
         if probe.is_empty() {
@@ -106,23 +108,33 @@ impl TsgoResolver {
     }
 }
 
-/// Find relative imports that don't resolve to `.fl` files but do resolve to
-/// `.ts`/`.tsx` files. Returns a map from the original import source (e.g.
-/// `"../utils/date"`) to its absolute file path.
+/// Find imports that don't resolve to `.fl` files but do resolve to
+/// `.ts`/`.tsx` files. Handles both relative imports and tsconfig path aliases.
 fn find_relative_ts_imports(
     program: &Program,
     resolved_imports: &HashMap<String, crate::resolve::ResolvedImports>,
     source_dir: &Path,
+    tsconfig_paths: &crate::resolve::TsconfigPaths,
 ) -> HashMap<String, PathBuf> {
     let mut ts_imports = HashMap::new();
     for item in &program.items {
         if let ItemKind::Import(decl) = &item.kind {
+            // Skip already-resolved .fl imports
+            if resolved_imports.contains_key(&decl.source) {
+                continue;
+            }
+
             let is_relative = decl.source.starts_with("./") || decl.source.starts_with("../");
-            if is_relative
-                && !resolved_imports.contains_key(&decl.source)
-                && let Some(ts_path) = crate::resolve::resolve_ts_path(source_dir, &decl.source)
-            {
-                ts_imports.insert(decl.source.clone(), ts_path);
+            if is_relative {
+                if let Some(ts_path) = crate::resolve::resolve_ts_path(source_dir, &decl.source) {
+                    ts_imports.insert(decl.source.clone(), ts_path);
+                }
+            } else if let Some(resolved_path) = tsconfig_paths.resolve(&decl.source) {
+                // Tsconfig path alias that resolved to a .ts/.tsx file
+                let ext = resolved_path.extension().and_then(|e| e.to_str());
+                if matches!(ext, Some("ts" | "tsx")) {
+                    ts_imports.insert(decl.source.clone(), resolved_path);
+                }
             }
         }
     }
@@ -1561,7 +1573,12 @@ const [input, setInput] = useState("")
         let probe = generate_probe(&program, &HashMap::new(), &HashMap::new());
         eprintln!("PROBE:\n{probe}");
         let mut resolver = TsgoResolver::new(&todo_app_dir);
-        let result = resolver.resolve_imports(&program, &HashMap::new(), Path::new("."));
+        let result = resolver.resolve_imports(
+            &program,
+            &HashMap::new(),
+            Path::new("."),
+            &crate::resolve::TsconfigPaths::default(),
+        );
 
         eprintln!("tsgo result keys: {:?}", result.keys().collect::<Vec<_>>());
         if let Some(react_exports) = result.get("react") {
@@ -1608,7 +1625,12 @@ const [filter, setFilter] = useState<Filter>(Filter.All)
         eprintln!("PROBE:\n{probe}");
 
         let mut resolver = TsgoResolver::new(&todo_app_dir);
-        let result = resolver.resolve_imports(&program, &HashMap::new(), Path::new("."));
+        let result = resolver.resolve_imports(
+            &program,
+            &HashMap::new(),
+            Path::new("."),
+            &crate::resolve::TsconfigPaths::default(),
+        );
 
         if let Some(react_exports) = result.get("react") {
             for export in react_exports {

@@ -220,10 +220,15 @@ impl FloeLsp {
                 let mut index = SymbolIndex::build(&program);
 
                 // Resolve .fl imports for cross-file type checking
-                let resolved_imports = if let Ok(source_path) = uri.to_file_path() {
-                    crate::resolve::resolve_imports(&source_path, &program)
+                let (resolved_imports, tsconfig_paths) = if let Ok(source_path) = uri.to_file_path()
+                {
+                    let source_dir = source_path.parent().unwrap_or(Path::new("."));
+                    let project_dir = find_project_dir(source_dir);
+                    let paths = crate::resolve::TsconfigPaths::from_project_dir(&project_dir);
+                    let resolved = crate::resolve::resolve_imports(&source_path, &program, &paths);
+                    (resolved, paths)
                 } else {
-                    Default::default()
+                    (Default::default(), Default::default())
                 };
 
                 // Resolve .d.ts imports BEFORE the checker so it gets npm type info
@@ -233,8 +238,6 @@ impl FloeLsp {
                     let source_dir = source_path.parent().unwrap_or(Path::new("."));
                     let project_dir = find_project_dir(source_dir);
                     let cache = self.dts_cache.read().await.clone();
-                    let tsconfig_paths =
-                        crate::resolve::TsconfigPaths::from_project_dir(&project_dir);
                     let (import_diags, new_cache) = enrich_from_imports(
                         &program,
                         &project_dir,
@@ -247,8 +250,12 @@ impl FloeLsp {
 
                     // Use tsgo for fully-resolved types — no fallback
                     let mut tsgo_resolver = crate::interop::TsgoResolver::new(&project_dir);
-                    dts_map =
-                        tsgo_resolver.resolve_imports(&program, &resolved_imports, source_dir);
+                    dts_map = tsgo_resolver.resolve_imports(
+                        &program,
+                        &resolved_imports,
+                        source_dir,
+                        &tsconfig_paths,
+                    );
 
                     if !new_cache.is_empty() {
                         let mut cache_write = self.dts_cache.write().await;

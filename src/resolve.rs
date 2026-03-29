@@ -135,9 +135,13 @@ pub struct ResolvedImports {
 /// Resolve all relative imports for a given file.
 ///
 /// Returns a map from import source (e.g., `"./types"`) to its resolved symbols.
-/// Non-relative imports (npm packages) are skipped.
+/// Non-relative imports (npm packages) are skipped, unless they match a tsconfig path alias.
 /// Circular imports are handled by tracking visited files.
-pub fn resolve_imports(file_path: &Path, program: &Program) -> HashMap<String, ResolvedImports> {
+pub fn resolve_imports(
+    file_path: &Path,
+    program: &Program,
+    tsconfig_paths: &TsconfigPaths,
+) -> HashMap<String, ResolvedImports> {
     let mut results = HashMap::new();
     let mut visited = HashSet::new();
 
@@ -152,18 +156,36 @@ pub fn resolve_imports(file_path: &Path, program: &Program) -> HashMap<String, R
 
     for item in &program.items {
         if let ItemKind::Import(decl) = &item.kind {
-            // Skip npm/non-relative imports
-            if !decl.source.starts_with('.') {
-                continue;
-            }
-
             // Already resolved this source
             if results.contains_key(&decl.source) {
                 continue;
             }
 
-            if let Some(resolved) = resolve_single_import(base_dir, &decl.source, &mut visited) {
-                results.insert(decl.source.clone(), resolved);
+            let is_relative = decl.source.starts_with('.');
+
+            if is_relative {
+                if let Some(resolved) =
+                    resolve_single_import(base_dir, &decl.source, &mut visited, tsconfig_paths)
+                {
+                    results.insert(decl.source.clone(), resolved);
+                }
+            } else if let Some(resolved_path) = tsconfig_paths.resolve(&decl.source) {
+                // Tsconfig path alias that resolved to a .fl file
+                if resolved_path.extension().is_some_and(|e| e == "fl")
+                    && let Some(stem) = resolved_path.file_stem()
+                {
+                    let alias_dir = resolved_path.parent().unwrap_or(Path::new("."));
+                    let relative_source = format!("./{}", stem.to_string_lossy());
+                    if let Some(resolved) = resolve_single_import(
+                        alias_dir,
+                        &relative_source,
+                        &mut visited,
+                        tsconfig_paths,
+                    ) {
+                        results.insert(decl.source.clone(), resolved);
+                    }
+                }
+                // .ts/.tsx aliases are handled by tsgo, not here
             }
         }
     }
@@ -176,6 +198,7 @@ fn resolve_single_import(
     base_dir: &Path,
     source: &str,
     visited: &mut HashSet<PathBuf>,
+    tsconfig_paths: &TsconfigPaths,
 ) -> Option<ResolvedImports> {
     let resolved_path = resolve_path(base_dir, source)?;
 
@@ -196,7 +219,7 @@ fn resolve_single_import(
 
     // Also resolve transitive imports from the imported file
     let transitive_dir = resolved_path.parent().unwrap_or(Path::new("."));
-    let transitive = resolve_imports_inner(transitive_dir, &program, visited);
+    let transitive = resolve_imports_inner(transitive_dir, &program, visited, tsconfig_paths);
 
     // Collect transitive type decls, for-blocks, and trait decls so the checker can register them
     for resolved in transitive.values() {
@@ -313,6 +336,7 @@ fn resolve_imports_inner(
     base_dir: &Path,
     program: &Program,
     visited: &mut HashSet<PathBuf>,
+    tsconfig_paths: &TsconfigPaths,
 ) -> HashMap<String, ResolvedImports> {
     let mut results = HashMap::new();
 
@@ -324,7 +348,9 @@ fn resolve_imports_inner(
             if results.contains_key(&decl.source) {
                 continue;
             }
-            if let Some(resolved) = resolve_single_import(base_dir, &decl.source, visited) {
+            if let Some(resolved) =
+                resolve_single_import(base_dir, &decl.source, visited, tsconfig_paths)
+            {
                 results.insert(decl.source.clone(), resolved);
             }
         }
@@ -580,7 +606,7 @@ mod tests {
         let (_dir, base) = setup_files(&[("main.fl", "")]);
         let main_path = base.join("main.fl");
         let program = parse_program("");
-        let result = resolve_imports(&main_path, &program);
+        let result = resolve_imports(&main_path, &program, &TsconfigPaths::default());
         assert!(result.is_empty());
     }
 
@@ -589,7 +615,7 @@ mod tests {
         let (_dir, base) = setup_files(&[("main.fl", "const x = 1")]);
         let main_path = base.join("main.fl");
         let program = parse_program("const x = 1");
-        let result = resolve_imports(&main_path, &program);
+        let result = resolve_imports(&main_path, &program, &TsconfigPaths::default());
         assert!(result.is_empty());
     }
 
@@ -600,7 +626,7 @@ mod tests {
         let (_dir, base) = setup_files(&[("main.fl", "")]);
         let main_path = base.join("main.fl");
         let program = parse_program("import { useState } from \"react\"");
-        let result = resolve_imports(&main_path, &program);
+        let result = resolve_imports(&main_path, &program, &TsconfigPaths::default());
         assert!(result.is_empty());
     }
 
@@ -614,7 +640,7 @@ mod tests {
         ]);
         let main_path = base.join("main.fl");
         let program = parse_program("import { User } from \"./types\"");
-        let result = resolve_imports(&main_path, &program);
+        let result = resolve_imports(&main_path, &program, &TsconfigPaths::default());
         let resolved = result.get("./types").unwrap();
         assert_eq!(resolved.type_decls.len(), 1);
         assert_eq!(resolved.type_decls[0].name, "User");
@@ -626,7 +652,7 @@ mod tests {
             setup_files(&[("main.fl", ""), ("helpers.fl", "export fn greet() { 1 }")]);
         let main_path = base.join("main.fl");
         let program = parse_program("import { greet } from \"./helpers\"");
-        let result = resolve_imports(&main_path, &program);
+        let result = resolve_imports(&main_path, &program, &TsconfigPaths::default());
         let resolved = result.get("./helpers").unwrap();
         assert_eq!(resolved.function_decls.len(), 1);
         assert_eq!(resolved.function_decls[0].name, "greet");
@@ -637,7 +663,7 @@ mod tests {
         let (_dir, base) = setup_files(&[("main.fl", ""), ("config.fl", "export const MAX = 100")]);
         let main_path = base.join("main.fl");
         let program = parse_program("import { MAX } from \"./config\"");
-        let result = resolve_imports(&main_path, &program);
+        let result = resolve_imports(&main_path, &program, &TsconfigPaths::default());
         let resolved = result.get("./config").unwrap();
         assert_eq!(resolved.const_names, vec!["MAX".to_string()]);
     }
@@ -655,7 +681,7 @@ mod tests {
         ]);
         let main_path = base.join("main.fl");
         let program = parse_program("import { Secret } from \"./internal\"");
-        let result = resolve_imports(&main_path, &program);
+        let result = resolve_imports(&main_path, &program, &TsconfigPaths::default());
         let resolved = result.get("./internal").unwrap();
         assert!(resolved.type_decls.is_empty());
         assert!(resolved.function_decls.is_empty());
@@ -675,7 +701,7 @@ mod tests {
         ]);
         let main_path = base.join("main.fl");
         let program = parse_program("import { A } from \"./lib\"\nimport { b } from \"./lib\"");
-        let result = resolve_imports(&main_path, &program);
+        let result = resolve_imports(&main_path, &program, &TsconfigPaths::default());
         // Should only resolve once
         assert_eq!(result.len(), 1);
         let resolved = result.get("./lib").unwrap();
@@ -696,7 +722,7 @@ mod tests {
         ]);
         let main_path = base.join("main.fl");
         let program = parse_program("import { for User } from \"./ext\"");
-        let result = resolve_imports(&main_path, &program);
+        let result = resolve_imports(&main_path, &program, &TsconfigPaths::default());
         let resolved = result.get("./ext").unwrap();
         // The exported for-block function should be present
         assert!(!resolved.for_blocks.is_empty());
@@ -710,7 +736,7 @@ mod tests {
         let (_dir, base) = setup_files(&[("main.fl", "")]);
         let main_path = base.join("main.fl");
         let program = parse_program("import { foo } from \"./missing\"");
-        let result = resolve_imports(&main_path, &program);
+        let result = resolve_imports(&main_path, &program, &TsconfigPaths::default());
         // Missing file should not appear in results
         assert!(!result.contains_key("./missing"));
     }
@@ -722,7 +748,7 @@ mod tests {
         let (_dir, base) = setup_files(&[("sub/main.fl", ""), ("lib.fl", "export const X = 1")]);
         let main_path = base.join("sub/main.fl");
         let program = parse_program("import { X } from \"../lib\"");
-        let result = resolve_imports(&main_path, &program);
+        let result = resolve_imports(&main_path, &program, &TsconfigPaths::default());
         assert!(result.contains_key("../lib"));
     }
 
@@ -737,7 +763,7 @@ mod tests {
         ]);
         let main_path = base.join("main.fl");
         let program = parse_program("import { Display } from \"./traits\"");
-        let result = resolve_imports(&main_path, &program);
+        let result = resolve_imports(&main_path, &program, &TsconfigPaths::default());
         let resolved = result.get("./traits").unwrap();
         assert_eq!(resolved.trait_decls.len(), 1);
         assert_eq!(resolved.trait_decls[0].name, "Display");
@@ -751,7 +777,7 @@ mod tests {
         ]);
         let main_path = base.join("main.fl");
         let program = parse_program("import { Button } from \"./components\"");
-        let result = resolve_imports(&main_path, &program);
+        let result = resolve_imports(&main_path, &program, &TsconfigPaths::default());
         let resolved = result.get("./components").unwrap();
         assert_eq!(resolved.function_decls.len(), 1);
     }
@@ -771,7 +797,7 @@ mod tests {
         ]);
         let main_path = base.join("main.fl");
         let program = parse_program("import { Product } from \"./types\"");
-        let result = resolve_imports(&main_path, &program);
+        let result = resolve_imports(&main_path, &program, &TsconfigPaths::default());
         let resolved = result.get("./types").unwrap();
 
         // Product should be present
@@ -819,7 +845,7 @@ mod tests {
         ]);
         let main_path = base.join("main.fl");
         let program = parse_program("import { C } from \"./types\"");
-        let result = resolve_imports(&main_path, &program);
+        let result = resolve_imports(&main_path, &program, &TsconfigPaths::default());
         let resolved = result.get("./types").unwrap();
 
         let c_decl = &resolved.type_decls[0];
