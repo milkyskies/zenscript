@@ -660,23 +660,10 @@ impl Checker {
         // For-block overload resolution: if callee is a for-block function with
         // multiple overloads, select the one matching the first argument's type
         let callee_ty = if let ExprKind::Identifier(name) = &callee.kind
-            && let Some(overloads) = self.for_block_overloads.get(name.as_str())
-            && overloads.len() > 1
+            && let Some(first_arg) = arg_types.first()
+            && let Some(resolved) = self.resolve_for_block_overload(name, first_arg)
         {
-            let first_arg_type = arg_types.first();
-            if let Some(first_arg) = first_arg_type {
-                let first_arg_name = first_arg.display_name();
-                if let Some((_, fn_type)) = overloads
-                    .iter()
-                    .find(|(type_name, _)| *type_name == first_arg_name)
-                {
-                    fn_type.clone()
-                } else {
-                    callee_ty
-                }
-            } else {
-                callee_ty
-            }
+            resolved
         } else {
             callee_ty
         };
@@ -1218,20 +1205,16 @@ impl Checker {
         }
 
         // For-block overload resolution: if the function has multiple overloads
-        // (e.g. toModel on AccentRow vs EntryRow), select based on piped type
-        if let Some(name) = bare_name
-            && let Some(overloads) = self.for_block_overloads.get(name)
-            && overloads.len() > 1
-        {
-            let left_type_name = left_ty.display_name();
-            if let Some((_, fn_type)) = overloads
-                .iter()
-                .find(|(type_name, _)| *type_name == left_type_name)
-            {
-                // Temporarily define the correct overload in scope
-                self.env.define(name, fn_type.clone());
-            }
-        }
+        // (e.g. toModel on AccentRow vs EntryRow), select based on piped type.
+        // Uses a temporary scope so the overload doesn't leak to subsequent code.
+        let has_overload = bare_name.is_some_and(|name| {
+            self.resolve_for_block_overload(name, left_ty)
+                .is_some_and(|fn_type| {
+                    self.env.push_scope();
+                    self.env.define(name, fn_type);
+                    true
+                })
+        });
 
         // Default: check normally, with pipe context for arg validation
         let left_ty_clone = left_ty.clone();
@@ -1239,6 +1222,10 @@ impl Checker {
             |ctx| ctx.pipe_input_type = Some(left_ty_clone),
             |this| this.check_expr(right),
         );
+
+        if has_overload {
+            self.env.pop_scope();
+        }
 
         // If the right side is a bare function identifier (not a call),
         // the pipe effectively calls it: `a |> f` means `f(a)`.
@@ -1482,6 +1469,25 @@ impl Checker {
             },
             other => other.clone(),
         }
+    }
+
+    /// Resolve the correct for-block overload for a function name based on the
+    /// dispatch type (first arg or piped value). Returns None if no overload matches
+    /// or if the function has only one definition.
+    fn resolve_for_block_overload(&self, name: &str, dispatch_ty: &Type) -> Option<Type> {
+        let overloads = self.for_block_overloads.get(name)?;
+        if overloads.len() <= 1 {
+            return None;
+        }
+        // Match Named types directly by name to avoid display_name() allocation
+        let dispatch_name = match dispatch_ty {
+            Type::Named(n) => n.as_str(),
+            _ => &dispatch_ty.display_name(),
+        };
+        let (_, fn_type) = overloads
+            .iter()
+            .find(|(type_name, _)| type_name == dispatch_name)?;
+        Some(fn_type.clone())
     }
 
     /// Resolve the type of a member access (`obj_ty.field`), producing diagnostics for errors.
