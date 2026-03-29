@@ -657,10 +657,7 @@ fn generate_probe(
                     let has_import_spreads = entries.iter().any(|e| {
                         if let Some(spread) = e.as_spread() {
                             if let Some(type_expr) = &spread.type_expr {
-                                return type_expr_references_imports(
-                                    type_expr,
-                                    &imported_names,
-                                );
+                                return type_expr_references_imports(type_expr, &imported_names);
                             }
                             imported_names.contains_key(&spread.type_name)
                         } else {
@@ -670,22 +667,17 @@ fn generate_probe(
                     if has_import_spreads {
                         // Emit typeof const bindings for spreads
                         for entry in entries {
-                            if let Some(spread) = entry.as_spread() {
-                                if let Some(type_expr) = &spread.type_expr {
-                                    collect_typeof_names(type_expr, &mut |name| {
-                                        if !typeof_consts_emitted.contains(name) {
-                                            if let Some(expr) =
-                                                local_const_exprs.get(name)
-                                            {
-                                                lines.push(format!(
-                                                    "const {name} = {expr};"
-                                                ));
-                                            }
-                                            typeof_consts_emitted
-                                                .insert(name.to_string());
+                            if let Some(spread) = entry.as_spread()
+                                && let Some(type_expr) = &spread.type_expr
+                            {
+                                collect_typeof_names(type_expr, &mut |name| {
+                                    if !typeof_consts_emitted.contains(name) {
+                                        if let Some(expr) = local_const_exprs.get(name) {
+                                            lines.push(format!("const {name} = {expr};"));
                                         }
-                                    });
-                                }
+                                        typeof_consts_emitted.insert(name.to_string());
+                                    }
+                                });
                             }
                         }
                         // Emit the full type as a probe

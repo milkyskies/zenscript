@@ -638,9 +638,8 @@ impl<'src> Lowerer<'src> {
                 SyntaxKind::RECORD_SPREAD => {
                     let span = self.node_span(&child);
                     // Lower the type expression inside the spread
-                    let type_expr_node = child
-                        .children()
-                        .find(|c| c.kind() == SyntaxKind::TYPE_EXPR.into());
+                    let type_expr_node =
+                        child.children().find(|c| c.kind() == SyntaxKind::TYPE_EXPR);
                     let type_expr = type_expr_node
                         .as_ref()
                         .and_then(|n| self.lower_type_expr(n));
