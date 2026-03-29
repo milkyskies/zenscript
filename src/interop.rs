@@ -67,7 +67,7 @@ pub struct ModuleExports {
 /// the declaration file for a given module specifier.
 pub fn resolve_module(specifier: &str, project_dir: &Path) -> Result<ResolvedModule, String> {
     // First try: look for a tsconfig.json and use tsc's resolution
-    let tsconfig = find_tsconfig(project_dir);
+    let tsconfig = crate::resolve::find_tsconfig_from(project_dir);
 
     let mut cmd = Command::new("tsc");
     cmd.current_dir(project_dir);
@@ -131,20 +131,6 @@ fn parse_resolved_path(trace: &str, specifier: &str) -> Result<ResolvedModule, S
     Err(format!(
         "could not resolve module '{specifier}'. Make sure the package is installed (npm install)"
     ))
-}
-
-/// Finds the nearest tsconfig.json by walking up from project_dir.
-fn find_tsconfig(dir: &Path) -> Option<PathBuf> {
-    let mut current = dir.to_path_buf();
-    loop {
-        let tsconfig = current.join("tsconfig.json");
-        if tsconfig.exists() {
-            return Some(tsconfig);
-        }
-        if !current.pop() {
-            return None;
-        }
-    }
 }
 
 /// Resolves a module specifier and returns wrapped Floe types for its exports.

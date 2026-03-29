@@ -9,6 +9,79 @@ use std::path::{Path, PathBuf};
 use crate::parser::Parser;
 use crate::parser::ast::*;
 
+/// Raw parsed tsconfig.json data (shared between TsconfigPaths and probe tsconfig generation).
+pub struct ParsedTsconfig {
+    /// Absolute path to the tsconfig.json file
+    pub tsconfig_path: PathBuf,
+    /// Resolved absolute baseUrl directory
+    pub base_url: PathBuf,
+    /// Raw compilerOptions.paths object (if present)
+    pub paths: Option<serde_json::Map<String, serde_json::Value>>,
+}
+
+impl ParsedTsconfig {
+    /// Parse the nearest tsconfig.json from a project directory.
+    pub fn from_project_dir(project_dir: &Path) -> Option<Self> {
+        let tsconfig_path = find_tsconfig_from(project_dir)?;
+        let content = std::fs::read_to_string(&tsconfig_path).ok()?;
+        let stripped = strip_jsonc_comments(&content);
+        let json: serde_json::Value = serde_json::from_str(&stripped).ok()?;
+
+        let tsconfig_dir = tsconfig_path.parent().unwrap_or(project_dir);
+
+        let base_url = json
+            .pointer("/compilerOptions/baseUrl")
+            .and_then(|v| v.as_str())
+            .map(|b| tsconfig_dir.join(b))
+            .unwrap_or_else(|| tsconfig_dir.to_path_buf());
+
+        let paths = json
+            .pointer("/compilerOptions/paths")
+            .and_then(|v| v.as_object())
+            .cloned();
+
+        Some(Self {
+            tsconfig_path,
+            base_url,
+            paths,
+        })
+    }
+
+    /// Format paths and baseUrl as JSON properties for inclusion in a probe tsconfig.
+    /// Returns an empty string if no paths are configured.
+    pub fn to_probe_json_fragment(&self) -> String {
+        let mut parts = String::new();
+
+        // baseUrl as absolute path so it works from the probe temp dir
+        let base_url_json =
+            serde_json::to_string(&self.base_url.display().to_string()).unwrap_or_default();
+        parts.push_str(&format!(",\n    \"baseUrl\": {base_url_json}"));
+
+        if let Some(ref paths_obj) = self.paths {
+            // Rewrite path targets to absolute paths
+            let mut rewritten = serde_json::Map::new();
+            for (pattern, targets) in paths_obj {
+                if let Some(arr) = targets.as_array() {
+                    let abs_targets: Vec<serde_json::Value> = arr
+                        .iter()
+                        .filter_map(|t| t.as_str())
+                        .map(|t| {
+                            serde_json::Value::String(self.base_url.join(t).display().to_string())
+                        })
+                        .collect();
+                    rewritten.insert(pattern.clone(), serde_json::Value::Array(abs_targets));
+                }
+            }
+            parts.push_str(&format!(
+                ",\n    \"paths\": {}",
+                serde_json::to_string(&rewritten).unwrap_or_default()
+            ));
+        }
+
+        parts
+    }
+}
+
 /// Parsed tsconfig.json path aliases.
 /// Maps alias prefixes (e.g. "#/") to their target directories.
 #[derive(Debug, Clone, Default)]
@@ -20,32 +93,14 @@ pub struct TsconfigPaths {
 impl TsconfigPaths {
     /// Parse path aliases from the nearest tsconfig.json.
     pub fn from_project_dir(project_dir: &Path) -> Self {
-        let tsconfig_path = match find_tsconfig(project_dir) {
+        let parsed = match ParsedTsconfig::from_project_dir(project_dir) {
             Some(p) => p,
             None => return Self::default(),
         };
 
-        let content = match std::fs::read_to_string(&tsconfig_path) {
-            Ok(c) => c,
-            Err(_) => return Self::default(),
-        };
-
-        let json: serde_json::Value = match serde_json::from_str(&content) {
-            Ok(v) => v,
-            Err(_) => return Self::default(),
-        };
-
-        let tsconfig_dir = tsconfig_path.parent().unwrap_or(project_dir);
-
-        let base_url = json
-            .pointer("/compilerOptions/baseUrl")
-            .and_then(|v| v.as_str())
-            .map(|b| tsconfig_dir.join(b))
-            .unwrap_or_else(|| tsconfig_dir.to_path_buf());
-
-        let paths = match json.pointer("/compilerOptions/paths") {
-            Some(serde_json::Value::Object(map)) => map,
-            _ => return Self::default(),
+        let paths = match parsed.paths {
+            Some(ref map) => map,
+            None => return Self::default(),
         };
 
         let mut mappings = Vec::new();
@@ -61,7 +116,7 @@ impl TsconfigPaths {
             let resolved_dirs: Vec<PathBuf> = targets
                 .iter()
                 .filter_map(|t| t.as_str())
-                .map(|t| base_url.join(t.trim_end_matches('*')))
+                .map(|t| parsed.base_url.join(t.trim_end_matches('*')))
                 .collect();
 
             if !resolved_dirs.is_empty() {
@@ -103,8 +158,99 @@ impl TsconfigPaths {
     }
 }
 
+/// Strip comments and trailing commas from JSONC content so it can be parsed by serde_json.
+/// Handles `//` line comments, `/* */` block comments, and trailing commas before `}` or `]`.
+pub fn strip_jsonc_comments(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    let mut in_string = false;
+
+    while let Some(&ch) = chars.peek() {
+        if in_string {
+            result.push(ch);
+            chars.next();
+            if ch == '\\' {
+                // Skip escaped character
+                if let Some(&next) = chars.peek() {
+                    result.push(next);
+                    chars.next();
+                }
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' => {
+                in_string = true;
+                result.push(ch);
+                chars.next();
+            }
+            '/' => {
+                chars.next();
+                match chars.peek() {
+                    Some('/') => {
+                        // Line comment — skip until newline
+                        chars.next();
+                        while let Some(&c) = chars.peek() {
+                            chars.next();
+                            if c == '\n' {
+                                result.push('\n');
+                                break;
+                            }
+                        }
+                    }
+                    Some('*') => {
+                        // Block comment — skip until */
+                        chars.next();
+                        while let Some(&c) = chars.peek() {
+                            chars.next();
+                            if c == '*' && chars.peek() == Some(&'/') {
+                                chars.next();
+                                result.push(' ');
+                                break;
+                            }
+                        }
+                    }
+                    _ => {
+                        result.push('/');
+                    }
+                }
+            }
+            _ => {
+                result.push(ch);
+                chars.next();
+            }
+        }
+    }
+
+    // Remove trailing commas before } or ]
+    let mut cleaned = String::with_capacity(result.len());
+    let result_chars: Vec<char> = result.chars().collect();
+    let len = result_chars.len();
+    let mut i = 0;
+    while i < len {
+        if result_chars[i] == ',' {
+            // Look ahead past whitespace for } or ]
+            let mut j = i + 1;
+            while j < len && result_chars[j].is_whitespace() {
+                j += 1;
+            }
+            if j < len && (result_chars[j] == '}' || result_chars[j] == ']') {
+                // Skip the trailing comma
+                i += 1;
+                continue;
+            }
+        }
+        cleaned.push(result_chars[i]);
+        i += 1;
+    }
+    cleaned
+}
+
 /// Find the nearest tsconfig.json by walking up from a directory.
-fn find_tsconfig(dir: &Path) -> Option<PathBuf> {
+pub fn find_tsconfig_from(dir: &Path) -> Option<PathBuf> {
     let mut current = dir.to_path_buf();
     loop {
         let tsconfig = current.join("tsconfig.json");

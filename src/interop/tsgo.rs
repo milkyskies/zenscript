@@ -1068,9 +1068,11 @@ fn create_probe_dir(
         }
     }
 
-    // Write tsconfig.json
-    let tsconfig = r#"{
-  "compilerOptions": {
+    // Write tsconfig.json, inheriting paths from the project's tsconfig if available
+    let paths_config = read_project_tsconfig_paths(project_dir);
+    let tsconfig = format!(
+        r#"{{
+  "compilerOptions": {{
     "moduleResolution": "bundler",
     "strict": false,
     "strictNullChecks": true,
@@ -1079,11 +1081,12 @@ fn create_probe_dir(
     "declaration": true,
     "emitDeclarationOnly": true,
     "outDir": "./out",
-    "skipLibCheck": true
-  },
+    "skipLibCheck": true{paths_config}
+  }},
   "include": ["probe.ts"]
-}"#;
-    std::fs::write(probe_dir.join("tsconfig.json"), tsconfig)
+}}"#
+    );
+    std::fs::write(probe_dir.join("tsconfig.json"), &tsconfig)
         .map_err(|e| format!("failed to write tsconfig.json: {e}"))?;
 
     // Symlink node_modules from the project directory
@@ -1103,6 +1106,15 @@ fn create_probe_dir(
     }
 
     Ok(tmp)
+}
+
+/// Read `paths` and `baseUrl` from the project's tsconfig.json and format them
+/// as JSON properties to include in the probe's tsconfig.
+/// Returns an empty string if no paths are configured.
+fn read_project_tsconfig_paths(project_dir: &Path) -> String {
+    crate::resolve::ParsedTsconfig::from_project_dir(project_dir)
+        .map(|p| p.to_probe_json_fragment())
+        .unwrap_or_default()
 }
 
 /// Run tsgo on the probe directory and return the output `.d.ts` content.

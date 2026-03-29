@@ -397,7 +397,7 @@ fn find_paren() {
 
 #[test]
 fn tsconfig_not_found() {
-    let result = find_tsconfig(Path::new("/nonexistent/path"));
+    let result = crate::resolve::find_tsconfig_from(Path::new("/nonexistent/path"));
     assert!(result.is_none());
 }
 
