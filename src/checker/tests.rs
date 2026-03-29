@@ -3718,3 +3718,16 @@ type Extended = typeof config & { timeout: number }",
         "typeof & record intersection should work: {diags:?}"
     );
 }
+
+#[test]
+fn intersection_after_generic_type() {
+    let diags = check(
+        "type A { x: number }
+type B { y: string }
+type C = Array<A> & B",
+    );
+    assert!(
+        diags.is_empty(),
+        "intersection after generic type should work: {diags:?}"
+    );
+}
