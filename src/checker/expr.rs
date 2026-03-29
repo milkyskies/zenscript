@@ -542,32 +542,32 @@ impl Checker {
         // Check for stdlib call: Array.sort(arr), Option.map(opt, fn), etc.
         if let ExprKind::Member { object, field } = &callee.kind
             && let ExprKind::Identifier(module) = &object.kind
-            && let Some(stdlib_fn) = self.stdlib.lookup(module, field).cloned()
+            && let Some(stdlib_fn) = self.stdlib.lookup(module, field)
         {
-            self.unused.used_names.insert(module.clone());
             let ret = stdlib_fn.return_type.clone();
             let expected_param_count = stdlib_fn.params.len();
+            let variadic = stdlib_fn.is_variadic();
             let display = format!("{module}.{field}");
+            self.unused.used_names.insert(module.clone());
 
-            // Check argument expressions
-            let mut arg_types = Vec::new();
+            let mut arg_count = 0;
             for arg in args {
                 match arg {
                     Arg::Positional(e) | Arg::Named { value: e, .. } => {
-                        arg_types.push(self.check_expr(e));
+                        self.check_expr(e);
+                        arg_count += 1;
                     }
                 }
             }
 
-            // Validate argument count
-            if arg_types.len() != expected_param_count {
+            if !variadic && arg_count != expected_param_count {
                 self.diagnostics.push(
                     Diagnostic::error(
                         format!(
                             "`{display}` expects {} argument{}, found {}",
                             expected_param_count,
                             if expected_param_count == 1 { "" } else { "s" },
-                            arg_types.len()
+                            arg_count
                         ),
                         span,
                     )
