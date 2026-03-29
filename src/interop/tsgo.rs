@@ -62,8 +62,8 @@ impl TsgoResolver {
             return build_specifier_map(program, cached, &ts_imports);
         }
 
-        // Create temp directory with probe file and tsconfig
-        let tmp = match create_probe_dir(&self.project_dir, &probe) {
+        // Create temp directory with probe file, tsconfig, and symlinked local TS files
+        let tmp = match create_probe_dir(&self.project_dir, &probe, &ts_imports) {
             Ok(dir) => dir,
             Err(e) => {
                 eprintln!("[floe] tsgo: failed to create probe dir: {e}");
@@ -228,10 +228,11 @@ fn generate_probe(
                 }
             })
             .collect();
-        // For relative TS imports, use the absolute path so tsgo can find them
-        // from the temp directory
+        // For relative TS imports, use a local filename that will be symlinked
+        // into the probe directory (avoids tsgo emitting .d.ts next to the originals)
         let source = if let Some(abs_path) = ts_imports.get(&decl.source) {
-            abs_path.to_string_lossy().into_owned()
+            let filename = abs_path.file_name().unwrap_or_default().to_string_lossy();
+            format!("./{filename}")
         } else {
             decl.source.clone()
         };
@@ -985,7 +986,11 @@ fn expr_to_ts_approx(expr: &Expr) -> String {
 }
 
 /// Create a temporary directory with the probe file and tsconfig.
-fn create_probe_dir(project_dir: &Path, probe_content: &str) -> Result<tempfile::TempDir, String> {
+fn create_probe_dir(
+    project_dir: &Path,
+    probe_content: &str,
+    ts_imports: &HashMap<String, PathBuf>,
+) -> Result<tempfile::TempDir, String> {
     let tmp = tempfile::tempdir().map_err(|e| format!("failed to create temp dir: {e}"))?;
     let probe_dir = tmp.path();
 
@@ -993,11 +998,29 @@ fn create_probe_dir(project_dir: &Path, probe_content: &str) -> Result<tempfile:
     std::fs::write(probe_dir.join("probe.ts"), probe_content)
         .map_err(|e| format!("failed to write probe.ts: {e}"))?;
 
+    // Symlink local .ts/.tsx files into the probe directory so tsgo can
+    // resolve them without absolute paths (which cause tsgo to emit stray
+    // .d.ts files next to the original sources)
+    for abs_path in ts_imports.values() {
+        if let Some(filename) = abs_path.file_name() {
+            let link = probe_dir.join(filename);
+            #[cfg(unix)]
+            {
+                std::os::unix::fs::symlink(abs_path, &link).ok();
+            }
+            #[cfg(not(unix))]
+            {
+                std::fs::copy(abs_path, &link).ok();
+            }
+        }
+    }
+
     // Write tsconfig.json
     let tsconfig = r#"{
   "compilerOptions": {
     "moduleResolution": "bundler",
     "strict": false,
+    "strictNullChecks": true,
     "noImplicitAny": false,
     "jsx": "react-jsx",
     "declaration": true,
@@ -1635,10 +1658,10 @@ const year = newDate()"#;
 
         let probe = generate_probe(&program, &HashMap::new(), &ts_imports);
 
-        // Should import using the absolute path
+        // Should import using a local filename (symlinked into probe dir)
         assert!(
-            probe.contains("import { newDate } from \"/project/src/utils/date.ts\";"),
-            "probe should use absolute path for relative TS import, got:\n{probe}"
+            probe.contains("import { newDate } from \"./date.ts\";"),
+            "probe should use local filename for relative TS import, got:\n{probe}"
         );
         // Should re-export to get the type
         assert!(
