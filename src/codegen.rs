@@ -1420,6 +1420,8 @@ impl Default for Codegen {
 /// Expand a codegen template like `$0.map($1)` with actual arg strings.
 pub(super) fn expand_codegen_template(template: &str, args: &[String]) -> String {
     let mut result = template.to_string();
+    // Replace variadic placeholder ($..) with all args comma-separated
+    result = result.replace("$..", &args.join(", "));
     // Replace in reverse order so $10 doesn't get matched by $1
     for (i, arg) in args.iter().enumerate().rev() {
         result = result.replace(&format!("${i}"), arg);

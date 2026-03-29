@@ -3441,3 +3441,27 @@ for AccentRow {
         errors
     );
 }
+
+// ── Console variadic ─────────────────────────────────────────
+
+#[test]
+fn console_log_variadic_no_error() {
+    let src = r#"
+        fn main() -> () {
+            Console.log("label:", 42)
+            Console.log("a", "b", "c")
+            Console.warn("warn:", 1, 2)
+            Console.error("err")
+        }
+    "#;
+    let diags = check(src);
+    let errors: Vec<_> = diags
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "variadic Console calls should not produce errors, got: {:?}",
+        errors
+    );
+}

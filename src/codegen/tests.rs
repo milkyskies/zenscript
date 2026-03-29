@@ -851,6 +851,37 @@ fn stdlib_number_is_finite() {
     assert_eq!(emit("Number.isFinite(42)"), "Number.isFinite(42);");
 }
 
+// ── Stdlib: Console ─────────────────────────────────────────
+
+#[test]
+fn stdlib_console_log_single() {
+    assert_eq!(emit("Console.log(\"hi\")"), "console.log(\"hi\");");
+}
+
+#[test]
+fn stdlib_console_log_variadic() {
+    assert_eq!(
+        emit("Console.log(\"label:\", 42)"),
+        "console.log(\"label:\", 42);"
+    );
+}
+
+#[test]
+fn stdlib_console_log_three_args() {
+    assert_eq!(
+        emit("Console.log(\"a\", \"b\", \"c\")"),
+        "console.log(\"a\", \"b\", \"c\");"
+    );
+}
+
+#[test]
+fn stdlib_console_warn_variadic() {
+    assert_eq!(
+        emit("Console.warn(\"warn:\", 1)"),
+        "console.warn(\"warn:\", 1);"
+    );
+}
+
 // ── Stdlib: Pipes ────────────────────────────────────────────
 
 #[test]
