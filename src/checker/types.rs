@@ -13,8 +13,13 @@ pub enum Type {
     Bool,
     /// The undefined type (used for None)
     Undefined,
-    /// A named/user-defined type
+    /// A named/user-defined type (locally defined in Floe)
     Named(String),
+    /// A foreign type from npm imports — structure unknown to Floe,
+    /// but TypeScript validated it at the source
+    Foreign(String),
+    /// Promise<T> — async return type, unwrapped by `await`
+    Promise(Box<Type>),
     /// Opaque type: only the defining module can construct/destructure
     Opaque {
         name: String,
@@ -100,7 +105,8 @@ impl Type {
             Type::String => "string".to_string(),
             Type::Bool => "boolean".to_string(),
             Type::Undefined => "undefined".to_string(),
-            Type::Named(n) => n.clone(),
+            Type::Named(n) | Type::Foreign(n) => n.clone(),
+            Type::Promise(inner) => format!("Promise<{}>", inner.display_name()),
             Type::Opaque { name, .. } => name.clone(),
             Type::Result { ok, err } => {
                 format!("Result<{}, {}>", ok.display_name(), err.display_name())
@@ -283,6 +289,7 @@ impl TypeEnv {
                     ty.clone()
                 }
             }
+            Type::Foreign(_) | Type::Promise(_) => ty.clone(),
             _ => ty.clone(),
         }
     }

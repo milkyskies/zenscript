@@ -310,16 +310,10 @@ impl Checker {
 
             ExprKind::Await(inner) => {
                 let ty = self.check_expr(inner);
-                // Unwrap Promise<T> to T
-                if let Type::Named(name) = &ty
-                    && let Some(inner_str) = name
-                        .strip_prefix("Promise<")
-                        .and_then(|s| s.strip_suffix('>'))
-                {
-                    return self.parse_type_from_display_name(inner_str);
+                match ty {
+                    Type::Promise(inner) => *inner,
+                    other => other,
                 }
-                // If not a Promise, pass through (e.g. await on a non-async value)
-                ty
             }
 
             ExprKind::Try(inner) => {
@@ -1496,9 +1490,8 @@ impl Checker {
         if overloads.len() <= 1 {
             return None;
         }
-        // Match Named types directly by name to avoid display_name() allocation
         let dispatch_name = match dispatch_ty {
-            Type::Named(n) => n.as_str(),
+            Type::Named(n) | Type::Foreign(n) => n.as_str(),
             _ => &dispatch_ty.display_name(),
         };
         let (_, fn_type) = overloads
@@ -1536,12 +1529,13 @@ impl Checker {
         }
 
         // Error on member access on Promise — must await first
-        if let Type::Named(name) = obj_ty
-            && name.starts_with("Promise<")
-        {
+        if let Type::Promise(_) = obj_ty {
             self.diagnostics.push(
                 Diagnostic::error(
-                    format!("cannot access `.{field}` on `{name}` — use `await` first"),
+                    format!(
+                        "cannot access `.{field}` on `{}` — use `await` first",
+                        obj_ty.display_name()
+                    ),
                     span,
                 )
                 .with_label("must `await` the Promise before accessing members")
@@ -1628,12 +1622,17 @@ impl Checker {
             _ => {}
         }
 
-        // Named type without a local type definition is foreign (from npm).
-        // Allow member access and return a Named type for the field so
-        // chained access (s.user.email) stays lenient through the chain.
+        // Foreign types: allow member access, return Foreign for chained access
+        if let Type::Foreign(name) = obj_ty {
+            return Type::Foreign(format!("{name}.{field}"));
+        }
+
+        // Named type that couldn't resolve to concrete — if no local type definition
+        // exists, treat as foreign (the type came from npm through cross-file propagation).
+        // If it HAS a local definition, it's a genuine error (missing field).
         if let Type::Named(name) = obj_ty {
             if self.env.lookup_type(name).is_none() {
-                return Type::Named(format!("{name}.{field}"));
+                return Type::Foreign(format!("{name}.{field}"));
             }
             self.diagnostics.push(
                 Diagnostic::error(

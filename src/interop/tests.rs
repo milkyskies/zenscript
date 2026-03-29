@@ -356,7 +356,7 @@ fn parse_function_nullable_return_wraps_to_option() {
         wrapped,
         Type::Function {
             params: vec![Type::String],
-            return_type: Box::new(Type::Option(Box::new(Type::Named("Element".to_string())))),
+            return_type: Box::new(Type::Option(Box::new(Type::Foreign("Element".to_string())))),
         }
     );
 }

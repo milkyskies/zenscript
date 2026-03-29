@@ -18,21 +18,20 @@ impl Checker {
         arms: &[MatchArm],
         span: Span,
     ) {
-        // Resolve Named types to their actual definitions
+        // Resolve Named types to their actual definitions.
+        // Foreign types pass through unchanged (their structure is unknown).
         let resolved_ty;
-        let subject_ty = if let Type::Named(type_name) = subject_ty {
-            // Resolve Named types to their definitions, but keep Named if the
-            // env value is Unknown (foreign npm types that have no definition)
-            if let Some(actual) = self.env.lookup(type_name)
-                && !matches!(actual, Type::Unknown)
-            {
-                resolved_ty = actual.clone();
-                &resolved_ty
-            } else {
-                subject_ty
+        let subject_ty = match subject_ty {
+            Type::Foreign(_) | Type::Promise(_) => subject_ty,
+            Type::Named(type_name) => {
+                if let Some(actual) = self.env.lookup(type_name) {
+                    resolved_ty = actual.clone();
+                    &resolved_ty
+                } else {
+                    subject_ty
+                }
             }
-        } else {
-            subject_ty
+            _ => subject_ty,
         };
 
         let has_catch_all = arms.iter().any(|arm| {

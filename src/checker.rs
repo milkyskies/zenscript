@@ -219,7 +219,9 @@ impl Checker {
                 "fetch",
                 Type::Function {
                     params: vec![Type::String],
-                    return_type: Box::new(Type::Named("Promise<Response>".to_string())),
+                    return_type: Box::new(Type::Promise(Box::new(Type::Named(
+                        "Response".to_string(),
+                    )))),
                 },
             ),
             ("window", Type::Unknown),
@@ -1109,7 +1111,10 @@ impl Checker {
             _ => {
                 // Check if this is a known user-defined type or imported name.
                 // Skip validation during type registration (forward references).
-                if self.registering_types
+                // If the env has a Foreign type, preserve it.
+                if let Some(Type::Foreign(_)) = self.env.lookup(name) {
+                    Type::Foreign(name.to_string())
+                } else if self.registering_types
                     || self.env.lookup_type(name).is_some()
                     || self.env.lookup(name).is_some()
                     || name.contains('.')
@@ -1126,83 +1131,6 @@ impl Checker {
                 }
             }
         }
-    }
-
-    /// Parse a type from a display name string (e.g. "Session | null" -> Option<Session>).
-    /// Used to reconstruct structured types from flattened Promise<T> inner strings.
-    fn parse_type_from_display_name(&self, s: &str) -> Type {
-        // Split at top-level " | " (respecting angle bracket depth)
-        let parts = Self::split_union_display_name(s);
-        if parts.len() > 1 {
-            let has_null = parts.iter().any(|p| *p == "null" || *p == "undefined");
-            let non_null: Vec<&str> = parts
-                .iter()
-                .filter(|p| **p != "null" && **p != "undefined")
-                .copied()
-                .collect();
-
-            let inner = if non_null.len() == 1 {
-                self.parse_type_from_display_name(non_null[0])
-            } else if non_null.is_empty() {
-                Type::Unit
-            } else {
-                Type::Unknown
-            };
-
-            return if has_null {
-                Type::Option(Box::new(inner))
-            } else {
-                inner
-            };
-        }
-
-        // Primitives
-        match s {
-            "number" => Type::Number,
-            "string" => Type::String,
-            "boolean" => Type::Bool,
-            "void" => Type::Unit,
-            "unknown" => Type::Unknown,
-            "null" | "undefined" => Type::Undefined,
-            _ => {
-                // Check for Array<T>
-                if let Some(inner) = s.strip_prefix("Array<").and_then(|s| s.strip_suffix('>')) {
-                    return Type::Array(Box::new(self.parse_type_from_display_name(inner)));
-                }
-                // Named type (foreign or local)
-                Type::Named(s.to_string())
-            }
-        }
-    }
-
-    /// Split a type display name at top-level ` | ` delimiters,
-    /// respecting `<>` nesting so `Map<A | B, C> | null` splits correctly.
-    fn split_union_display_name(s: &str) -> Vec<&str> {
-        let mut parts = Vec::new();
-        let mut depth = 0i32;
-        let mut start = 0;
-        let bytes = s.as_bytes();
-        let len = bytes.len();
-        let mut i = 0;
-        while i < len {
-            match bytes[i] {
-                b'<' | b'(' => depth += 1,
-                b'>' | b')' => depth -= 1,
-                b'|' if depth == 0
-                    && i > 0
-                    && bytes[i - 1] == b' '
-                    && i + 1 < len
-                    && bytes[i + 1] == b' ' =>
-                {
-                    parts.push(s[start..i - 1].trim());
-                    start = i + 2;
-                }
-                _ => {}
-            }
-            i += 1;
-        }
-        parts.push(s[start..].trim());
-        parts
     }
 
     // ── Item Checking ────────────────────────────────────────────
@@ -1248,9 +1176,10 @@ impl Checker {
                     .iter()
                     .find(|e| e.name == spec.name)
                     .map(|e| interop::wrap_boundary_type(&e.ts_type))
-                    .unwrap_or(Type::Unknown)
+                    .unwrap_or_else(|| Type::Foreign(spec.name.clone()))
             } else {
-                Type::Unknown
+                // No .fl resolution and no .d.ts — type is foreign to Floe
+                Type::Foreign(spec.name.clone())
             };
 
             self.env.define(effective_name, ty);
@@ -2157,19 +2086,12 @@ impl Checker {
             return true;
         }
 
-        // Foreign named types (from npm imports, not defined in this program)
-        // are assumed compatible since we can't fully resolve type aliases across
-        // the npm boundary. TypeScript already verified these constraints.
-        if let Type::Named(name) = expected
-            && self.env.lookup_type(name).is_none()
-            && !matches!(actual, Type::Unknown)
-        {
+        // Foreign types (from npm imports) are assumed compatible since we can't
+        // fully resolve type aliases across the npm boundary.
+        if matches!(expected, Type::Foreign(_)) && !matches!(actual, Type::Unknown) {
             return true;
         }
-        if let Type::Named(name) = actual
-            && self.env.lookup_type(name).is_none()
-            && !matches!(expected, Type::Unknown)
-        {
+        if matches!(actual, Type::Foreign(_)) && !matches!(expected, Type::Unknown) {
             return true;
         }
 
@@ -2232,6 +2154,7 @@ impl Checker {
             (Type::Option(a), Type::Option(b)) => self.types_compatible(a, b),
             // A concrete value T is assignable to Option<T> (implicit Some wrapping)
             (Type::Option(inner), actual) => self.types_compatible(inner, actual),
+            (Type::Promise(a), Type::Promise(b)) => self.types_compatible(a, b),
             (Type::Settable(_), Type::Settable(b)) if matches!(**b, Type::Unknown) => {
                 true // Clear/Unchanged (Settable<Unknown>) is compatible with any Settable<T>
             }

@@ -25,17 +25,23 @@ pub fn wrap_boundary_type(ts_type: &TsType) -> Type {
 
         TsType::Unknown => Type::Unknown,
 
-        TsType::Named(name) => Type::Named(name.clone()),
+        TsType::Named(name) => {
+            // Single uppercase letter = generic type variable (T, U, S)
+            if name.len() == 1 && name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
+                Type::Named(name.clone())
+            } else {
+                Type::Foreign(name.clone())
+            }
+        }
 
         TsType::Generic { name, args } => {
             match name.as_str() {
                 "Array" | "ReadonlyArray" if args.len() == 1 => {
                     Type::Array(Box::new(wrap_boundary_type(&args[0])))
                 }
-                "Promise" if args.len() == 1 => Type::Named(format!(
-                    "Promise<{}>",
-                    wrap_boundary_type(&args[0]).display_name()
-                )),
+                "Promise" if args.len() == 1 => {
+                    Type::Promise(Box::new(wrap_boundary_type(&args[0])))
+                }
                 // FloeOption<T> → Option<T> (our probe wrapper for Option)
                 "FloeOption" if args.len() == 1 => {
                     Type::Option(Box::new(wrap_boundary_type(&args[0])))
@@ -54,7 +60,7 @@ pub fn wrap_boundary_type(ts_type: &TsType) -> Type {
                         .iter()
                         .map(|a| wrap_boundary_type(a).display_name())
                         .collect();
-                    Type::Named(format!("{}<{}>", name, args_str.join(", ")))
+                    Type::Foreign(format!("{}<{}>", name, args_str.join(", ")))
                 }
             }
         }
