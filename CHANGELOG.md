@@ -5,6 +5,20 @@ All notable changes to Floe will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.16](https://github.com/milkyskies/floe/compare/v0.1.15...v0.1.16) (2026-03-29)
+
+
+### Features
+
+* [[#542](https://github.com/milkyskies/floe/issues/542)] Add typeof operator in type positions ([#566](https://github.com/milkyskies/floe/issues/566)) ([97bf3ec](https://github.com/milkyskies/floe/commit/97bf3ec71488fcb9927d11aef0f66ae22cb26fcc))
+* [[#548](https://github.com/milkyskies/floe/issues/548)] Support tsconfig paths aliases in import resolution ([#568](https://github.com/milkyskies/floe/issues/568)) ([9d32dc2](https://github.com/milkyskies/floe/commit/9d32dc2e9bf17d96940a2afd106cb183808e18e4))
+
+
+### Bug Fixes
+
+* [[#547](https://github.com/milkyskies/floe/issues/547)] Resolve typeof for relative TS imports with inferred return types ([#561](https://github.com/milkyskies/floe/issues/561)) ([9d129da](https://github.com/milkyskies/floe/commit/9d129da7977de35427dd90a6f0564c118eb3b027))
+* [[#552](https://github.com/milkyskies/floe/issues/552)] Show type info on hover for lambda parameters ([#563](https://github.com/milkyskies/floe/issues/563)) ([0f52812](https://github.com/milkyskies/floe/commit/0f528127265886d4d085c6c7dcc353b239f37388))
+
 ## [0.1.15](https://github.com/milkyskies/floe/compare/v0.1.14...v0.1.15) (2026-03-29)
 
 
