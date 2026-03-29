@@ -1814,3 +1814,16 @@ type D = A & B & { z: boolean }",
         "should emit three-way intersection, got: {result}"
     );
 }
+
+#[test]
+fn intersection_after_generic_type() {
+    let result = emit(
+        "type A { x: number }
+type B { y: string }
+type C = Array<A> & B",
+    );
+    assert!(
+        result.contains("type C = Array<A> & B;"),
+        "should emit intersection after generic type, got: {result}"
+    );
+}

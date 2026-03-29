@@ -941,6 +941,7 @@ impl<'src> CstParser<'src> {
                 self.eat_trivia();
                 self.parse_comma_separated(Self::parse_type_expr, TokenKind::GreaterThan);
                 self.expect(TokenKind::GreaterThan);
+                self.eat_trivia();
             }
         }
 
