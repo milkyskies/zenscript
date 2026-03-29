@@ -1989,6 +1989,16 @@ impl Checker {
             return true;
         }
 
+        // Foreign named types (from npm imports, not defined in this program)
+        // are assumed compatible since we can't fully resolve type aliases across
+        // the npm boundary. TypeScript already verified these constraints.
+        if let Type::Named(name) = expected
+            && self.env.lookup_type(name).is_none()
+            && !matches!(actual, Type::Unknown)
+        {
+            return true;
+        }
+
         // Opaque type alias: within the defining module, the underlying type
         // is assignable to the opaque type (e.g. returning `string` as `HashedPassword`).
         // Currently all code lives in a single file, so same-file = defining module.

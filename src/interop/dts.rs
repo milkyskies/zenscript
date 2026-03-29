@@ -28,16 +28,98 @@ pub struct DtsExport {
 /// - `export declare function/const/type/interface`
 /// - `declare namespace X { ... }` blocks (when combined with `export = X`)
 /// - `export = X` re-export patterns
+/// - `export * from "./X"` re-exports (follows relative paths)
 /// - Overloaded function declarations (uses first signature)
 pub fn parse_dts_exports(dts_path: &Path) -> Result<Vec<DtsExport>, String> {
+    let mut visited = HashSet::new();
+    parse_dts_exports_recursive(dts_path, &mut visited)
+}
+
+fn parse_dts_exports_recursive(
+    dts_path: &Path,
+    visited: &mut HashSet<PathBuf>,
+) -> Result<Vec<DtsExport>, String> {
+    let canonical = dts_path
+        .canonicalize()
+        .unwrap_or_else(|_| dts_path.to_path_buf());
+    if !visited.insert(canonical) {
+        return Ok(Vec::new());
+    }
+
     let content = std::fs::read_to_string(dts_path)
         .map_err(|e| format!("failed to read {}: {e}", dts_path.display()))?;
 
-    parse_dts_exports_from_str(&content)
+    let result = parse_dts_content(&content)?;
+    let mut exports = result.exports;
+    let mut seen_names: HashSet<String> = exports.iter().map(|e| e.name.clone()).collect();
+
+    // Follow `export *` re-exports (relative paths only)
+    let parent_dir = dts_path.parent().unwrap_or(Path::new("."));
+    for source in &result.reexport_sources {
+        if let Some(resolved) = resolve_dts_source(parent_dir, source)
+            && let Ok(reexported) = parse_dts_exports_recursive(&resolved, visited)
+        {
+            for export in reexported {
+                if seen_names.insert(export.name.clone()) {
+                    exports.push(export);
+                }
+            }
+        }
+    }
+
+    Ok(exports)
 }
 
-/// Parse .d.ts exports from a string (used by tests and the file-based entry point).
-pub(super) fn parse_dts_exports_from_str(content: &str) -> Result<Vec<DtsExport>, String> {
+/// Resolve a relative source path (e.g. `"./getYear.js"`) to a .d.ts file.
+fn resolve_dts_source(parent_dir: &Path, source: &str) -> Option<PathBuf> {
+    // Only follow relative paths
+    if !source.starts_with("./") && !source.starts_with("../") {
+        return None;
+    }
+
+    let base = parent_dir.join(source);
+
+    // Try replacing .js/.mjs/.cjs extension with corresponding .d.ts
+    if let Some(base_str) = base.to_str() {
+        for (ext, dts_ext) in &[
+            (".js", ".d.ts"),
+            (".mjs", ".d.mts"),
+            (".cjs", ".d.cts"),
+            (".jsx", ".d.ts"),
+        ] {
+            if let Some(stripped) = base_str.strip_suffix(ext) {
+                let dts_path = PathBuf::from(format!("{stripped}{dts_ext}"));
+                if dts_path.exists() {
+                    return Some(dts_path);
+                }
+            }
+        }
+    }
+
+    // Try adding .d.ts directly
+    let with_dts = parent_dir.join(format!("{source}.d.ts"));
+    if with_dts.exists() {
+        return Some(with_dts);
+    }
+
+    // Try as directory with index.d.ts
+    if base.is_dir() {
+        let index = base.join("index.d.ts");
+        if index.exists() {
+            return Some(index);
+        }
+    }
+
+    None
+}
+
+/// Internal parse result including re-export sources.
+struct ParseResult {
+    exports: Vec<DtsExport>,
+    reexport_sources: Vec<String>,
+}
+
+fn parse_dts_content(content: &str) -> Result<ParseResult, String> {
     let allocator = Allocator::default();
     let source_type = SourceType::d_ts();
     let ret = Parser::new(&allocator, content, source_type).parse();
@@ -50,10 +132,13 @@ pub(super) fn parse_dts_exports_from_str(content: &str) -> Result<Vec<DtsExport>
     let mut seen_names: HashSet<String> = HashSet::new();
     let mut export_assignment_name: Option<String> = None;
     let mut namespace_exports: HashMap<String, Vec<DtsExport>> = HashMap::new();
+    let mut reexport_sources = Vec::new();
+    // Collect all function declarations for resolving `typeof X` references
+    let mut fn_declarations: HashMap<String, TsType> = HashMap::new();
 
     // First pass: collect all info
     for stmt in &ret.program.body {
-        // `export = X;` — remember the namespace name for later
+        // `export = X;` - remember the namespace name for later
         if let Statement::TSExportAssignment(assign) = stmt
             && let oxc_ast::ast::Expression::Identifier(ident) = &assign.expression
         {
@@ -63,6 +148,28 @@ pub(super) fn parse_dts_exports_from_str(content: &str) -> Result<Vec<DtsExport>
         // `export function/const/type/interface ...`
         if let Statement::ExportNamedDeclaration(export_decl) = stmt {
             extract_from_export_named(export_decl, &mut exports, &mut seen_names);
+
+            // Also record function declarations for typeof resolution
+            if let Some(ref decl) = export_decl.declaration
+                && let Declaration::FunctionDeclaration(func) = decl
+                && let Some(ref id) = func.id
+            {
+                let ts_type = convert_function(&func.params, &func.return_type);
+                fn_declarations.insert(id.name.to_string(), ts_type);
+            }
+        }
+
+        // Non-exported function declarations (for typeof resolution)
+        if let Statement::FunctionDeclaration(func) = stmt
+            && let Some(ref id) = func.id
+        {
+            let ts_type = convert_function(&func.params, &func.return_type);
+            fn_declarations.insert(id.name.to_string(), ts_type);
+        }
+
+        // `export * from "./X.js"`
+        if let Statement::ExportAllDeclaration(export_all) = stmt {
+            reexport_sources.push(export_all.source.value.to_string());
         }
 
         // `declare namespace X { ... }` (top-level)
@@ -91,7 +198,25 @@ pub(super) fn parse_dts_exports_from_str(content: &str) -> Result<Vec<DtsExport>
         }
     }
 
-    Ok(exports)
+    // Second pass: resolve `typeof X` references against local declarations
+    for export in &mut exports {
+        if let TsType::Named(ref s) = export.ts_type
+            && let Some(ref_name) = s.strip_prefix("typeof ")
+            && let Some(resolved_type) = fn_declarations.get(ref_name)
+        {
+            export.ts_type = resolved_type.clone();
+        }
+    }
+
+    Ok(ParseResult {
+        exports,
+        reexport_sources,
+    })
+}
+
+/// Parse .d.ts exports from a string (used by tests and the file-based entry point).
+pub(super) fn parse_dts_exports_from_str(content: &str) -> Result<Vec<DtsExport>, String> {
+    parse_dts_content(content).map(|r| r.exports)
 }
 
 /// Extract exports from an `export` declaration (export function/const/type/interface).
@@ -375,8 +500,21 @@ fn convert_oxc_type(ty: &OxcTSType<'_>) -> TsType {
         // Parenthesized type: (T)
         OxcTSType::TSParenthesizedType(paren) => convert_oxc_type(&paren.type_annotation),
 
-        // Intersection, conditional, mapped, etc. — fall back to Named/Unknown
-        OxcTSType::TSIntersectionType(_) => TsType::Named("intersection".to_string()),
+        // Intersection: T & U — use the first non-empty-object type.
+        // The common TS pattern `T & {}` is used for type inference hints and is a no-op.
+        OxcTSType::TSIntersectionType(inter) => {
+            let meaningful: Vec<TsType> = inter
+                .types
+                .iter()
+                .map(|t| convert_oxc_type(t))
+                .filter(|t| !matches!(t, TsType::Object(fields) if fields.is_empty()))
+                .collect();
+            match meaningful.len() {
+                0 => TsType::Object(Vec::new()),
+                1 => meaningful.into_iter().next().unwrap(),
+                _ => meaningful.into_iter().next().unwrap(),
+            }
+        }
 
         // Literal types (string/number/boolean literals)
         OxcTSType::TSLiteralType(lit) => match &lit.literal {
