@@ -1581,36 +1581,9 @@ impl Checker {
             return;
         }
 
-        let concrete = {
-            let resolve_fn = |type_expr: &crate::parser::ast::TypeExpr| -> Type {
-                match &type_expr.kind {
-                    crate::parser::ast::TypeExprKind::Named { name, .. } => match name.as_str() {
-                        type_layout::TYPE_NUMBER => Type::Number,
-                        type_layout::TYPE_STRING => Type::String,
-                        type_layout::TYPE_BOOLEAN => Type::Bool,
-                        type_layout::TYPE_UNIT => Type::Unit,
-                        type_layout::TYPE_UNDEFINED => Type::Undefined,
-                        _ => Type::Named(name.to_string()),
-                    },
-                    crate::parser::ast::TypeExprKind::Array(inner) => {
-                        let inner_resolved = match &inner.kind {
-                            crate::parser::ast::TypeExprKind::Named { name, .. } => {
-                                match name.as_str() {
-                                    type_layout::TYPE_NUMBER => Type::Number,
-                                    type_layout::TYPE_STRING => Type::String,
-                                    type_layout::TYPE_BOOLEAN => Type::Bool,
-                                    _ => Type::Named(name.to_string()),
-                                }
-                            }
-                            _ => Type::Unknown,
-                        };
-                        Type::Array(Box::new(inner_resolved))
-                    }
-                    _ => Type::Unknown,
-                }
-            };
-            self.env.resolve_to_concrete(final_type, &resolve_fn)
-        };
+        let concrete = self
+            .env
+            .resolve_to_concrete(final_type, &expr::simple_resolve_type_expr);
 
         let field_map: Option<std::collections::HashMap<&str, &Type>> = match &concrete {
             Type::Record(fields) => Some(fields.iter().map(|(n, t)| (n.as_str(), t)).collect()),

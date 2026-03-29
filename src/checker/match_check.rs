@@ -21,7 +21,11 @@ impl Checker {
         // Resolve Named types to their actual definitions
         let resolved_ty;
         let subject_ty = if let Type::Named(type_name) = subject_ty {
-            if let Some(actual) = self.env.lookup(type_name) {
+            // Resolve Named types to their definitions, but keep Named if the
+            // env value is Unknown (foreign npm types that have no definition)
+            if let Some(actual) = self.env.lookup(type_name)
+                && !matches!(actual, Type::Unknown)
+            {
                 resolved_ty = actual.clone();
                 &resolved_ty
             } else {
@@ -462,7 +466,11 @@ impl Checker {
         // Resolve Named types to their actual definitions for pattern matching
         let resolved_ty;
         let subject_ty = if let Type::Named(type_name) = subject_ty {
-            if let Some(actual) = self.env.lookup(type_name) {
+            // Resolve Named types to their definitions, but keep Named if the
+            // env value is Unknown (foreign npm types that have no definition)
+            if let Some(actual) = self.env.lookup(type_name)
+                && !matches!(actual, Type::Unknown)
+            {
                 resolved_ty = actual.clone();
                 &resolved_ty
             } else {

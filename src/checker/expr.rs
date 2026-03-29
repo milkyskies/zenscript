@@ -1629,11 +1629,11 @@ impl Checker {
         }
 
         // Named type without a local type definition is foreign (from npm).
-        // Allow member access silently — we can't validate fields but
-        // TypeScript already checked them at the source.
+        // Allow member access and return a Named type for the field so
+        // chained access (s.user.email) stays lenient through the chain.
         if let Type::Named(name) = obj_ty {
             if self.env.lookup_type(name).is_none() {
-                return Type::Unknown;
+                return Type::Named(format!("{name}.{field}"));
             }
             self.diagnostics.push(
                 Diagnostic::error(

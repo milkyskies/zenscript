@@ -638,6 +638,44 @@ fn hover_const_without_annotation_detail_lacks_type_before_fix() {
     assert_eq!(_type_map.get("x").map(|s| s.as_str()), Some("number"));
 }
 
+#[test]
+fn hover_nested_const_shows_type() {
+    // Reproduces #583: const inside nested async fn shows no type on hover
+    let source = r#"
+fn outer() {
+    async fn inner() {
+        const s = "hello"
+    }
+}
+"#;
+    let hover = simulate_hover(source, "s");
+    assert!(
+        hover.as_ref().is_some_and(|h| h.contains("string")),
+        "const s inside nested fn should show type, got: {:?}",
+        hover
+    );
+}
+
+#[test]
+fn hover_nested_const_await_shows_type() {
+    // When const s = await somePromise(), s should show its type
+    // even when nested inside an async fn inside an arrow
+    let source = r#"
+fn outer() {
+    async fn inner() {
+        const s: Option<number> = None
+    }
+}
+"#;
+    let hover = simulate_hover(source, "s");
+    eprintln!("HOVER for s (await): {:?}", hover);
+    assert!(
+        hover.as_ref().is_some_and(|h| h.contains("Option<number>")),
+        "const s with type annotation should show type, got: {:?}",
+        hover
+    );
+}
+
 // ── Match arm variant completion tests (#143) ──────────────
 
 #[test]
