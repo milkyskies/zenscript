@@ -1303,10 +1303,6 @@ impl Checker {
         left_ty: &Type,
         right: &Expr,
     ) -> Type {
-        let ret = match (&stdlib_fn.return_type, left_ty) {
-            (Type::Array(_), Type::Array(elem)) => Type::Array(elem.clone()),
-            _ => stdlib_fn.return_type.clone(),
-        };
         if let Some(first_param) = stdlib_fn.params.first()
             && !self.types_compatible(first_param, left_ty)
         {
@@ -1326,22 +1322,57 @@ impl Checker {
         if let Type::Array(elem) = left_ty {
             self.ctx.lambda_param_hint = Some((**elem).clone());
         }
-        self.check_pipe_right_args(right);
+        // Check lambda args and capture the return type for generic resolution
+        let lambda_return_ty = self.check_pipe_right_args_with_return(right);
         self.ctx.lambda_param_hint = None;
-        ret
+
+        // Infer generic return type from lambda: if the return type's inner type var
+        // differs from the input's inner type var, use the lambda's actual return type.
+        // e.g. map: (Array<T>, (T)->U) -> Array<U>  → infer U from lambda
+        //      filter: (Array<T>, (T)->bool) -> Array<T>  → keep T from input
+        let infer_from_lambda = lambda_return_ty.is_some()
+            && match (&stdlib_fn.return_type, stdlib_fn.params.first()) {
+                (Type::Array(ret_elem), Some(Type::Array(in_elem))) => ret_elem != in_elem,
+                (Type::Option(ret_elem), Some(Type::Option(in_elem))) => ret_elem != in_elem,
+                _ => false,
+            };
+        match (&stdlib_fn.return_type, left_ty) {
+            (Type::Array(_), _) if infer_from_lambda => {
+                Type::Array(Box::new(lambda_return_ty.unwrap()))
+            }
+            (Type::Array(_), Type::Array(elem)) => Type::Array(elem.clone()),
+            (Type::Option(_), _) if infer_from_lambda => {
+                Type::Option(Box::new(lambda_return_ty.unwrap()))
+            }
+            (Type::Option(_), Type::Option(inner)) => Type::Option(inner.clone()),
+            _ => stdlib_fn.return_type.clone(),
+        }
     }
 
-    /// Check arguments in the right side of a pipe without checking the callee identifier.
-    fn check_pipe_right_args(&mut self, right: &Expr) {
+    /// Check arguments in the right side of a pipe and return the lambda's return type
+    /// (if the first arg is a lambda). Used for generic return type inference in map/filter.
+    fn check_pipe_right_args_with_return(&mut self, right: &Expr) -> Option<Type> {
+        let mut lambda_return = None;
         if let ExprKind::Call { args, .. } = &right.kind {
-            for arg in args {
+            for (i, arg) in args.iter().enumerate() {
                 match arg {
                     Arg::Positional(e) | Arg::Named { value: e, .. } => {
-                        self.check_expr(e);
+                        let ty = self.check_expr(e);
+                        // The first arg to map/filter is the lambda — capture its return type
+                        if i == 0 {
+                            if let Type::Function { return_type, .. } = &ty {
+                                lambda_return = Some(*return_type.clone());
+                            } else if !matches!(ty, Type::Unknown | Type::Var(_)) {
+                                // Inline lambda was already evaluated — ty is the lambda body result
+                                // This happens when the arg is an arrow expression
+                                lambda_return = Some(ty);
+                            }
+                        }
                     }
                 }
             }
         }
+        lambda_return
     }
 
     /// Collect single-letter type param names used in a function signature.
@@ -1626,6 +1657,31 @@ impl Checker {
                 return Type::Unknown;
             }
             _ => {}
+        }
+
+        // Check for-block methods before the foreign type fallback.
+        // For-block methods have known signatures even on foreign types.
+        // Return the method type with `self` stripped (since self is the object).
+        if let Type::Named(name) = obj_ty
+            && let Some(overloads) = self.for_block_overloads.get(field)
+            && let Some((_, fn_type)) = overloads.iter().find(|(tn, _)| tn == name)
+        {
+            if let Type::Function {
+                params,
+                return_type,
+            } = fn_type
+            {
+                let method_params = if params.len() > 1 {
+                    params[1..].to_vec()
+                } else {
+                    vec![]
+                };
+                return Type::Function {
+                    params: method_params,
+                    return_type: return_type.clone(),
+                };
+            }
+            return fn_type.clone();
         }
 
         // Named type without a local type definition is foreign (from npm).
