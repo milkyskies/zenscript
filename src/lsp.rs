@@ -15,13 +15,35 @@ use tokio::sync::RwLock;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LspService, Server};
 
-use crate::checker::Checker;
+use crate::checker::{Checker, Type};
 use crate::diagnostic::{self as floe_diag, Severity};
 use crate::parser::Parser;
+use crate::parser::ast::Program;
 
 use completion::is_pipe_compatible;
 use resolution::enrich_from_imports;
 use symbols::SymbolIndex;
+
+/// Find the resolved type and span width of the innermost expression at a byte offset.
+/// Returns (span_width, type) of the tightest non-Unknown expression containing the offset.
+fn find_expr_type_at_offset(program: &Program, offset: usize) -> Option<(usize, Type)> {
+    use crate::parser::ast::Expr;
+
+    let mut best: Option<(usize, Type)> = None;
+
+    let mut check = |expr: &Expr| {
+        if offset >= expr.span.start && offset <= expr.span.end && !matches!(expr.ty, Type::Unknown)
+        {
+            let width = expr.span.end - expr.span.start;
+            if best.as_ref().is_none_or(|(w, _)| width < *w) {
+                best = Some((width, expr.ty.clone()));
+            }
+        }
+    };
+
+    crate::walk::walk_program(program, &mut check);
+    best
+}
 
 // ── Helpers ─────────────────────────────────────────────────────
 
@@ -136,11 +158,12 @@ use crate::find_project_dir;
 struct Document {
     content: String,
     index: SymbolIndex,
-    /// Type map from the checker: variable/function name -> inferred type display name
+    /// Type map from the checker: variable/function name -> inferred type display name.
+    /// Used for completions, dot-access, and pipe type resolution.
     type_map: HashMap<String, String>,
-    /// Refined span types for builtins (None/Some) narrowed by context.
-    /// Maps (start_byte, end_byte) -> concrete type display name.
-    refined_spans: HashMap<(usize, usize), String>,
+    /// Typed AST — every Expr has its resolved type in `expr.ty`.
+    /// Used as the single source of truth for hover on expressions.
+    typed_program: Option<Program>,
 }
 
 // ── LSP Protocol Constants ──────────────────────────────────────
@@ -256,7 +279,7 @@ impl FloeLsp {
 
     /// Parse and type-check a document, update symbol index, publish diagnostics.
     async fn update_document(&self, uri: Url, source: &str) {
-        let (diagnostics, index, type_map, refined_spans) = match Parser::new(source)
+        let (diagnostics, index, type_map, typed_program) = match Parser::new(source)
             .parse_program()
         {
             Err(_) => {
@@ -270,7 +293,7 @@ impl FloeLsp {
                     self.convert_diagnostics(source, &floe_diags),
                     index,
                     type_map,
-                    HashMap::new(),
+                    None,
                 )
             }
             Ok(program) => {
@@ -334,14 +357,18 @@ impl FloeLsp {
                 } else {
                     Checker::with_all_imports(resolved_imports, dts_map)
                 };
-                let (mut check_diags, type_map, refined_spans) = checker.check_with_types(&program);
+                let (mut check_diags, type_map, expr_types) = checker.check_with_types(&program);
                 check_diags.extend(import_diags_early);
+
+                // Annotate the AST with resolved types for hover
+                let mut typed_program = program;
+                crate::checker::annotate_types(&mut typed_program, &expr_types);
 
                 (
                     self.convert_diagnostics(source, &check_diags),
                     index,
                     type_map,
-                    refined_spans,
+                    Some(typed_program),
                 )
             }
         };
@@ -352,7 +379,7 @@ impl FloeLsp {
                 content: source.to_string(),
                 index,
                 type_map,
-                refined_spans,
+                typed_program,
             },
         );
 

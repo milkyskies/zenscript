@@ -125,13 +125,33 @@ impl LanguageServer for FloeLsp {
         let is_member_access =
             word_start > 0 && doc.content.as_bytes().get(word_start - 1) == Some(&b'.');
 
-        // Check symbol index first — prefer the symbol whose span contains the cursor
+        // Check symbol index — for definitions, imports, and bindings at the cursor.
         let symbols = doc.index.find_by_name(word);
         let best_sym = symbols
             .iter()
-            .find(|s| offset >= s.start && offset <= s.end)
-            .or_else(|| symbols.first());
+            .find(|s| offset >= s.start && offset <= s.end);
+
+        // If both SymbolIndex and typed AST match, prefer the tighter span.
+        // This avoids showing a function definition when the cursor is on a
+        // usage of the same name inside the function body.
+        let typed_ast = doc
+            .typed_program
+            .as_ref()
+            .and_then(|p| super::find_expr_type_at_offset(p, offset));
+
         if let Some(sym) = best_sym {
+            if let Some((ast_width, ref ty)) = typed_ast
+                && ast_width < sym.end - sym.start
+            {
+                return Ok(Some(Hover {
+                    contents: HoverContents::Markup(MarkupContent {
+                        kind: MarkupKind::Markdown,
+                        value: format!("```floe\n{word}: {}\n```", ty.display_name()),
+                    }),
+                    range: None,
+                }));
+            }
+
             let detail = enrich_hover_detail(sym, &doc.type_map);
             return Ok(Some(Hover {
                 contents: HoverContents::Markup(MarkupContent {
@@ -228,36 +248,16 @@ impl LanguageServer for FloeLsp {
             }));
         }
 
-        // For None/Some/Ok/Err, try to show the concrete type from context
-        if matches!(word, "None" | "Some" | "Ok" | "Err") {
-            // Look up the expression type at this specific cursor position
-            if let Some(ty) = doc
-                .refined_spans
-                .get(&(word_start, word_start + word.len()))
-            {
-                let hover_text = match word {
-                    "None" => {
-                        format!("```floe\nNone -> {ty}\n```\nRepresents the absence of a value.")
-                    }
-                    "Some" => {
-                        format!("```floe\nSome(value) -> {ty}\n```\nWrap a value in an Option.")
-                    }
-                    "Ok" => format!(
-                        "```floe\nOk(value) -> {ty}\n```\nWrap a success value in a Result."
-                    ),
-                    "Err" => format!(
-                        "```floe\nErr(error) -> {ty}\n```\nWrap an error value in a Result."
-                    ),
-                    _ => unreachable!(),
-                };
-                return Ok(Some(Hover {
-                    contents: HoverContents::Markup(MarkupContent {
-                        kind: MarkupKind::Markdown,
-                        value: hover_text,
-                    }),
-                    range: None,
-                }));
-            }
+        // Check typed AST — the single source of truth for expression types.
+        // Typed AST fallback — for expressions not matched by symbol index or stdlib.
+        if let Some((_, ref ty)) = typed_ast {
+            return Ok(Some(Hover {
+                contents: HoverContents::Markup(MarkupContent {
+                    kind: MarkupKind::Markdown,
+                    value: format!("```floe\n{word}: {}\n```", ty.display_name()),
+                }),
+                range: None,
+            }));
         }
 
         // Fallback to builtin hover

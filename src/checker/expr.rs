@@ -1111,8 +1111,6 @@ impl Checker {
                             && matches!(expected_ty, Type::Option(_))
                         {
                             self.expr_types.insert(e.id, expected_ty.clone());
-                            self.refined_spans
-                                .insert((e.span.start, e.span.end), expected_ty.display_name());
                         }
                     }
                     if let Some(ref field_types) = field_type_map

@@ -10,6 +10,7 @@ Usage: python3 scripts/test-lsp.py [path-to-floe-binary]
 from __future__ import annotations
 
 import json
+import pathlib
 import subprocess
 import sys
 import threading
@@ -1124,6 +1125,22 @@ const _c = Blue
 const _d = Yellow
 """
 
+PIPE_MAP_INFERENCE = """\
+type Accent { id: number, name: string }
+type Row { id: number, rawName: string }
+
+for Row {
+    export fn toAccent(self) -> Accent {
+        Accent(id: self.id, name: self.rawName)
+    }
+}
+
+fn convert(rows: Array<Row>) -> Array<Accent> {
+    const accents = rows |> map((r) => r |> toAccent)
+    accents
+}
+"""
+
 # ── Run Tests ─────────────────────────────────────────────
 
 
@@ -1690,6 +1707,74 @@ def main():
 
     h = hover_text(lsp.hover(URI, 2, 10))  # doubled
     check("Hover: inner const (doubled)", h is not None, f"Got: {h}")
+
+    # Hover on pipe map result and for-block method
+    lsp.open_doc(URI, PIPE_MAP_INFERENCE)
+    lsp.collect_notifications("textDocument/publishDiagnostics", timeout=1)
+
+    # Line 10: const accents = rows |> map((r) => r |> toAccent)
+    # Hover on "accents" (line 10, char 10) — should show Array<Accent>
+    h = hover_text(lsp.hover(URI, 10, 10))
+    check("Hover: pipe map result type (Array<Accent>)", h is not None and "Accent" in (h or ""), f"Got: {h}")
+
+    # Hover on "toAccent" (line 10, char 48) — should show for-block fn type
+    h = hover_text(lsp.hover(URI, 10, 48))
+    check("Hover: for-block fn in pipe (toAccent)", h is not None and "Accent" in (h or ""), f"Got: {h}")
+
+    # Hover on for-block fn with overloads — foreign types (imported, not locally defined)
+    OVERLOAD_FILE = """\
+import { AccentRow } from "some-db"
+import { EntryRow } from "some-db"
+
+type Accent { id: number }
+type Entry { id: number, accents: Array<Accent> }
+
+for AccentRow {
+    export fn toModel(self) -> Accent {
+        Accent(id: self.id)
+    }
+}
+
+for EntryRow {
+    export fn toModel(self, rows: Array<AccentRow>) -> Entry {
+        const accents = rows |> map((r) => r |> toModel)
+        Entry(id: self.id, accents: accents)
+    }
+}
+"""
+    lsp.open_doc(URI, OVERLOAD_FILE)
+    lsp.collect_notifications("textDocument/publishDiagnostics", timeout=1)
+
+    # Line 14: const accents = rows |> map((r) => r |> toModel)
+    h = hover_text(lsp.hover(URI, 14, 15))
+    check("Hover: overloaded pipe map const (accents = Array<Accent>)",
+          h is not None and "Accent" in (h or "") and "AccentRow" not in (h or ""),
+          f"Got: {h}")
+
+    # Line 14: hover on "toModel" inside r |> toModel — should show AccentRow overload, NOT EntryRow
+    #          const accents = rows |> map((r) => r |> toModel)
+    #                                                   ^ col 49
+    h = hover_text(lsp.hover(URI, 14, 49))
+    check("Hover: overloaded for-block fn in pipe shows correct overload (AccentRow.toModel)",
+          h is not None and "AccentRow" in (h or "") and "Accent" in (h or ""),
+          f"Got: {h}")
+
+    # Test with the user's ACTUAL file (cross-file for-block import)
+    user_entry = pathlib.Path("/Users/onesc/Code/Projects/kansai-accent-floe/src/models/entry.fl")
+    if user_entry.exists():
+        user_uri = "file:///Users/onesc/Code/Projects/kansai-accent-floe/src/models/entry.fl"
+        lsp.open_doc(user_uri, user_entry.read_text())
+        lsp.collect_notifications("textDocument/publishDiagnostics", timeout=3)
+
+        # Line 14: const accents = accentRows |> map((a) => a |> toModel)
+        content = user_entry.read_text()
+        line14 = content.split('\n')[14]
+        tomodel_col = line14.rindex('toModel')
+
+        h = hover_text(lsp.hover(user_uri, 14, tomodel_col + 2))
+        check("Hover: cross-file for-block overload (toModel should be AccentRow, not EntryRow)",
+              h is not None and "EntryRow" not in (h or ""),
+              f"Got: {h}")
 
     # ── 13. Advanced Completion ──────────────────────────────
     print(f"\n{BOLD}13. Advanced Completion{NC}")

@@ -156,6 +156,191 @@ pub fn walk_expr_children_mut(expr: &mut Expr, f: &mut impl FnMut(&mut Expr)) {
     }
 }
 
+// ── Immutable walker (for read-only traversal) ──────────────────
+
+/// Walk an entire program immutably, calling f on every expression.
+pub fn walk_program(program: &Program, f: &mut impl FnMut(&Expr)) {
+    for item in &program.items {
+        walk_item(item, f);
+    }
+}
+
+/// Walk an expression and all its children, calling f on each.
+pub fn walk_expr(expr: &Expr, f: &mut impl FnMut(&Expr)) {
+    f(expr);
+    walk_expr_children(expr, f);
+}
+
+/// Walk only the children of an expression (not the expression itself).
+pub fn walk_expr_children(expr: &Expr, f: &mut impl FnMut(&Expr)) {
+    match &expr.kind {
+        ExprKind::Binary { left, right, .. } | ExprKind::Pipe { left, right } => {
+            walk_expr(left, f);
+            walk_expr(right, f);
+        }
+        ExprKind::Unary { operand, .. } => {
+            walk_expr(operand, f);
+        }
+        ExprKind::Call { callee, args, .. } => {
+            walk_expr(callee, f);
+            for arg in args {
+                match arg {
+                    Arg::Positional(e) | Arg::Named { value: e, .. } => {
+                        walk_expr(e, f);
+                    }
+                }
+            }
+        }
+        ExprKind::Construct { args, spread, .. } => {
+            if let Some(s) = spread {
+                walk_expr(s, f);
+            }
+            for arg in args {
+                match arg {
+                    Arg::Positional(e) | Arg::Named { value: e, .. } => {
+                        walk_expr(e, f);
+                    }
+                }
+            }
+        }
+        ExprKind::Member { object, .. } => {
+            walk_expr(object, f);
+        }
+        ExprKind::Index { object, index } => {
+            walk_expr(object, f);
+            walk_expr(index, f);
+        }
+        ExprKind::Arrow { body, .. } => {
+            walk_expr(body, f);
+        }
+        ExprKind::Match { subject, arms } => {
+            walk_expr(subject, f);
+            for arm in arms {
+                walk_expr(&arm.body, f);
+                if let Some(guard) = &arm.guard {
+                    walk_expr(guard, f);
+                }
+            }
+        }
+        ExprKind::Await(inner)
+        | ExprKind::Try(inner)
+        | ExprKind::Unwrap(inner)
+        | ExprKind::Ok(inner)
+        | ExprKind::Err(inner)
+        | ExprKind::Some(inner)
+        | ExprKind::Value(inner)
+        | ExprKind::Grouped(inner)
+        | ExprKind::Spread(inner) => {
+            walk_expr(inner, f);
+        }
+        ExprKind::Parse { value, .. } => {
+            walk_expr(value, f);
+        }
+        ExprKind::Mock { overrides, .. } => {
+            for arg in overrides {
+                match arg {
+                    Arg::Positional(e) | Arg::Named { value: e, .. } => {
+                        walk_expr(e, f);
+                    }
+                }
+            }
+        }
+        ExprKind::Block(items) | ExprKind::Collect(items) => {
+            for item in items {
+                walk_item(item, f);
+            }
+        }
+        ExprKind::Jsx(element) => walk_jsx_children(element, f),
+        ExprKind::Array(elems) | ExprKind::Tuple(elems) => {
+            for e in elems {
+                walk_expr(e, f);
+            }
+        }
+        ExprKind::Object(fields) => {
+            for (_, e) in fields {
+                walk_expr(e, f);
+            }
+        }
+        ExprKind::TemplateLiteral(parts) => {
+            for part in parts {
+                if let TemplatePart::Expr(e) = part {
+                    walk_expr(e, f);
+                }
+            }
+        }
+        ExprKind::DotShorthand { predicate, .. } => {
+            if let Some((_, rhs)) = predicate {
+                walk_expr(rhs, f);
+            }
+        }
+        ExprKind::Number(_)
+        | ExprKind::String(_)
+        | ExprKind::Bool(_)
+        | ExprKind::Identifier(_)
+        | ExprKind::Placeholder
+        | ExprKind::None
+        | ExprKind::Clear
+        | ExprKind::Unchanged
+        | ExprKind::Todo
+        | ExprKind::Unreachable
+        | ExprKind::Unit => {}
+    }
+}
+
+pub fn walk_item(item: &Item, f: &mut impl FnMut(&Expr)) {
+    match &item.kind {
+        ItemKind::Const(decl) => {
+            walk_expr(&decl.value, f);
+        }
+        ItemKind::Function(decl) => {
+            walk_expr(&decl.body, f);
+        }
+        ItemKind::ForBlock(block) => {
+            for func in &block.functions {
+                walk_expr(&func.body, f);
+            }
+        }
+        ItemKind::Expr(expr) => {
+            walk_expr(expr, f);
+        }
+        _ => {}
+    }
+}
+
+fn walk_jsx_children(element: &JsxElement, f: &mut impl FnMut(&Expr)) {
+    match &element.kind {
+        JsxElementKind::Element {
+            props, children, ..
+        } => {
+            for prop in props {
+                if let Some(value) = &prop.value {
+                    walk_expr(value, f);
+                }
+            }
+            for child in children {
+                match child {
+                    JsxChild::Expr(e) => {
+                        walk_expr(e, f);
+                    }
+                    JsxChild::Element(el) => walk_jsx_children(el, f),
+                    JsxChild::Text(_) => {}
+                }
+            }
+        }
+        JsxElementKind::Fragment { children } => {
+            for child in children {
+                match child {
+                    JsxChild::Expr(e) => {
+                        walk_expr(e, f);
+                    }
+                    JsxChild::Element(el) => walk_jsx_children(el, f),
+                    JsxChild::Text(_) => {}
+                }
+            }
+        }
+    }
+}
+
 fn walk_jsx_mut(element: &mut JsxElement, f: &mut impl FnMut(&mut Expr)) {
     if let JsxElementKind::Element { props, .. } = &mut element.kind {
         for prop in props {

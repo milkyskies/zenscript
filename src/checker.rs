@@ -91,9 +91,6 @@ pub struct Checker {
     /// Maps expression IDs to their resolved types.
     /// Used by codegen for type-directed pipe resolution.
     expr_types: ExprTypeMap,
-    /// Maps (start, end) spans to refined type display names for builtins (None/Some/Ok/Err)
-    /// that were narrowed from their generic type to a concrete type by context.
-    refined_spans: HashMap<(usize, usize), String>,
     /// Context flags for the current checking position.
     pub(crate) ctx: CheckContext,
     /// Unused name tracking.
@@ -284,7 +281,6 @@ impl Checker {
             next_var: 0,
             stdlib: StdlibRegistry::new(),
             expr_types: HashMap::new(),
-            refined_spans: HashMap::new(),
             ctx: CheckContext::default(),
             unused: UnusedTracker::default(),
             traits: TraitRegistry::default(),
@@ -358,25 +354,18 @@ impl Checker {
     /// The expr_type_map maps expression spans (start, end) to their resolved types,
     /// used by codegen for type-directed pipe resolution.
     pub fn check_full(self, program: &Program) -> (Vec<Diagnostic>, ExprTypeMap) {
-        let (diags, _, expr_types, _) = self.check_all(program);
+        let (diags, _, expr_types) = self.check_all(program);
         (diags, expr_types)
     }
 
-    /// Check a program and return diagnostics, name_type_map, and refined_spans.
+    /// Check a program and return diagnostics, name_type_map, and expr_type_map.
     /// The name_type_map maps variable/function names to their inferred type display names.
-    /// The refined_spans maps (start, end) byte offsets to concrete type display names
-    /// for builtins (None/Some) that were narrowed by context.
-    #[allow(clippy::type_complexity)]
+    /// The expr_type_map maps ExprId to resolved Type (used by annotate_types).
     pub fn check_with_types(
         self,
         program: &Program,
-    ) -> (
-        Vec<Diagnostic>,
-        HashMap<String, String>,
-        HashMap<(usize, usize), String>,
-    ) {
-        let (diags, name_map, _, refined_spans) = self.check_all(program);
-        (diags, name_map, refined_spans)
+    ) -> (Vec<Diagnostic>, HashMap<String, String>, ExprTypeMap) {
+        self.check_all(program)
     }
 
     /// Internal: run all checks and return all maps.
@@ -384,12 +373,7 @@ impl Checker {
     fn check_all(
         mut self,
         program: &Program,
-    ) -> (
-        Vec<Diagnostic>,
-        HashMap<String, String>,
-        ExprTypeMap,
-        HashMap<(usize, usize), String>,
-    ) {
+    ) -> (Vec<Diagnostic>, HashMap<String, String>, ExprTypeMap) {
         // Pre-register types, traits, and functions from resolved imports
         self.registering_types = true;
         for resolved in self.resolved_imports.values().cloned().collect::<Vec<_>>() {
@@ -503,12 +487,7 @@ impl Checker {
             }
         }
 
-        (
-            self.diagnostics,
-            self.name_types,
-            self.expr_types,
-            self.refined_spans,
-        )
+        (self.diagnostics, self.name_types, self.expr_types)
     }
 
     fn fresh_type_var(&mut self) -> Type {
@@ -1348,16 +1327,12 @@ impl Checker {
         let declared_type = decl.type_ann.as_ref().map(|t| self.resolve_type(t));
 
         // Refine None: if value is Option<Unknown> and declared type is Option<T>,
-        // record the concrete type for hover display
+        // Refine None: record the concrete Option type for hover
         if let Some(ref declared) = declared_type
             && matches!(&value_type, Type::Option(inner) if matches!(**inner, Type::Unknown))
             && matches!(declared, Type::Option(_))
         {
             self.expr_types.insert(decl.value.id, declared.clone());
-            self.refined_spans.insert(
-                (decl.value.span.start, decl.value.span.end),
-                declared.display_name(),
-            );
         }
         let tsgo_type = self.find_and_consume_tsgo_probe(&decl.binding);
         let final_type = self.resolve_const_type(value_type, declared_type, &tsgo_type, span);
