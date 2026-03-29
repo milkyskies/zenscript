@@ -306,11 +306,14 @@ impl LanguageServer for FloeLsp {
                     .into_iter()
                     .filter(|f| prefix.is_empty() || f.name.starts_with(&*prefix))
                     .map(|f| {
-                        let params: Vec<String> =
-                            f.params.iter().map(stdlib_hover::format_type).collect();
                         let ret = stdlib_hover::format_type(&f.return_type);
-                        let detail =
-                            format!("{}.{}({}) -> {}", f.module, f.name, params.join(", "), ret);
+                        let detail = format!(
+                            "{}.{}({}) -> {}",
+                            f.module,
+                            f.name,
+                            stdlib_hover::format_params(f),
+                            ret
+                        );
                         CompletionItem {
                             label: f.name.to_string(),
                             kind: Some(CompletionItemKind::FUNCTION),

@@ -62,11 +62,20 @@ pub(super) fn format_type(ty: &crate::checker::Type) -> String {
     }
 }
 
+/// Format a stdlib function's parameter list for display.
+pub(super) fn format_params(f: &crate::stdlib::StdlibFn) -> String {
+    if f.is_variadic() {
+        "...args".to_string()
+    } else {
+        let params: Vec<String> = f.params.iter().map(format_type).collect();
+        params.join(", ")
+    }
+}
+
 /// Format a stdlib function signature for display.
 fn format_fn_signature(f: &crate::stdlib::StdlibFn) -> String {
-    let params: Vec<String> = f.params.iter().map(format_type).collect();
     let ret = format_type(&f.return_type);
-    format!("{}.{}({}) -> {}", f.module, f.name, params.join(", "), ret)
+    format!("{}.{}({}) -> {}", f.module, f.name, format_params(f), ret)
 }
 
 /// Generate hover text for a stdlib module name (Array, String, Option, etc.).
@@ -86,9 +95,8 @@ pub(super) fn hover_stdlib_module(word: &str) -> Option<String> {
     lines.push(format!("```floe\nmodule {word}\n```"));
     lines.push("**Available functions:**".to_string());
     for f in &functions {
-        let params: Vec<String> = f.params.iter().map(format_type).collect();
         let ret = format_type(&f.return_type);
-        lines.push(format!("- `{}({}) -> {}`", f.name, params.join(", "), ret));
+        lines.push(format!("- `{}({}) -> {}`", f.name, format_params(f), ret));
     }
 
     Some(lines.join("\n"))
