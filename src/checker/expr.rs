@@ -1297,10 +1297,6 @@ impl Checker {
         left_ty: &Type,
         right: &Expr,
     ) -> Type {
-        let ret = match (&stdlib_fn.return_type, left_ty) {
-            (Type::Array(_), Type::Array(elem)) => Type::Array(elem.clone()),
-            _ => stdlib_fn.return_type.clone(),
-        };
         if let Some(first_param) = stdlib_fn.params.first()
             && !self.types_compatible(first_param, left_ty)
         {
@@ -1319,23 +1315,54 @@ impl Checker {
         }
         if let Type::Array(elem) = left_ty {
             self.ctx.lambda_param_hint = Some((**elem).clone());
+        } else if let Type::Option(inner) = left_ty {
+            self.ctx.lambda_param_hint = Some((**inner).clone());
         }
-        self.check_pipe_right_args(right);
+
+        // Check lambda args and capture return type for generic inference
+        let lambda_return = self.check_pipe_right_args_with_return(right);
         self.ctx.lambda_param_hint = None;
-        ret
+
+        // Resolve return type: if the stdlib fn's return type uses a different
+        // type var than the input (e.g. map: Array<T> -> Array<U>), infer U
+        // from the lambda's actual return type.
+        let infer_from_lambda = lambda_return.is_some()
+            && match (&stdlib_fn.return_type, stdlib_fn.params.first()) {
+                (Type::Array(ret_elem), Some(Type::Array(in_elem))) => ret_elem != in_elem,
+                (Type::Option(ret_elem), Some(Type::Option(in_elem))) => ret_elem != in_elem,
+                _ => false,
+            };
+        match (&stdlib_fn.return_type, left_ty) {
+            (Type::Array(_), _) if infer_from_lambda => {
+                Type::Array(Box::new(lambda_return.unwrap()))
+            }
+            (Type::Array(_), Type::Array(elem)) => Type::Array(elem.clone()),
+            (Type::Option(_), _) if infer_from_lambda => {
+                Type::Option(Box::new(lambda_return.unwrap()))
+            }
+            (Type::Option(_), Type::Option(inner)) => Type::Option(inner.clone()),
+            _ => stdlib_fn.return_type.clone(),
+        }
     }
 
-    /// Check arguments in the right side of a pipe without checking the callee identifier.
-    fn check_pipe_right_args(&mut self, right: &Expr) {
+    /// Check arguments in the right side of a pipe and return the lambda's return type.
+    fn check_pipe_right_args_with_return(&mut self, right: &Expr) -> Option<Type> {
+        let mut lambda_return = None;
         if let ExprKind::Call { args, .. } = &right.kind {
-            for arg in args {
+            for (i, arg) in args.iter().enumerate() {
                 match arg {
                     Arg::Positional(e) | Arg::Named { value: e, .. } => {
-                        self.check_expr(e);
+                        let ty = self.check_expr(e);
+                        if i == 0
+                            && let Type::Function { return_type, .. } = &ty
+                        {
+                            lambda_return = Some(*return_type.clone());
+                        }
                     }
                 }
             }
         }
+        lambda_return
     }
 
     /// Collect single-letter type param names used in a function signature.

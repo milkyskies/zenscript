@@ -1278,11 +1278,19 @@ impl Checker {
 
     /// Register for-block functions from an imported module without checking bodies.
     fn check_for_block_imported_with_source(&mut self, block: &ForBlock, source: &str) {
-        let for_type = self.resolve_type(&block.type_name);
         let type_name = match &block.type_name.kind {
             TypeExprKind::Named { name, .. } => name.clone(),
             _ => String::new(),
         };
+
+        // Ensure the for-block's target type is defined before resolving.
+        // The type may be foreign (from npm/TS, not defined in Floe).
+        if !type_name.is_empty() && self.env.lookup(&type_name).is_none() {
+            self.env
+                .define(&type_name, Type::Foreign(type_name.clone()));
+        }
+
+        let for_type = self.resolve_type(&block.type_name);
 
         for func in &block.functions {
             let return_type = func
