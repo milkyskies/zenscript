@@ -38,6 +38,7 @@ pub enum SyntaxKind {
     KW_COLLECT,
     KW_DERIVING,
     KW_USE,
+    KW_TYPEOF,
 
     // Built-in constructors
     KW_OK,
@@ -248,6 +249,7 @@ pub fn token_kind_to_syntax(kind: &TokenKind) -> SyntaxKind {
         TokenKind::Collect => SyntaxKind::KW_COLLECT,
         TokenKind::Deriving => SyntaxKind::KW_DERIVING,
         TokenKind::Use => SyntaxKind::KW_USE,
+        TokenKind::Typeof => SyntaxKind::KW_TYPEOF,
         TokenKind::Ok => SyntaxKind::KW_OK,
         TokenKind::Err => SyntaxKind::KW_ERR,
         TokenKind::Some => SyntaxKind::KW_SOME,

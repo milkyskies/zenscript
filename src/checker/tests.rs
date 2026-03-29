@@ -3595,3 +3595,51 @@ const _result = toModel(row)
         );
     }
 }
+
+// ── typeof operator ────────────────────────────────────────
+
+#[test]
+fn typeof_function_binding() {
+    let diags = check(
+        "fn greet(name: string) -> string { `Hello, ${name}!` }
+type Greeter = typeof greet",
+    );
+    assert!(diags.is_empty(), "typeof function should pass: {diags:?}");
+}
+
+#[test]
+fn typeof_record_binding() {
+    let diags = check(
+        "type Config { baseUrl: string, timeout: number }
+const config = Config(baseUrl: \"https://api.com\", timeout: 5000)
+type MyConfig = typeof config
+fn _getUrl(c: MyConfig) -> string { c.baseUrl }",
+    );
+    assert!(
+        diags.is_empty(),
+        "typeof record alias should allow field access: {diags:?}"
+    );
+}
+
+#[test]
+fn typeof_undefined_binding() {
+    let diags = check("type T = typeof doesNotExist");
+    assert!(
+        has_error_containing(&diags, "undefined binding"),
+        "should error on undefined binding: {diags:?}"
+    );
+}
+
+#[test]
+fn typeof_forward_reference_errors() {
+    // typeof cannot forward-reference local functions (they aren't registered
+    // until the second pass, after type registration)
+    let diags = check(
+        "type Greeter = typeof greet
+fn greet(name: string) -> string { `Hello, ${name}!` }",
+    );
+    assert!(
+        has_error_containing(&diags, "undefined binding"),
+        "typeof forward ref to local fn should error: {diags:?}"
+    );
+}

@@ -909,6 +909,19 @@ impl<'src> CstParser<'src> {
         else if self.at(TokenKind::LeftBrace) {
             self.parse_record_fields();
         }
+        // typeof <ident> or typeof Module.value
+        else if self.at(TokenKind::Typeof) {
+            self.bump();
+            self.eat_trivia();
+            self.expect_ident();
+            self.eat_trivia();
+            while self.at(TokenKind::Dot) {
+                self.bump();
+                self.eat_trivia();
+                self.expect_ident();
+                self.eat_trivia();
+            }
+        }
         // Named type
         else {
             self.expect_ident();

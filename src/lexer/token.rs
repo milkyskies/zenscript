@@ -61,6 +61,8 @@ pub enum TokenKind {
     Deriving,
     /// `use` — callback flattening (Gleam-style)
     Use,
+    /// `typeof` — type-level operator to extract the type of a value binding
+    Typeof,
 
     // Built-in type constructors
     Ok,
@@ -277,6 +279,7 @@ pub fn lookup_keyword(word: &str) -> Option<TokenKind> {
         "collect" => Some(TokenKind::Collect),
         "deriving" => Some(TokenKind::Deriving),
         "use" => Some(TokenKind::Use),
+        "typeof" => Some(TokenKind::Typeof),
         "true" => Some(TokenKind::Bool(true)),
         "false" => Some(TokenKind::Bool(false)),
 

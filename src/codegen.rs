@@ -1032,6 +1032,9 @@ impl Codegen {
                 }
                 self.push("]");
             }
+            TypeExprKind::TypeOf(name) => {
+                self.push(&format!("typeof {name}"));
+            }
         }
     }
 

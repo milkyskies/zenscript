@@ -510,6 +510,12 @@ fn collect_type_names(type_expr: &TypeExpr, names: &mut HashSet<String>) {
                 collect_type_names(&field.type_ann, names);
             }
         }
+        TypeExprKind::TypeOf(name) => {
+            // typeof references a value binding, not a type — but the root name
+            // should still be tracked for import resolution
+            let root = name.split('.').next().unwrap_or(name);
+            names.insert(root.to_string());
+        }
     }
 }
 

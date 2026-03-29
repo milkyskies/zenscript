@@ -878,8 +878,8 @@ impl Codegen {
                 self.emit_parse_checks(&elem_accessor, inner, &elem_path);
                 self.push("} ");
             }
-            TypeExprKind::Function { .. } | TypeExprKind::Tuple(_) => {
-                // Can't validate functions or tuples at runtime — skip
+            TypeExprKind::Function { .. } | TypeExprKind::Tuple(_) | TypeExprKind::TypeOf(_) => {
+                // Can't validate functions, tuples, or typeof at runtime — skip
             }
         }
     }
@@ -1002,8 +1002,8 @@ impl Codegen {
                 }
                 self.push("]");
             }
-            TypeExprKind::Function { .. } => {
-                // Can't meaningfully mock a function — emit a no-op
+            TypeExprKind::Function { .. } | TypeExprKind::TypeOf(_) => {
+                // Can't meaningfully mock a function or typeof — emit a no-op
                 self.push("(() => { throw new Error(\"mock function\"); })");
             }
         }

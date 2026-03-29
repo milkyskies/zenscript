@@ -265,6 +265,15 @@ impl TypeEnv {
                             }
                         }
                         crate::parser::ast::TypeDef::Alias(type_expr) => {
+                            // For typeof aliases, use the pre-resolved env binding
+                            // (simple_resolve_type_expr can't resolve typeof without env context)
+                            if matches!(type_expr.kind, crate::parser::ast::TypeExprKind::TypeOf(_))
+                                && let Some(resolved) = self.lookup(name)
+                            {
+                                // Continue resolving in case typeof gives us another Named type
+                                return self
+                                    .resolve_to_concrete(&resolved.clone(), resolve_type_fn);
+                            }
                             let resolved = resolve_type_fn(type_expr);
                             // Follow alias chains
                             self.resolve_to_concrete(&resolved, resolve_type_fn)

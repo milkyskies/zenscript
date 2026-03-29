@@ -1722,5 +1722,9 @@ pub(crate) fn simple_resolve_type_expr(type_expr: &crate::parser::ast::TypeExpr)
         TypeExprKind::Tuple(types) => {
             Type::Tuple(types.iter().map(simple_resolve_type_expr).collect())
         }
+        TypeExprKind::TypeOf(_) => {
+            // Without environment context, typeof can't be resolved
+            Type::Unknown
+        }
     }
 }

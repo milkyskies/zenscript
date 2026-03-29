@@ -338,6 +338,8 @@ pub enum TypeExprKind {
     Array(Box<TypeExpr>),
     /// Tuple type: `[string, number]`
     Tuple(Vec<TypeExpr>),
+    /// `typeof <ident>` — extract the type of a value binding
+    TypeOf(String),
 }
 
 // ── Expressions ──────────────────────────────────────────────────

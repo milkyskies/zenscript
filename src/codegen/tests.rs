@@ -1742,3 +1742,30 @@ const s = mock<Status>",
         "should pick first variant, got: {result}"
     );
 }
+
+// ── typeof ──────────────────────────────────────────────────
+
+#[test]
+fn typeof_function_alias() {
+    let result = emit(
+        "fn greet(name: string) -> string { `Hello, ${name}!` }
+type Greeter = typeof greet",
+    );
+    assert!(
+        result.contains("type Greeter = typeof greet;"),
+        "should emit typeof in type alias, got: {result}"
+    );
+}
+
+#[test]
+fn typeof_const_alias() {
+    let result = emit(
+        "type Config { baseUrl: string }
+const config = Config(baseUrl: \"https://api.com\")
+type MyConfig = typeof config",
+    );
+    assert!(
+        result.contains("type MyConfig = typeof config;"),
+        "should emit typeof for const binding, got: {result}"
+    );
+}
