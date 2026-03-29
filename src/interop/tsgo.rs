@@ -371,14 +371,14 @@ fn generate_probe(
                 // Inline the const's expression to let tsgo resolve the full chain
                 if name.contains('.') {
                     let obj_name = name.split('.').next().unwrap_or("");
-                    let method = name.rsplit('.').next().unwrap_or("");
+                    let method_chain = &name[obj_name.len() + 1..]; // preserves full chain e.g. "auth.signInWithPassword"
                     if let Some(obj_expr) = local_const_exprs.get(obj_name) {
                         let ts_args: Vec<String> = args.iter().map(arg_to_ts_approx).collect();
                         let binding_name = const_binding_name(&decl.binding);
                         // Use a separate counter to avoid conflicting with _rN indices
                         let inlined_id = format!("inlined_{}", lines.len());
                         lines.push(format!(
-                            "export const __probe_{binding_name}_{inlined_id} = {obj_expr}.{method}({});",
+                            "export const __probe_{binding_name}_{inlined_id} = {obj_expr}.{method_chain}({});",
                             ts_args.join(", "),
                         ));
                         // Don't increment probe_index — these don't use _rN naming
