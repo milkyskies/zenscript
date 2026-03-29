@@ -1182,6 +1182,7 @@ fn create_probe_dir(
     "declaration": true,
     "emitDeclarationOnly": true,
     "outDir": "./out",
+    "rootDir": "/",
     "skipLibCheck": true{paths_config}
   }},
   "include": ["probe.ts"]
@@ -1218,6 +1219,37 @@ fn read_project_tsconfig_paths(project_dir: &Path) -> String {
         .unwrap_or_default()
 }
 
+/// Find `probe.d.ts` under the output directory.
+///
+/// With `rootDir: "/"` in the probe tsconfig, tsgo mirrors the full absolute
+/// path under `outDir`, so the file ends up at `out/<full-temp-path>/probe.d.ts`
+/// instead of `out/probe.d.ts`. We search recursively to handle both cases.
+fn find_probe_dts(probe_dir: &Path) -> Option<PathBuf> {
+    let out_dir = probe_dir.join("out");
+    // Fast path: check the simple location first
+    let simple = out_dir.join("probe.d.ts");
+    if simple.exists() {
+        return Some(simple);
+    }
+    // Slow path: search recursively under out/
+    fn walk(dir: &Path) -> Option<PathBuf> {
+        for entry in std::fs::read_dir(dir).ok()? {
+            let entry = entry.ok()?;
+            let path = entry.path();
+            if path.is_file() && path.file_name().is_some_and(|n| n == "probe.d.ts") {
+                return Some(path);
+            }
+            if path.is_dir()
+                && let Some(found) = walk(&path)
+            {
+                return Some(found);
+            }
+        }
+        None
+    }
+    walk(&out_dir)
+}
+
 /// Run tsgo on the probe directory and return the output `.d.ts` content.
 fn run_tsgo(probe_dir: &Path) -> Result<String, String> {
     // Try tsgo first, then fall back to npx @typescript/native-preview
@@ -1227,9 +1259,7 @@ fn run_tsgo(probe_dir: &Path) -> Result<String, String> {
         .output();
 
     let output = match tsgo_result {
-        Ok(output) if output.status.success() || probe_dir.join("out/probe.d.ts").exists() => {
-            output
-        }
+        Ok(output) if output.status.success() || find_probe_dts(probe_dir).is_some() => output,
         _ => {
             // Fall back to npx @typescript/native-preview
             let npx_result = Command::new("npx")
@@ -1238,7 +1268,7 @@ fn run_tsgo(probe_dir: &Path) -> Result<String, String> {
                 .output()
                 .map_err(|e| format!("failed to run tsgo or npx: {e}"))?;
 
-            if !npx_result.status.success() && !probe_dir.join("out/probe.d.ts").exists() {
+            if !npx_result.status.success() && find_probe_dts(probe_dir).is_none() {
                 let stderr = String::from_utf8_lossy(&npx_result.stderr);
                 return Err(format!("tsgo failed: {stderr}"));
             }
@@ -1248,10 +1278,8 @@ fn run_tsgo(probe_dir: &Path) -> Result<String, String> {
 
     // Even if tsgo reports errors (e.g. for unused variables), check if the .d.ts was emitted
     let _ = output;
-    let dts_path = probe_dir.join("out/probe.d.ts");
-    if !dts_path.exists() {
-        return Err("tsgo did not emit probe.d.ts".to_string());
-    }
+    let dts_path =
+        find_probe_dts(probe_dir).ok_or_else(|| "tsgo did not emit probe.d.ts".to_string())?;
 
     std::fs::read_to_string(&dts_path).map_err(|e| format!("failed to read probe.d.ts: {e}"))
 }
